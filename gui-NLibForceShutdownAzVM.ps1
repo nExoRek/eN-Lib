@@ -1,3 +1,13 @@
+<#
+.SYNOPSIS
+    GUI for VM force shutdown.
+.DESCRIPTION
+    script prepared to show how to create interactive PS script with elements of GUI - mainly get-OutGridView
+.EXAMPLE
+    .\gui-NLibForceShutdownAzVM.ps1
+.NOTES
+    2o2o.o9.21 ::))o- 
+#>
 [cmdletbinding()]
 param(
     [parameter(mandatory=$false,position=0)]
@@ -46,7 +56,7 @@ if([string]::isNullOrEmpty($subscription)) {
 set-AzContext -SubscriptionObject $subscription
 
 #get all RG list
-$RGsInThisSub=$ResourceGroup=Get-AzResourceGroup
+$RGsInThisSub=Get-AzResourceGroup
 
 #first loop for the last question on VM
 $choseAgain=$false
