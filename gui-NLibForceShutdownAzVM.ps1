@@ -65,16 +65,16 @@ do {
         $VMlist=get-VMList -RGname $ResourceGroupName
         if([string]::isNullOrEmpty($VMlist)) {
             write-host "This Resource Group do not contain any VMs. Do you want to select another RG?"
-            switch(
+            switch (
                 [System.Windows.Forms.MessageBox]::show($this,"Choose another Resource Group?",'CONFIRM','OKCancel') 
-            ){
-            'OK' {
-                #do nothing - VMList is null which will trigger loop
-            }
-            'Cancel' {
-                write-host -ForegroundColor Yellow "operation cancelled by the user. quitting."
-                exit -1
-            }       
+            ) {
+                'OK' {
+                    #do nothing - VMList is null which will trigger loop
+                }
+                'Cancel' {
+                    Write-Host -ForegroundColor Yellow "operation cancelled by the user. quitting."
+                    exit -1
+                }       
             }
         }
     } while( [string]::isNullOrEmpty($VMlist) )

@@ -12,11 +12,11 @@
 [cmdletbinding()]
 param()
 
+#region Interface
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-#region Interface
 $scriptGUI                  = New-Object system.Windows.Forms.Form
 $scriptGUI.ClientSize       = '500,100'
 $scriptGUI.StartPosition    = 'CenterScreen'
@@ -66,7 +66,7 @@ $okButton.DataBindings.DefaultDataSourceUpdateMode = 0
 
 #endregion Interface
 
-#region Interface Actions
+#region InterfaceActions
 #dropdown list: subscription . when sub is chosen, change context and read Resource Groups to create RG list 
 $dropBoxSubscriptions_SelectedIndexChanged= {
     [void] $dropBoxSubscriptions.Items.Remove("choose subscription")
@@ -152,25 +152,27 @@ $okButton.add_Click({
         }
     }
 })
+#endregion InterfaceActions
 
 #######################################
 #             INITIALIZE
 
 $RGName=""
 $VMName=""
-$VMs
-#if( [string]::IsNullOrEmpty( (Get-AzContext) ) ) {
-#    write-host 'must connect using connect-azaccount before running the script'
-#    exit -13
-#}
-#$labelStatus.Text=$azSubs -join ';'
-try {
-    $Azsubs=Get-AzSubscription
-} catch {
-    write-host 'must connect using connect-AzAccount before running the script. quitting.'
-    exit -13
+$VMs=""
+
+$AzSubs=Get-AzSubscription -ErrorAction SilentlyContinue
+if([string]::IsNullOrEmpty($AzSubs)) {
+    try {
+        write-host "connecting..."
+        connect-AzAccount 
+        $Azsubs=Get-AzSubscription -ErrorAction Stop
+    } catch {
+        write-host $_
+        exit -1
+    }
 }
-#[void] $dropBoxSubscriptions.Items.Add("chose sub")
+
 $Azsubs|ForEach-Object{[void] $dropBoxSubscriptions.Items.Add($_.name)}
 #$dropBoxSubscriptions.SelectedIndex = 0
 $scriptGUI.controls.Add( $dropBoxSubscriptions )
