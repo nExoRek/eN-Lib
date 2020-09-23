@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    GUI for VM force shutdown.
+    PS GUI for Azure VM force shutdown.
 .DESCRIPTION
     script prepared to show how to create interactive PS script with elements of GUI - mainly get-OutGridView
 .EXAMPLE
@@ -8,13 +8,9 @@
 .NOTES
     2o2o.o9.21 ::))o- 
 #>
+#requires -modules Az.Accounts, Az.Compute, Az.Resources
 [cmdletbinding()]
-param(
-    [parameter(mandatory=$false,position=0)]
-        [string]$ResourceGroupName,
-    [parameter(mandatory=$false,position=1)]
-        [string]$VMName
-)
+param()
 
 function select-RG {
     param(
