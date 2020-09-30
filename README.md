@@ -1,6 +1,10 @@
-**********************************************************
+**************************************************************
   public script library https://w-files.pl
-
-  ::))o-
   
-**********************************************************
+  at this point - a bit random scripts i'm creating.
+  when I will fill library with some more content, I will
+  create some product-specyfic libs.
+
+  2o' ::))o-
+  
+**************************************************************
