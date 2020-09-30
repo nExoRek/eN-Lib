@@ -5,6 +5,9 @@
 .EXAMPLE
     .\show-eNLibMyExternalIP.ps1
     connect to whatismyipaddress.com and query for external IP
+.EXAMPLE
+    .\show-eNLibMyExternalIP.ps1 -extended
+    connect to whatismyipaddress.com and query for external IP then query again for whois information 
 .NOTES
     2o2o.o9.3o ::))o- 
 #>
@@ -12,8 +15,10 @@
 param(
     [parameter(mandatory=$false,position=0,ParameterSetName='extended')]
         [switch]$extended,
+        #show extended information 
     [parameter(mandatory=$false,position=0,ParameterSetName='pureIP')]
         [switch]$pureIP
+        #output only IP number for pipelining
 )
 
 if($pureIP -and $extended) {
@@ -64,11 +69,12 @@ if($pureIP) {
     write-host "Country:        $($rxExtCountry.Match($pageExtended).groups['extCountry'].value)"
     write-host "City:           $($rxExtCity.Match($pageExtended).groups['extCity'].value)"
     write-host "Postal Code:    $($rxExtPostal.Match($pageExtended).groups['extPostal'].value)"
-
-}else {
+    write-host -ForegroundColor Green "done."
+} else {
     write-host -ForegroundColor RED "External IP: $IP"
     write-host $ISP
     write-host $City
     write-host $Region
     write-host $Country
+    write-host -ForegroundColor Green "done."
 }
