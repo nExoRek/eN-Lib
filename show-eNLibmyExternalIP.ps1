@@ -1,7 +1,10 @@
 ﻿<#
 .SYNOPSIS
     simple script using 'whatismyipaddress.com' to query for external IP. 
-    it does not use any specific API so potentially vulnerable for a page changes
+.DESCRIPTION
+    regular rundoes not use any specific API so potentially vulnerable for a page changes.
+    pureIP parameter is using API ipv4bot.whatismyipaddress.com and returns IP only which may 
+    be usefull when you need to pipeline the values
 .EXAMPLE
     .\show-eNLibMyExternalIP.ps1
     connect to whatismyipaddress.com and query for external IP
