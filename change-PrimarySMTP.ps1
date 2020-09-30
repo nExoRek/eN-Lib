@@ -6,9 +6,11 @@
     migration projects on mind. allows to be used in bulk mode using CSV file. CSV must have two 
     columns - 'SAMAccountName' of AD user and 'newPrimarySMTP' which should self-explaining. 
     script is veryfing if chosen email is on Accepted Domains list but beside that there is not much 
-    error checking or vericiation 
+    error checking or verifiation 
     
                     USE WITH CARE
+
+    this is 'compact' version - no additional libraries are necessary (functions included in-line)
 .EXAMPLE 
     .\change-PrimarySMTP.ps1 -inputCSV c:\temp\userList.csv -delimiter ';'
     bulk mode usefull during migration - you create account and mailboxes, migrate content and then
@@ -37,7 +39,7 @@
      write-log and init-log to be used from library
 
  #>
-
+#requires -modules ActiveDirectory
 [cmdletbinding(DefaultParameterSetName='CSV')]
 param( 
     [parameter(mandatory=$true,position=0,ParameterSetName='CSV')]
