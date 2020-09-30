@@ -12,12 +12,12 @@
 
     this is 'compact' version - no additional libraries are necessary (functions included in-line)
 .EXAMPLE 
-    .\change-PrimarySMTP.ps1 -inputCSV c:\temp\userList.csv -delimiter ';'
+    .\change-eNLibPrimarySMTP.ps1 -inputCSV c:\temp\userList.csv -delimiter ';'
     bulk mode usefull during migration - you create account and mailboxes, migrate content and then
     swithover to a new environment. before you do switchover you don't want to have a source domain 
     in your environment. then you can change all emails in bulk during the switchover. 
 .EXAMPLE 
-    .\change-PrimarySMTP.ps1 -samaccountname myADUser -newPrimarySMTP my.AD.user@new.domain
+    .\change-eNLibPrimarySMTP.ps1 -samaccountname myADUser -newPrimarySMTP my.AD.user@new.domain
     will change primary SMTP for a single user in AD. if 'new.domain' is not on Accepted Domains 
     list, email will not be changed
 
