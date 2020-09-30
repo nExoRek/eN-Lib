@@ -16,14 +16,14 @@ param(
     [parameter(mandatory=$false,position=0,ParameterSetName='extended')]
         [switch]$extended,
         #show extended information 
-    [parameter(mandatory=$false,position=0,ParameterSetName='pureIP')]
+    [parameter(mandatory=$false,position=0)]
         [switch]$pureIP
         #output only IP number for pipelining
 )
 
-if($pureIP -and $extended) {
-    write-error "these paramteres can't be used together. choose one."
-    exit -1
+if($pureIP) {
+    $result=Invoke-WebRequest ipv4bot.whatismyipaddress.com
+    return $result.content
 }
 
 $page=Invoke-WebRequest http://whatismyipaddress.com/
@@ -53,9 +53,7 @@ $page.AllElements|? id -eq 'section_left'|%{
     $Country=$rxCountry.Match($_.outerText)
 }
 
-if($pureIP) {
-    $IP.value
-} elseif ($extended) { 
+if ($extended) { 
     $pageExtended=Invoke-WebRequest "http://whatismyipaddress.com/ip/$($IP.value)"
     write-host "IP:             $($rxExtIP.Match($pageExtended).groups['extIP'].value)"
     write-host "Decimal:        $($rxExtDecimal.Match($pageExtended).groups['extDecimal'].value)"
