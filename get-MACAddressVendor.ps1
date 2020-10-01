@@ -11,6 +11,7 @@
 [cmdletbinding(DefaultParameterSetName='mini')]
 param(
     [parameter(position=0,mandatory=$true,valueFromPipeline=$true,ParameterSetName='full')]
+    [parameter(position=0,mandatory=$true,valueFromPipeline=$true,ParameterSetName='webAPI')]
         [string]$macAddress,
         #MAC address - may be formed with 'AA:BB', 'AA-BB' or concete form 'AABB' 
     [parameter(ParameterSetName='webAPI',position=1)]
