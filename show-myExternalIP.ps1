@@ -30,7 +30,7 @@ if($pureIP) {
 }
 
 try {
-    $page=Invoke-WebRequest http://whatismyipaddress.com/ -UserAgent Chrome -ContentType "text/plain; charset=1252"
+    $page=Invoke-WebRequest http://whatismyipaddress.com/ -UserAgent Chrome
 } catch {
     $_
     exit -1
@@ -64,7 +64,7 @@ $page.AllElements|? id -eq 'section_left'|%{
 
 if ($extended) { 
     try {
-        $pageExtended=Invoke-WebRequest "http://whatismyipaddress.com/ip/$($IP.value)" -UserAgent Chrome -ContentType "text/plain; charset=utf-8"
+        $pageExtended=Invoke-WebRequest "http://whatismyipaddress.com/ip/$($IP.value)" -UserAgent Chrome
     } catch {
         $_
         exit -1
