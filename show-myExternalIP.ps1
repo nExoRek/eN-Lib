@@ -25,11 +25,17 @@ param(
 )
 
 if($pureIP) {
-    $result=Invoke-WebRequest ipv4bot.whatismyipaddress.com
+    $result=Invoke-WebRequest ipv4bot.whatismyipaddress.com -UserAgent Chrome
     return $result.content
 }
 
-$page=Invoke-WebRequest http://whatismyipaddress.com/
+try {
+    $page=Invoke-WebRequest http://whatismyipaddress.com/ -UserAgent Chrome -ContentType "text/plain; charset=1252"
+} catch {
+    $_
+    exit -1
+}
+
 [regex]$rxIP="\d{1,3}[.]\d{1,3}[.]\d{1,3}[.]\d{1,3}"
 [regex]$rxISP="ISP:.*"
 [regex]$rxCity="City:.*"
@@ -57,7 +63,12 @@ $page.AllElements|? id -eq 'section_left'|%{
 }
 
 if ($extended) { 
-    $pageExtended=Invoke-WebRequest "http://whatismyipaddress.com/ip/$($IP.value)"
+    try {
+        $pageExtended=Invoke-WebRequest "http://whatismyipaddress.com/ip/$($IP.value)" -UserAgent Chrome -ContentType "text/plain; charset=utf-8"
+    } catch {
+        $_
+        exit -1
+    }
     write-host "IP:             $($rxExtIP.Match($pageExtended).groups['extIP'].value)"
     write-host "Decimal:        $($rxExtDecimal.Match($pageExtended).groups['extDecimal'].value)"
     write-host "Hostname:       $($rxExtHostname.Match($pageExtended).groups['extHostname'].value)"
