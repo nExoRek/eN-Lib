@@ -30,7 +30,10 @@
   * [gui-ForceShutdownAzVMforms.ps1](https://github.com/nExoRek/eN-Lib/blob/master/gui-ForceShutdownAzVMforms.ps1)
     demo how to use element of Forms GUI in PS, force shutdown VM in Azure
 
-
+## AD
+  * [remove-ProtectedOUStructure.ps1](https://github.com/nExoRek/eN-Lib/blob/master/remove-ProtectedOUStructure.ps1)
+    remove whole OU structure removing 'Protect Object From Accidental Deletion' flag.
+    
 > nExoR 2o' ::))o-
   
 **************************************************************
