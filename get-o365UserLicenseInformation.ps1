@@ -32,11 +32,14 @@
                 assignSource
                 licenseName 
                 licenseGroup
+                usageLocation
+                [servicePlans]
             }
 .NOTES
-    nExoR 2o' ::))o-
-    version 20201012
-    - 20201012 v1
+    nExoR ::))o-
+    version 201015
+    - 202015 usageLocation and -includeServicePlans
+    - 201012 v1
 
     TO|DO
     - change licsku and licgroups to hashtables
@@ -49,7 +52,9 @@ param(
         [alias("UPN")]
         [string]$UserPrincipalName,
     [parameter(mandatory=$true,position=0,ValueFromPipeline=$true,ParameterSetName="MSOL")]
-        [Microsoft.Online.Administration.User]$MSOLUser
+        [Microsoft.Online.Administration.User]$MSOLUser,
+    [Parameter(mandatory=$false,position=1)]
+            [switch]$includeServicePlans
 )
 
 begin {
@@ -194,7 +199,7 @@ begin {
     #endregion SKUNAMES
 
     $VerbosePreference="Continue"
-    write-host "started $(get-date -Format 'hh:mm:ss')"
+    write-host "started $(get-date -Format 'HH:mm:ss')"
     $SKUs=get-LicenseSKUs
     $licenseGroups=get-LicenseGroups
     $userCounter=0
@@ -216,9 +221,9 @@ process {
     }
 
     $userCounter++
+    $userLicenses=@()
 
     if($msolUser.isLicensed) {
-        $userLicenses=@()
         foreach($license in $msolUser.licenses){
             $lic = [PSCustomObject]@{
                 userPrincipalName = $msolUser.userPrincipalName
@@ -226,6 +231,10 @@ process {
                 assignSource = ''
                 licenseName  = ''
                 licenseGroup = ''
+                usageLocation = $MSOLUser.UsageLocation
+            }
+            if($includeServicePlans) {
+                Add-Member -InputObject $lic -NotePropertyName 'servicePlans' -NotePropertyValue ''
             }
             foreach($sku in $SKUs) {
                 if($license.AccountSkuId -eq $sku.AccountSkuId) {
@@ -234,7 +243,6 @@ process {
             }
             if($license.GroupsAssigningLicense.count -eq 0 -or $license.GroupsAssigningLicense.guid -ieq $msolUser.objectID) {
                 $lic.assignSource = 'direct'
-                $userLicenses+=$lic
             } else {
                 $lic.assignSource = 'Group'
                 foreach($gbl in $licenseGroups) {
@@ -242,22 +250,33 @@ process {
                         $lic.licenseGroup = $gbl.DisplayName
                     }
                 }
-                $userLicenses+=$lic
             }
+            if($includeServicePlans) {
+                $lic.servicePlans=(
+                    $license.ServiceStatus|%{
+                        '['+$_.ServicePlan.ServiceName+':'+$_.ServicePlan.ServiceType+':'+$_.ProvisioningStatus+']'
+                    }
+                ) -join "`n"
+            }
+            $userLicenses+=$lic
         }
     } else {
-        #no license
-        $userLicenses=[PSCustomObject]@{
+        #no license - return object with some empty values
+        [PSCustomObject]@{
             userPrincipalName = $msolUser.userPrincipalName
-            AccountSkuId = 'none'
+            AccountSkuId = ''
             assignSource = ''
             licenseName  = ''
             licenseGroup = ''
+            usageLocation = $MSOLUser.UsageLocation
+        }
+        if($includeServicePlans) {
+            Add-Member -InputObject $lic -NotePropertyName 'servicePlans' -NotePropertyValue ''
         }
     }
     return $userLicenses
 }
 
 end {
-    write-host "processed $userCounter users. ended $(get-date -Format 'hh:mm:ss')"
+    write-host "processed $userCounter user(s). ended $(get-date -Format 'HH:mm:ss')"
 }
