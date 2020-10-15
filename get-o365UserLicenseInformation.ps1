@@ -12,6 +12,10 @@
     
     get license information on a single user
 .EXAMPLE
+    cat c:\temp\userList.txt|.\get-o365UserLicenseInformation.ps1|export-csv -nti userListLicenses.csv
+    
+    get license information on all users in flat, txt file containing UPNs. then exports to csv.
+.EXAMPLE
     Get-MsolUser -SearchString ne|.\get-o365UserLicenseInformation.ps1|export-csv -nti -deli ';' ne-users.csv
     
     script accepts msol user objects. in that example it will look for users that emails or UPNs 
@@ -36,7 +40,9 @@
 
     TO|DO
     - change licsku and licgroups to hashtables
+    - license details [enaled service plans]
 #>
+#REQUIRE -module MSOnline
 [cmdletbinding(DefaultParameterSetName="UPN")]
 param(
     [parameter(mandatory=$true,position=0,ValueFromPipeline=$true,ParameterSetName="UPN")]
