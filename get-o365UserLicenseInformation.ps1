@@ -38,12 +38,11 @@
 .NOTES
     nExoR ::))o-
     version 201015
-    - 202015 usageLocation and -includeServicePlans
+    - 202015 usageLocation, -includeServicePlans, connection check fix
     - 201012 v1
 
     TO|DO
     - change licsku and licgroups to hashtables
-    - license details [enaled service plans]
 #>
 #Requires -Module MSOnline
 [cmdletbinding(DefaultParameterSetName="UPN")]
@@ -63,7 +62,7 @@ begin {
         Write-Verbose "getting tenant SKUs..."
         $LicenseSKUs=@()
         try{
-            Get-MsolAccountSku|%{
+            Get-MsolAccountSku -ErrorAction stop|%{
                 $LicenseSKUs+= [PSCustomObject]@{
                     SKUID=$_.SkuId
                     AccountSkuId=$_.AccountSkuId
@@ -88,7 +87,6 @@ begin {
         }
         return $licGroups
     }
-
     #https://docs.microsoft.com/en-us/azure/active-directory/users-groups-roles/licensing-service-plan-reference
     #region SKUNAMES
     $listOfAllLicenseSKUNames=@() 
@@ -225,7 +223,7 @@ process {
 
     if($msolUser.isLicensed) {
         foreach($license in $msolUser.licenses){
-            $lic = [PSCustomObject]@{
+            $exportLicenceObject = [PSCustomObject]@{
                 userPrincipalName = $msolUser.userPrincipalName
                 AccountSkuId = $license.AccountSkuId
                 assignSource = ''
@@ -233,36 +231,35 @@ process {
                 licenseGroup = ''
                 usageLocation = $MSOLUser.UsageLocation
             }
-            if($includeServicePlans) {
-                Add-Member -InputObject $lic -NotePropertyName 'servicePlans' -NotePropertyValue ''
-            }
             foreach($sku in $SKUs) {
                 if($license.AccountSkuId -eq $sku.AccountSkuId) {
-                    $lic.licenseName = [string]($listOfAllLicenseSKUNames|? SKUId -eq $sku.SKUPartNumber|Select-Object -ExpandProperty name)
+                    $exportLicenceObject.licenseName = [string]($listOfAllLicenseSKUNames|? SKUId -eq $sku.SKUPartNumber|Select-Object -ExpandProperty name)
                 }
             }
             if($license.GroupsAssigningLicense.count -eq 0 -or $license.GroupsAssigningLicense.guid -ieq $msolUser.objectID) {
-                $lic.assignSource = 'direct'
+                $exportLicenceObject.assignSource = 'direct'
             } else {
-                $lic.assignSource = 'Group'
+                $exportLicenceObject.assignSource = 'Group'
                 foreach($gbl in $licenseGroups) {
                     if($license.GroupsAssigningLicense.guid -eq $gbl.ObjectId.guid) {
-                        $lic.licenseGroup = $gbl.DisplayName
+                        $exportLicenceObject.licenseGroup = $gbl.DisplayName
                     }
                 }
             }
             if($includeServicePlans) {
-                $lic.servicePlans=(
+                Add-Member -InputObject $exportLicenceObject -NotePropertyName 'servicePlans' -NotePropertyValue ''
+                $exportLicenceObject.servicePlans=(
                     $license.ServiceStatus|%{
                         '['+$_.ServicePlan.ServiceName+':'+$_.ServicePlan.ServiceType+':'+$_.ProvisioningStatus+']'
                     }
                 ) -join "`n"
             }
-            $userLicenses+=$lic
+            $userLicenses+=$exportLicenceObject
+            return $userLicenses
         }
     } else {
         #no license - return object with some empty values
-        [PSCustomObject]@{
+        $exportLicenceObject=[PSCustomObject]@{
             userPrincipalName = $msolUser.userPrincipalName
             AccountSkuId = ''
             assignSource = ''
@@ -271,12 +268,13 @@ process {
             usageLocation = $MSOLUser.UsageLocation
         }
         if($includeServicePlans) {
-            Add-Member -InputObject $lic -NotePropertyName 'servicePlans' -NotePropertyValue ''
+            Add-Member -InputObject $exportLicenceObject -NotePropertyName 'servicePlans' -NotePropertyValue ''
         }
+        return $exportLicenceObject
     }
-    return $userLicenses
 }
 
 end {
-    write-host "processed $userCounter user(s). ended $(get-date -Format 'HH:mm:ss')"
+    write-host "processed $userCounter user(s)."
+    Write-Host -ForegroundColor Green "ended $(get-date -Format 'HH:mm:ss')"
 }

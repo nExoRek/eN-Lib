@@ -1,3 +1,6 @@
-github.code-workspace
-*.csv
-*.txt
+#INGNORE ALL
+*
+#...except PS
+!*.ps1
+#and config
+!.gitignore
