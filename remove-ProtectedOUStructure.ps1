@@ -45,6 +45,8 @@ if($OUName -notcontains 'OU=') {
         $search|Select-Object distinguishedname
         exit -6
     }
+    $OUName=$search
+    write-host "Found OU: $OUName"
 }
 
 write-host -ForegroundColor yellow "!!!THIS WILL PERMANENTLY REMOVE $OUName AND ALL SUBOUs."
