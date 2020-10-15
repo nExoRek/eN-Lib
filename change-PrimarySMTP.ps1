@@ -12,12 +12,13 @@
 
     this is 'compact' version - no additional libraries are necessary (functions included in-line)
 .EXAMPLE 
-    .\change-eNLibPrimarySMTP.ps1 -inputCSV c:\temp\userList.csv -delimiter ';'
+    .\change-PrimarySMTP.ps1 -inputCSV c:\temp\userList.csv -delimiter ';'
     bulk mode usefull during migration - you create account and mailboxes, migrate content and then
     swithover to a new environment. before you do switchover you don't want to have a source domain 
     in your environment. then you can change all emails in bulk during the switchover. 
+
 .EXAMPLE 
-    .\change-eNLibPrimarySMTP.ps1 -samaccountname myADUser -newPrimarySMTP my.AD.user@new.domain
+    .\change-PrimarySMTP.ps1 -samaccountname myADUser -newPrimarySMTP my.AD.user@new.domain
     will change primary SMTP for a single user in AD. if 'new.domain' is not on Accepted Domains 
     list, email will not be changed
 
@@ -28,15 +29,15 @@
 
 .NOTES
     nExoR ::))o-
-    ver.20200930 verificaiton of domain
+    ver.201015 verificaiton of domain
     last changes
-    - 20200930 check if on accepted domain list
-    - 20200916 beta, signle mode, standardized functions.
+    - 202015 contains is case sensitive? O_o
+    - 200930 check if on accepted domain list
+    - 200916 beta, signle mode, standardized functions.
 
 
     #bugs and TODOs:
-     merge with tempate and group aliases
-     write-log and init-log to be used from library
+     merge with template and group aliases
 
  #>
 #requires -modules ActiveDirectory
@@ -184,9 +185,8 @@ initiate-Logging
 
 [regex]$rxEmail='[\w\d_.\-\+]+@(?<domain>[\w\d_.\-]+)'
 
-$outputUsers=@()
 try {
-    $AcceptedDomainList = Get-AcceptedDomain|select @{N='domain';E={$_.domainname.address}}
+    $AcceptedDomainList = Get-AcceptedDomain|Select-Object @{N='domain';E={($_.domainname.address).toLower()}}
 } catch {
     write-log 'not able to get accepted domain list. check Exchange connection.' -type error
     exit -1
@@ -211,7 +211,7 @@ foreach($user in $userList) {
     if(-not $disableDomainVerification ) {
         $emailDomain=$rxEmail.Match($user.newPrimarySMTP).groups['domain'].value
         write-log "email domain: $emailDomain" -type info -silent
-        if(-not $AcceptedDomainList.domain.contains($emailDomain) ) {
+        if(-not $AcceptedDomainList.domain.contains($emailDomain.toLower()) ) {
             write-log "$NewPrimarySMTP is not an accepted domain. skipping" -type error
             continue
         }
