@@ -46,10 +46,12 @@ if($OUName -notcontains 'OU=') {
         exit -6
     }
     $OUName=$search
-    write-host "Found OU: $OUName"
+    #write-host "Found OU: $OUName"
 }
 
-write-host -ForegroundColor yellow "!!!THIS WILL PERMANENTLY REMOVE $OUName AND ALL SUBOUs."
+write-host -ForegroundColor yellow "!!!THIS WILL PERMANENTLY REMOVE " -NoNewline
+write-host -BackgroundColor Black -ForegroundColor Red $OUName -NoNewline
+write-host -ForegroundColor yellow " AND ALL SUBOUs."
 Write-Host -ForegroundColor yellow "type [capital] Y to continue"
 $key = [console]::ReadKey()
 if ($key.keyChar -cne 'Y') {

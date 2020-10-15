@@ -14,6 +14,9 @@
   * [show-myExternalIP.ps1](https://github.com/nExoRek/eN-Lib/blob/master/show-myExternalIP.ps1) 
     connects to whatsmyipaddress and provides information in the console
 
+  * [compare-objectAttributeValues.ps1](https://github.com/nExoRek/eN-Lib/blob/master/compare-objectAttributeValues.ps1)
+    compares two objects... couter-intuitively compare-object compares tables. very useful!
+
 ## M365
   * [get-o365UserLicenseInformation.ps1](https://github.com/nExoRek/eN-Lib/blob/master/get-o365UserLicenseInformation.ps1)
     show information on user license focusing on direct/group assignment. particullarly
