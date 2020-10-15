@@ -237,7 +237,13 @@ foreach($user in $userList) {
     Write-Log "new 'would-be' aliases:" -type info
     $newProxyAddresses
     write-log "setting parameters" -type info
-    Set-ADUser $ADu -Replace @{proxyAddresses=$newProxyAddresses} -EmailAddress $($user.newPrimarySMTP).replace("SMTP:",'')
+    try {
+        Set-ADUser $ADu -Replace @{proxyAddresses=$newProxyAddresses} -EmailAddress $($user.newPrimarySMTP).replace("SMTP:",'')
+        write-log "ok." -type ok
+    } catch {
+        write-log $_ -type error -silent
+        $_
+    }
 }
-Write-log "check .\$logFile" -type ok
+Write-log "check $logFile" -type ok
 write-log "done." -type ok
