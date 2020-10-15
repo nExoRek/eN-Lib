@@ -238,5 +238,6 @@ foreach($user in $userList) {
     $newProxyAddresses
     write-log "setting parameters" -type info
     Set-ADUser $ADu -Replace @{proxyAddresses=$newProxyAddresses} -EmailAddress $($user.newPrimarySMTP).replace("SMTP:",'')
-    Write-log "done. check .\$logFile" -type ok
 }
+Write-log "check .\$logFile" -type ok
+write-log "done." -type ok
