@@ -42,6 +42,8 @@
                 usageLocation
                 [servicePlans]
             }
+.LINK
+    https://w-files.pl
 .NOTES
     nExoR ::))o-
     version 201015
@@ -54,13 +56,18 @@
 #Requires -Module MSOnline
 [cmdletbinding(DefaultParameterSetName="UPN")]
 param(
+    #get information on user with given UPN
     [parameter(mandatory=$true,position=0,ValueFromPipeline=$true,ParameterSetName="UPN")]
         [alias("UPN")]
         [string]$UserPrincipalName,
+    #gets information directly from MSOLUser object - especially useful during pipelining
     [parameter(mandatory=$true,position=0,ValueFromPipeline=$true,ParameterSetName="MSOL")]
         [Microsoft.Online.Administration.User]$MSOLUser,
+    #extended report including service plans information
     [Parameter(mandatory=$false,position=1)]
         [switch]$includeServicePlans,
+    #automatically exports to CSV using some predefined values. use this option, or pipe on 
+    #export-csv with your own parameters
     [Parameter(mandatory=$false,position=2)]
         [switch]$exportToCSV
 )
