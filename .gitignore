@@ -4,3 +4,5 @@
 !*.ps1
 #and config
 !.gitignore
+!README.md
+!LICENSE
