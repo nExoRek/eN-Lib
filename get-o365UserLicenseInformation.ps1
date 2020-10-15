@@ -12,16 +12,23 @@
     
     get license information on a single user
 .EXAMPLE
-    cat c:\temp\userList.txt|.\get-o365UserLicenseInformation.ps1|export-csv -nti userListLicenses.csv
+    cat c:\temp\userList.txt|.\get-o365UserLicenseInformation.ps1 -includeServicePlans -exportToCSV
     
-    get license information on all users in flat, txt file containing UPNs. then exports to csv.
+    get license information on all users in flat, txt file containing UPNs. then exports to csv with
+    default name of 'LicenseReport-<date>.csv' comma-delimited.
+    results will contain detailed service plan information. service plans are array object.
+.EXAMPLE
+    cat c:\temp\userList.txt|.\get-o365UserLicenseInformation.ps1|export-csv -nti myReportName.csv -delimiter ';'
+    
+    get license information on all users in flat, txt file containing UPNs. then exports to csv with
+    custom options - delimiter and file name.
 .EXAMPLE
     Get-MsolUser -SearchString ne|.\get-o365UserLicenseInformation.ps1|export-csv -nti -deli ';' ne-users.csv
     
     script accepts msol user objects. in that example it will look for users that emails or UPNs 
     begins with 'ne' and exports data to csv, semicolon delimited. 
 .EXAMPLE
-    Get-MsolUser -all|.\get-o365UserLicenseInformation.ps1|export-csv -nti AllUsersLicenses.csv
+    Get-MsolUser -all|.\get-o365UserLicenseInformation.ps1 -includeServicePlans -exportToCSV
     
     script accepts msol user objects. in that example it will export all user licensing information.
     such report may help you during switchover to GBL.
@@ -38,7 +45,7 @@
 .NOTES
     nExoR ::))o-
     version 201015
-    - 202015 usageLocation, -includeServicePlans, connection check fix
+    - 202015 usageLocation, -includeServicePlans, connection check fix, licenseName fix, -exportToCSV
     - 201012 v1
 
     TO|DO
@@ -53,7 +60,9 @@ param(
     [parameter(mandatory=$true,position=0,ValueFromPipeline=$true,ParameterSetName="MSOL")]
         [Microsoft.Online.Administration.User]$MSOLUser,
     [Parameter(mandatory=$false,position=1)]
-            [switch]$includeServicePlans
+        [switch]$includeServicePlans,
+    [Parameter(mandatory=$false,position=2)]
+        [switch]$exportToCSV
 )
 
 begin {
@@ -201,6 +210,7 @@ begin {
     $SKUs=get-LicenseSKUs
     $licenseGroups=get-LicenseGroups
     $userCounter=0
+    $userLicenses=@()
 }
 
 process {
@@ -219,7 +229,6 @@ process {
     }
 
     $userCounter++
-    $userLicenses=@()
 
     if($msolUser.isLicensed) {
         foreach($license in $msolUser.licenses){
@@ -234,6 +243,10 @@ process {
             foreach($sku in $SKUs) {
                 if($license.AccountSkuId -eq $sku.AccountSkuId) {
                     $exportLicenceObject.licenseName = [string]($listOfAllLicenseSKUNames|? SKUId -eq $sku.SKUPartNumber|Select-Object -ExpandProperty name)
+                    #if license name is not on the list just put SKUPartNumber
+                    if( [string]::IsNullOrEmpty($exportLicenceObject.licenseName) ) {
+                        $exportLicenceObject.licenseName=$sku.SKUPartNumber
+                    }
                 }
             }
             if($license.GroupsAssigningLicense.count -eq 0 -or $license.GroupsAssigningLicense.guid -ieq $msolUser.objectID) {
@@ -248,14 +261,16 @@ process {
             }
             if($includeServicePlans) {
                 Add-Member -InputObject $exportLicenceObject -NotePropertyName 'servicePlans' -NotePropertyValue ''
-                $exportLicenceObject.servicePlans=(
-                    $license.ServiceStatus|%{
-                        '['+$_.ServicePlan.ServiceName+':'+$_.ServicePlan.ServiceType+':'+$_.ProvisioningStatus+']'
-                    }
-                ) -join "`n"
+                $splans=@()
+                $license.ServiceStatus|%{
+                    $splans+='['+$_.ServicePlan.ServiceName+':'+$_.ServicePlan.ServiceType+':'+$_.ProvisioningStatus+']'
+                }
+                $exportLicenceObject.servicePlans=$splans
             }
             $userLicenses+=$exportLicenceObject
-            return $userLicenses
+            if(-not $exportToCSV) {
+                $exportLicenceObject
+            }
         }
     } else {
         #no license - return object with some empty values
@@ -270,11 +285,20 @@ process {
         if($includeServicePlans) {
             Add-Member -InputObject $exportLicenceObject -NotePropertyName 'servicePlans' -NotePropertyValue ''
         }
-        return $exportLicenceObject
+        $userLicenses+=$exportLicenceObject
+        if(-not $exportToCSV) {
+            $exportLicenceObject
+        }
     }
 }
 
 end {
     write-host "processed $userCounter user(s)."
+    if($exportToCSV) {
+        $userLicenses|
+            select-object userPrincipalName,AccountSkuId,assignSource,licenseName,licenseGroup,usageLocation,@{N='servicePlans';E={$_.servicePlans}}|
+            export-csv -NoTypeInformation -Path "LicenseReport-$(get-date -Format yyMMddHHmm).csv"
+        Write-Host "report exported as .\LicenseReport-$(get-date -Format yyMMddHHmm).csv"
+    }
     Write-Host -ForegroundColor Green "ended $(get-date -Format 'HH:mm:ss')"
 }
