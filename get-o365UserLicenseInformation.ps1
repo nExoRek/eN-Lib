@@ -42,7 +42,7 @@
     - change licsku and licgroups to hashtables
     - license details [enaled service plans]
 #>
-#RECQUIRE -module MSOnline
+#Requires -Module MSOnline
 [cmdletbinding(DefaultParameterSetName="UPN")]
 param(
     [parameter(mandatory=$true,position=0,ValueFromPipeline=$true,ParameterSetName="UPN")]
