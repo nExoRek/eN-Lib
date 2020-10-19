@@ -183,7 +183,7 @@ function load-CSV {
 
 initiate-Logging
 
-[regex]$rxEmail='[\w\d_.\-\+]+@(?<domain>[\w\d_.\-]+)'
+[regex]$rxEmail='^[\w\d_.\-\+]+@(?<domain>[\w\d_.\-]+)$'
 
 try {
     $AcceptedDomainList = Get-AcceptedDomain|Select-Object @{N='domain';E={($_.domainname.address).toLower()}}
@@ -241,8 +241,7 @@ foreach($user in $userList) {
         Set-ADUser $ADu -Replace @{proxyAddresses=$newProxyAddresses} -EmailAddress $($user.newPrimarySMTP).replace("SMTP:",'')
         write-log "ok." -type ok
     } catch {
-        write-log $_ -type error -silent
-        $_
+        write-log $_.Exception -type error
     }
 }
 Write-log "check $logFile" -type ok
