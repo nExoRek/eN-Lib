@@ -88,7 +88,7 @@ begin {
             }
             return $LicenseSKUs
         } catch {
-            $_
+            write-host -ForegroundColor Red $_.Exception
             exit -1
         }
     }
