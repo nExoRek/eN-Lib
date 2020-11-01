@@ -7,11 +7,11 @@
     MFA status, enablement status etc. sorting by the group is more robust, but with very minium information
     on the role members only.
 .EXAMPLE
-    .\list-AADadmins.ps1
+    .\list-AADAdmins.ps1
     
     generates list of all AAD role memebers and output to csv file
 .EXAMPLE
-    .\list-AADadmins.ps1 -sortBy role
+    .\list-AADAdmins.ps1 -sortBy role
     
     generates list of all AAD role groups and its memebers and output to csv file
 .INPUTS
