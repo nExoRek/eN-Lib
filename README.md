@@ -27,6 +27,8 @@
   * [get-o365UserLicenseInformation.ps1](https://github.com/nExoRek/eN-Lib/blob/master/get-o365UserLicenseInformation.ps1)
     show information on user license focusing on direct/group assignment. particullarly
       usefull during moving from direct to Groub Based Licensing.
+  * [list-AADAdmins.ps1](https://github.com/nExoRek/eN-Lib/blob/master/list-AADAdmins.ps1)
+    basic security report listing all priviledged accounts (but not PIM) and their statuses
 
 ## EXCHANGE
   * [grant-SharedMailboxAccess.ps1](https://github.com/nExoRek/eN-Lib/blob/master/grant-SharedMailboxAccess.ps1) 
