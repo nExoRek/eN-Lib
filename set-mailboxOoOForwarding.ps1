@@ -229,6 +229,7 @@ if($PSCmdlet.ParameterSetName -eq 'CSV') {
     )
 }
 foreach($eMail in $mailboxList) {
+    write-log "processing $($eMail.sourceMail) -> $($eMail.targetMail)..." -type info
     $currentMessage = $message.Replace('[targetMail]',$eMail.targetMail)
 
     try {
@@ -246,5 +247,6 @@ foreach($eMail in $mailboxList) {
         write-log "can't set mailbox forwarding to $($eMail.targetMail)" -type error
         write-log $_.exception -type error
     }
+    write-log "set" -type info
 }
-write-log "done." -type ok
+write-log "all done." -type ok
