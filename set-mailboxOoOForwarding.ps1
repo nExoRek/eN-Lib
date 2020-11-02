@@ -27,6 +27,7 @@
         last changes
         - 201102 initialized
 #>
+#requires -module ExchangeOnlineManagement
 [CmdletBinding(DefaultParameterSetName="CSV")]
 param (
     #by default - use bulk import and set it for list of mailboxes
