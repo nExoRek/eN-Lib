@@ -1,51 +1,7 @@
-<#
-.SYNOPSIS
-    Setup OoO information on the mailbox and forwarding rule.
-.DESCRIPTION
-    created for migration support during switchover time. sets forwarding and OoO on the mailbox.
-    csv file header need to be: "sourceMail,targetMail" - check $header definition in the code.
-
-.EXAMPLE
-    .\set-mailboxOoOForwarding.ps1 -inputList listofusers.csv -messagefile ooomessage.html 
-    
-    imports mailboxes information from csv file. for each mailbox will set up OoO with message.html as message 
-    content, and set forwarding on another address.
-.EXAMPLE
-    .\set-mailboxOoOForwarding.ps1 -sourceMail myuser@w-files.pl -targetMail othermail@external.domain -messagefile ooomessage.html 
-    
-    set up for single user. for particular mailbox will set up OoO with message.html as message content, and set 
-    forwarding on another address.
-.INPUTS
-    message file to include as OoO message body.
-.OUTPUTS
-    None.
-.LINK
-    https://w-files.pl
-.NOTES
-    nExoR ::))o-
-    version 201102
-        last changes
-        - 201102 initialized
-#>
-#requires -module ExchangeOnlineManagement
-[CmdletBinding(DefaultParameterSetName="CSV")]
+[CmdletBinding()]
 param (
-    #by default - use bulk import and set it for list of mailboxes
-    [Parameter(ParameterSetName="CSV",mandatory=$true,position=0)]
-        [string]$inputList,
-    #for single-user - provide source and target emails 
-    [Parameter(ParameterSetName="single",mandatory=$true,position=0)]
-        [string]$sourceMail,
-    [Parameter(ParameterSetName="single",mandatory=$true,position=1)]
-        [string]$targetMail,
-    #html message file to include in the OoO message
-    [Parameter(ParameterSetName="CSV",mandatory=$true,position=1)]
-    [Parameter(ParameterSetName="single",mandatory=$true,position=2)]
-        [string]$messageFile,
-    #delimiter for CSVs
-    [Parameter(ParameterSetName="CSV",mandatory=$false,position=2)]
-    [Parameter(ParameterSetName="single",mandatory=$false,position=3)]
-        [string]$delimiter=';'
+    [Parameter(mandatory=$true,position=0)]
+        [string]$inputList
 )
 function start-Logging {
     param()
@@ -209,46 +165,14 @@ function check-ExchangeConnection {
     }
     
 }
-
 start-Logging
-if(-not (test-path $messageFile)) {
-    write-log "can't read message file $messageFile" -type error
-    exit -1
-}
-$message=Get-Content $messageFile
 check-ExchangeConnection
 
 $header=@('sourceMail','targetMail')
-if($PSCmdlet.ParameterSetName -eq 'CSV') {
-    $mailboxList=load-CSV -inputCSV $inputList -header $header -headerIsCritical -delimiter ';'
-} else {
-    $mailboxList=@(
-        [PSObject]@{
-            sourceMail=$sourceMail
-            targetMail=$targetMail
-        }
-    )
-}
+$mailboxList=load-CSV -inputCSV $inputList -header $header -headerIsCritical -delimiter ';'
 foreach($eMail in $mailboxList) {
-    write-log "processing $($eMail.sourceMail) -> $($eMail.targetMail)..." -type info
-    $currentMessage = $message.Replace('[targetMail]',$eMail.targetMail)
-
-    try {
-        #https://docs.microsoft.com/en-us/powershell/module/exchange/set-mailboxautoreplyconfiguration?view=exchange-ps
-        set-mailboxAutoReplyConfiguration -identity $eMail.sourceMail -autoReplyState Enabled -ExternalAudience All `
-            -InternalMessage $currentMessage -ExternalMessage $currentMessage
-        write-log "OoO set" -type info
-    } catch {
-        write-log "can't set mailbox OoO" -type error
-        write-log $_.exception -type error
-        continue
-    }
-    try {
-        set-mailbox  -identity $eMail.sourceMail -ForwardingSmtpAddress $eMail.targetMail
-        write-log "forwarding set" -type info
-    } catch {
-        write-log "can't set mailbox forwarding to $($eMail.targetMail)" -type error
-        write-log $_.exception -type error
-    }
+    write-log "processing $($eMail.sourceMail)..." -type info
+    set-mailboxAutoReplyConfiguration -identity $eMail.sourceMail -autoReplyState disabled
+    set-mailbox  -identity $eMail.sourceMail -ForwardingSmtpAddress $null
 }
 write-log "all done." -type ok
