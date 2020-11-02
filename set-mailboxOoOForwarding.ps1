@@ -4,6 +4,8 @@
 .DESCRIPTION
     created for migration support during switchover time. sets forwarding and OoO on the mailbox.
     csv file header need to be: "sourceMail,targetMail" - check $header definition in the code.
+    massage templace may contain '[targetMail]' keyword - it will be converted into target forward 
+    email address.
 
 .EXAMPLE
     .\set-mailboxOoOForwarding.ps1 -inputList listofusers.csv -messagefile ooomessage.html 
@@ -244,7 +246,7 @@ foreach($eMail in $mailboxList) {
         continue
     }
     try {
-        set-mailbox  -identity $eMail.sourceMail -ForwardingSmtpAddress $eMail.targetMail
+        set-mailbox  -identity $eMail.sourceMail -ForwardingSmtpAddress $eMail.targetMail -DeliverToMailboxAndForward $true
         write-log "forwarding set" -type info
     } catch {
         write-log "can't set mailbox forwarding to $($eMail.targetMail)" -type error
