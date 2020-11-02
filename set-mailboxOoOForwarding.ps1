@@ -3,11 +3,20 @@
     Setup OoO information on the mailbox and forwarding rule.
 .DESCRIPTION
     created for migration support during switchover time. sets forwarding and OoO on the mailbox.
+    csv file header need to be: "sourceMail,targetMail" - check $header definition in the code.
+
 .EXAMPLE
-    .\Untitled-1
-    Explanation of what the example does
+    .\set-mailboxOoOForwarding.ps1 -inputList listofusers.csv -messagefile ooomessage.html 
+    
+    imports mailboxes information from csv file. for each mailbox will set up OoO with message.html as message 
+    content, and set forwarding on another address.
+.EXAMPLE
+    .\set-mailboxOoOForwarding.ps1 -sourceMail myuser@w-files.pl -targetMail othermail@external.domain -messagefile ooomessage.html 
+    
+    set up for single user. for particular mailbox will set up OoO with message.html as message content, and set 
+    forwarding on another address.
 .INPUTS
-    None.
+    message file to include as OoO message body.
 .OUTPUTS
     None.
 .LINK
