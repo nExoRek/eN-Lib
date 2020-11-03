@@ -1,7 +1,30 @@
+<#
+.SYNOPSIS
+    help in testing for set-mailboxOoOForwarding.ps1 - quickly revert the changes.
+.DESCRIPTION
+    CSV requires single column - "Source email address". 
+.EXAMPLE
+    .\disable-mailboxOoOForwarding.ps1 -inputListCSV .\migratedUsers.csv
+    
+    disables autoforward and OoO for users in CSV file
+.INPUTS
+    CSV list with valid email addresses.
+.OUTPUTS
+    None.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 201103
+        last changes
+        - 201103 initialized
+#>
 [CmdletBinding()]
 param (
     [Parameter(mandatory=$true,position=0)]
-        [string]$inputList
+        [string]$inputListCSV,
+    [Parameter(mandatory=$false,position=1)]
+        [string][validateSet(',',';')]$delimiter=','
 )
 function start-Logging {
     param()
@@ -168,11 +191,11 @@ function check-ExchangeConnection {
 start-Logging
 check-ExchangeConnection
 
-$header=@('sourceMail','targetMail')
-$mailboxList=load-CSV -inputCSV $inputList -header $header -headerIsCritical -delimiter ';'
+$header=@("Source email address")
+$mailboxList=load-CSV -inputCSV $inputListCSV -header $header -headerIsCritical -delimiter ';'
 foreach($eMail in $mailboxList) {
-    write-log "processing $($eMail.sourceMail)..." -type info
-    set-mailboxAutoReplyConfiguration -identity $eMail.sourceMail -autoReplyState disabled
-    set-mailbox  -identity $eMail.sourceMail -ForwardingSmtpAddress $null
+    write-log "processing $($eMail."Source email address")..." -type info
+    set-mailboxAutoReplyConfiguration -identity $eMail."Source email address" -autoReplyState disabled
+    set-mailbox  -identity $eMail."Source email address" -ForwardingSmtpAddress $null
 }
 write-log "all done." -type ok

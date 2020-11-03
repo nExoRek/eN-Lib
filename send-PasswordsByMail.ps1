@@ -1,28 +1,32 @@
 <#
 .SYNOPSIS
-    Setup OoO information on the mailbox and forwarding rule.
+    support script for migration project. dispatches passwords to users via email, using CSV as input
 .DESCRIPTION
-    created for migration support during switchover time. sets forwarding and OoO on the mailbox.
-    csv file header need to be: "Source email address","Target email address" - check $header definition in the code.
-    massage templace may contain '[targetMail]' keyword - it will be converted into target forward 
-    email address.
-    prerequiste to run a script is having ExchangeOnlineManagement (install-module ExchangeOnlineManagement)
-    module and being already connected to Exchange Online session (connect-ExchangeOnline).
+    support script for bulk user operations created for the sake of migration. it addresses the need to send out
+    passwords for newly created accounts (eg. in new tenant) using users' email address from current environment.
+    you can set up subject and add attachment if you need.
+    in order to send password via Exchange Online with MFA-enabled account, you need to provide Application Password
+    instead of regular user password.
 
+    email should be sent encrypted, you can can e.g. create Transport Rule in Exchange Online to encrypt the messages 
+    from service account that is used for email dispatch based on specific subject or any other attribute for the 
+    project.
+
+    email body may contain variables, which will be replaced by values from imported CSV file:
+    [GN] - will be replaced by value from "First Name" column
+    [NTLOGIN] - will be replaced by value from "NT Login" column
+    [PASSWORD] - will be replaced by value from "password" column
+
+    CSV header required: "Display Name";"First Name";"NT Login";"Source email address";"Target email address";"password"
+    they were created for particular project reuqirement.
 .EXAMPLE
-    .\set-mailboxOoOForwarding.ps1 -inputListCSV listofusers.csv -messagefile ooomessage.html 
-    
-    imports mailboxes information from csv file. for each mailbox will set up OoO with message.html as message 
-    content, and set forwarding on another address.
+    .\send-PasswordsByMail.ps1 -inputListCSV migratedUsers.csv -delimiter ';'
+
+    dispatches emails to all users from CSV saved with Polish regional settings, with default subject.
 .EXAMPLE
-    .\set-mailboxOoOForwarding.ps1 -sourceMail myuser@w-files.pl -targetMail othermail@external.domain -messagefile ooomessage.html 
-    
-    set up for single user. for particular mailbox will set up OoO with message.html as message content, and set 
-    forwarding on another address.
-.INPUTS
-    message file to include as OoO message body.
-.OUTPUTS
-    None.
+    .\send-PasswordsByMail.ps1 -inputListCSV migratedUsers.csv -subject 'Automated Migration Information' -attachment .\welcome.docx
+
+    dispatches emails to all users from CSV, adding subject and a welocome document as attachment.
 .LINK
     https://w-files.pl
 .NOTES
@@ -31,24 +35,17 @@
         last changes
         - 201102 initialized
 #>
-#requires -module ExchangeOnlineManagement
-[CmdletBinding(DefaultParameterSetName="CSV")]
+[CmdletBinding()]
 param (
-    #by default - use bulk import and set it for list of mailboxes
-    [Parameter(ParameterSetName="CSV",mandatory=$true,position=0)]
+    #CSV file containing emails and passwords
+    [Parameter(mandatory=$true,position=0)]
         [string]$inputListCSV,
-    #for single-user - provide source and target emails 
-    [Parameter(ParameterSetName="single",mandatory=$true,position=0)]
-        [string]$sourceMail,
-    [Parameter(ParameterSetName="single",mandatory=$true,position=1)]
-        [string]$targetMail,
-    #html message file to include in the OoO message
-    [Parameter(ParameterSetName="CSV",mandatory=$true,position=1)]
-    [Parameter(ParameterSetName="single",mandatory=$true,position=2)]
-        [string]$messageFile,
-    #delimiter for CSVs
-    [Parameter(ParameterSetName="CSV",mandatory=$false,position=2)]
-    [Parameter(ParameterSetName="single",mandatory=$false,position=3)]
+    # email subject 
+    [Parameter(mandatory=$false,position=1)]
+        [string]$subject="automated message",
+    [Parameter(mandatory=$false,position=2)]
+        [string]$attachment,
+    [Parameter(mandatory=$false,position=3)]
         [string][validateSet(',',';')]$delimiter=','
 )
 function start-Logging {
@@ -182,77 +179,61 @@ function load-CSV {
     }
     return $CSVData
 }
-function check-ExchangeConnection {
-    param(
-        [parameter(mandatory=$false,position=0)]
-            [validateSet('OnPrem','EXO')][string]$ExType='EXO',
-            #defines if you need to check on-premise Exchange or Exchange Online.
-        [parameter(mandatory=$false,position=1)]
-            [switch]$isNonCritical
-            #defines if connection to Exchange is critical. by default script will exit when not connected.
-    )
-
-    $exConnection=$false
-    foreach($session in $(get-PSSession)) {
-        if($session.ConfigurationName -eq 'Microsoft.Exchange') {
-            if($ExType -eq 'EXO' -and $session.ComputerName -eq 'outlook.office365.com') {
-                $exConnection=$true
-            }
-            if($ExType -eq 'OnPrem' -and $session.ComputerName -ne 'outlook.office365.com') {
-                $exConnection=$true
-            }
-        }
-    }
-    if(-not $exConnection) {
-        if($isNonCritical) {
-            write-Log "connection to $ExType not established. functionality will be reduced." -type warning
-        } else {
-            write-log "connection to $ExType not established. you need to connect first. quitting." -type error
-            exit -1
-        }
-    }
-    
-}
 
 start-Logging
-if(-not (test-path $messageFile)) {
-    write-log "can't read message file $messageFile" -type error
+if(-not (Test-Path $inputListCSV)){
+    write-log "$inputListCSV not found." -type error
     exit -1
 }
-$message=Get-Content $messageFile -Encoding Default
-check-ExchangeConnection
-
-$header=@("Source email address";"Target email address")
-if($PSCmdlet.ParameterSetName -eq 'CSV') {
-    $mailboxList=load-CSV -inputCSV $inputListCSV -header $header -headerIsCritical -delimiter ';'
-} else {
-    $mailboxList=@(
-        [PSObject]@{
-            "Source email address" = $sourceMail
-            "Target email address" = $targetMail
-        }
-    )
+if( $NULL -ne $attachment ) {
+    if (-not (test-path $attachment -ErrorAction SilentlyContinue)) {
+        write-log -type error "attachment $attachment not found."
+        exit -2
+    }
 }
-foreach($eMail in $mailboxList) {
-    write-log "processing $($eMail."Source email address") -> $($eMail."Target email address")..." -type info
-    $currentMessage = $message.Replace('[targetMail]',$eMail."Target email address")
+$header=@('First Name','NT Login','Source email address','password')
+$recipientList=load-CSV -delimiter $delimiter -headerIsCritical -header $header -inputCSV $inputListCSV
 
+$myCreds=Get-Credential
+if($NULL -eq $myCreds) {
+    write-log -ForegroundColor Red 'Cancelled.' 
+    exit -3
+}
+
+$messageBody="<b>Hello, [GN]</b><p />
+your new login is: [NTLOGIN]<br />
+one time password: [PASSWORD]<br />
+have a great new experience!
+"
+$sendMailParam=@{
+    Subject=$subject
+    Body=""
+    BodyAsHtml=$true
+    SmtpServer = 'smtp.office365.com'
+    UseSSL = $true
+    Port = 587
+    From = $myCreds.UserName
+    Credential =  $myCreds
+    To = ""
+}
+if($attachment) {
+    $sendMailParam.Add('attachment',$attachment)
+}
+
+foreach($recipient in $recipientList) {
+    $mailTo=$recipient.'Source email address'
+    write-log "sending email to $mailTo ..." -type info
+    $sendMailParam['To'] = $mailTo
+        $body=$messageBody.Replace('[PASSWORD]',$recipient.password)
+        $body=$body.Replace('[NTLOGIN]',$recipient.'NT Login')
+        $body=$body.Replace('[GN]',$recipient.'First Name')
+    $sendMailParam['Body']=$body
     try {
-        #https://docs.microsoft.com/en-us/powershell/module/exchange/set-mailboxautoreplyconfiguration?view=exchange-ps
-        set-mailboxAutoReplyConfiguration -identity $eMail."Source email address" -autoReplyState Enabled -ExternalAudience All `
-            -InternalMessage $currentMessage -ExternalMessage $currentMessage
-        write-log "OoO set" -type info
+        Send-MailMessage @sendMailParam
+        write-log "sent." -type info
     } catch {
-        write-log "can't set mailbox OoO" -type error
-        write-log $_.exception -type error
+        Write-Log "Finished with error: $($_.Exception)" -type error
         continue
     }
-    try {
-        set-mailbox  -identity $eMail."Source email address" -ForwardingSmtpAddress $eMail."Target email address" -DeliverToMailboxAndForward $true
-        write-log "forwarding set" -type info
-    } catch {
-        write-log "can't set mailbox forwarding to $($eMail.targetMail)" -type error
-        write-log $_.exception -type error
-    }
 }
-write-log "all done." -type ok
+write-log 'All done.' -type ok
