@@ -16,6 +16,7 @@
     [GN] - will be replaced by value from "First Name" column
     [NTLOGIN] - will be replaced by value from "NT Login" column
     [PASSWORD] - will be replaced by value from "password" column
+    [EMAIL] - will be replaced by value from "Target email address" column
 
     CSV header required: "Display Name";"First Name";"NT Login";"Source email address";"Target email address";"password"
     they were created for particular project reuqirement.
@@ -31,8 +32,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201102
+    version 201104
         last changes
+        - 201104 target address added as variable, saveCreds
         - 201102 initialized
 #>
 [CmdletBinding()]
@@ -45,7 +47,10 @@ param (
         [string]$subject="automated message",
     [Parameter(mandatory=$false,position=2)]
         [string]$attachment,
+    #once credentials are saved, script will use them istead of querying
     [Parameter(mandatory=$false,position=3)]
+        [switch]$saveCredentials,
+    [Parameter(mandatory=$false,position=4)]
         [string][validateSet(',',';')]$delimiter=','
 )
 function start-Logging {
@@ -191,13 +196,23 @@ if( $NULL -ne $attachment ) {
         exit -2
     }
 }
-$header=@('First Name','NT Login','Source email address','password')
+$header=@('First Name','NT Login','Source email address','password','Target email address')
 $recipientList=load-CSV -delimiter $delimiter -headerIsCritical -header $header -inputCSV $inputListCSV
 
-$myCreds=Get-Credential
-if($NULL -eq $myCreds) {
-    write-log -ForegroundColor Red 'Cancelled.' 
-    exit -3
+$credsFile=$PSScriptRoot+'\mailReport.crds'
+if(test-path $credsFile) {
+    $myCreds = Import-CliXml -Path $credsFile
+    write-log "used saved credentials in $credsFile" -type info
+} else {
+    $myCreds=Get-Credential
+    if($NULL -eq $myCreds) {
+        write-log 'Cancelled.' -type error
+        exit -3
+    }
+    if($saveCredentials) {
+        $myCreds | Export-Clixml -Path $credsFile
+        write-log "credentials saved as $credsFile" -type info
+    }
 }
 
 $messageBody="<b>Hello, [GN]</b><p />
@@ -227,6 +242,7 @@ foreach($recipient in $recipientList) {
         $body=$messageBody.Replace('[PASSWORD]',$recipient.password)
         $body=$body.Replace('[NTLOGIN]',$recipient.'NT Login')
         $body=$body.Replace('[GN]',$recipient.'First Name')
+        $body=$body.Replace('[EMAIL]',$recipient.'')
     $sendMailParam['Body']=$body
     try {
         Send-MailMessage @sendMailParam

@@ -8,7 +8,7 @@
 .EXAMPLE
     .\convert-XLSX2CSV.ps1 -fileName .\myFile.xlsx
 
-    Explanation of what the example does
+    saves tables/worksheets to CSV files.
 .INPUTS
     XLSX file.
 .OUTPUTS
@@ -65,7 +65,7 @@ process {
         if($tableList) {
             foreach($table in $tableList ) {
                 Write-Verbose "found table $($table.name) on $($worksheet.name)"
-                $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9]', '') + '_' + ($table.name -replace '[^a-zA-Z0-9]', '') + '.csv'
+                $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9\-_]', '') + '_' + ($table.name -replace '[^a-zA-Z0-9]', '') + '.csv'
                 $tempWS=$workBookFile.Worksheets.add()
                 $table.range.copy()|out-null
                 $tempWS.paste($tempWS.range("A1"))
@@ -76,7 +76,7 @@ process {
             }
         } else {
             Write-Verbose "$($worksheet.name) does not contain tables. exporting whole sheet..."
-            $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9]', '') + '_whole.csv'
+            $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9\-_]', '') + '_sheet.csv'
             $worksheet.SaveAs($exportFileName, 6,$null,$null,$null,$null,$null,$null,$null,'True')
             write-host "worksheet $($worksheet.name) saved as $exportFileName"
         }
