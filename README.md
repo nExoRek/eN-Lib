@@ -33,7 +33,7 @@
 ## EXCHANGE
   * [grant-SharedMailboxAccess.ps1](https://github.com/nExoRek/eN-Lib/blob/master/grant-SharedMailboxAccess.ps1) 
     suport script to grant "full access" + "send as" for a list of users and shared mailboxes. 
-  * [get-mobileDeviceManagement.ps1](https://github.com/nExoRek/eN-Lib/blob/master/get-mobileDeviceManagement.ps1)
+  * [get-mobileDeviceReport.ps1](https://github.com/nExoRek/eN-Lib/blob/master/get-mobileDeviceReport.ps1)
     generate report on mobile devices registered under EXO users.
 
 ## AZURE
