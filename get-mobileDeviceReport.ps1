@@ -32,7 +32,7 @@ param (
         [string]$reportFile,
     # delimiter user for CSV output
     [Parameter(mandatory=$false,position=2)]
-        [string]$delimiter
+        [string][validateSet(',',';')]$delimiter=';'
 )
 function get-ExchangeConnectionStatus {
     param(
@@ -60,8 +60,9 @@ if(-not (get-ExchangeConnectionStatus)) {
 
 if($null -eq $reportFile) {
     $reportFile = "$PSScriptRoot\MobileReport-$( (Get-Date).ToString('yyMMdd') ).csv" 
-}
+} 
 
+$reportFile
 write-host "getting recipient list..."
 $recipients = Get-Recipient -RecipientTypeDetails "UserMailbox" -ResultSize unlimited|Select-Object -ExpandProperty PrimarySmtpAddress
 write-host "found $($recipients.count) user mailboxes"
@@ -70,8 +71,7 @@ $finalReport = @()
 foreach ($smtpaddr in $recipients) {
     write-host "getting devices of $smtpaddr..."
     $mobileDevices = Get-MobileDevice -Mailbox $smtpaddr
-
-
+    
     foreach ($device in $mobileDevices) {
 
         $finalReport += New-Object psobject -Property @{ 
