@@ -3,12 +3,12 @@
     support script for migration project. dispatches passwords to users via email, using CSV as input
 .DESCRIPTION
     support script for bulk user operations created for the sake of migration. it addresses the need to send out
-    passwords for newly created accounts (eg. in new tenant) using users' email address from current environment.
-    you can set up subject and add attachment if you need.
+    passwords for newly created accounts (eg. in a new tenant) using users' email addresses from current environment.
+    you can set up subject and add attachment if needed.
     in order to send password via Exchange Online with MFA-enabled account, you need to provide Application Password
     instead of regular user password.
 
-    email should be sent encrypted, you can can e.g. create Transport Rule in Exchange Online to encrypt the messages 
+    email should be sent *encrypted*, you can can e.g. create Transport Rule in Exchange Online to encrypt the messages 
     from service account that is used for email dispatch based on specific subject or any other attribute for the 
     project.
 
@@ -45,11 +45,13 @@ param (
     # email subject 
     [Parameter(mandatory=$false,position=1)]
         [string]$subject="automated message",
+    #full path to a file to be attached
     [Parameter(mandatory=$false,position=2)]
         [string]$attachment,
-    #once credentials are saved, script will use them istead of querying
+    #once credentials are saved, script will use them instead of querying
     [Parameter(mandatory=$false,position=3)]
         [switch]$saveCredentials,
+    #CSV delimiter
     [Parameter(mandatory=$false,position=4)]
         [string][validateSet(',',';')]$delimiter=','
 )
