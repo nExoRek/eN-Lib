@@ -62,7 +62,6 @@ if( [string]::IsNullOrEmpty($reportFile) ) {
     $reportFile = "$PSScriptRoot\MobileReport-$( (Get-Date).ToString('yyMMdd') ).csv" 
 } 
 
-$reportFile
 write-host "getting recipient list..."
 $recipients = Get-Recipient -RecipientTypeDetails "UserMailbox" -ResultSize unlimited|Select-Object -ExpandProperty PrimarySmtpAddress
 write-host "found $($recipients.count) user mailboxes"
