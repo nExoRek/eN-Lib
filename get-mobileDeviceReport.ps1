@@ -55,7 +55,7 @@ function get-ExchangeConnectionStatus {
 
 if(-not (get-ExchangeConnectionStatus)) {
     write-host "must connect to EXO before running the script." -ForegroundColor Red
-    #exit -1
+    exit -1
 }
 
 if( [string]::IsNullOrEmpty($reportFile) ) {
