@@ -71,7 +71,12 @@ $finalReport = @()
 foreach ($smtpaddr in $recipients) {
     write-host "getting devices of $smtpaddr..."
     $mobileDevices = Get-MobileDevice -Mailbox $smtpaddr
-    
+    if($mobileDevices) {
+        write-verbose "found $($mobileDevices.count) devices."
+    } else {
+        Write-Verbose "no devices."
+    }
+
     foreach ($device in $mobileDevices) {
 
         $finalReport += New-Object psobject -Property @{ 
