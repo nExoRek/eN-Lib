@@ -25,15 +25,16 @@
 
     dispatches emails to all users from CSV saved with Polish regional settings, with default subject.
 .EXAMPLE
-    .\send-PasswordsByMail.ps1 -inputListCSV migratedUsers.csv -subject 'Automated Migration Information' -attachment .\welcome.docx
+    .\send-PasswordsByMail.ps1 -inputListCSV migratedUsers.csv -subject 'Automated Migration Information' -attachment .\welcome.docx,.\configGuide.pdf
 
-    dispatches emails to all users from CSV, adding subject and a welocome document as attachment.
+    dispatches emails to all users from CSV, adding subject and some guides and welcome documents as attachments.
 .LINK
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201104
+    version 201112
         last changes
+        - 201112 multiple attachments fix
         - 201104 target address added as variable, saveCreds
         - 201102 initialized
 #>
@@ -45,7 +46,7 @@ param (
     # email subject 
     [Parameter(mandatory=$false,position=1)]
         [string]$subject="automated message",
-    #full path to a file to be attached
+    #full path to a files to be attached, comma delimited
     [Parameter(mandatory=$false,position=2)]
         [string[]]$attachment,
     #once credentials are saved, script will use them instead of querying
