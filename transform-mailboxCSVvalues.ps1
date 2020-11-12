@@ -1,59 +1,34 @@
 <#
 .SYNOPSIS
-    support script for migration project. dispatches passwords to users via email, using CSV as input
+    transform columns in CSV to prepare values for new tenant.
 .DESCRIPTION
-    support script for bulk user operations created for the sake of migration. it addresses the need to send out
-    passwords for newly created accounts (eg. in a new tenant) using users' email addresses from current environment.
-    you can set up subject and add attachment if needed.
-    in order to send password via Exchange Online with MFA-enabled account, you need to provide Application Password
-    instead of regular user password.
-
-    email should be sent *encrypted*, you can can e.g. create Transport Rule in Exchange Online to encrypt the messages 
-    from service account that is used for email dispatch based on specific subject or any other attribute for the 
-    project.
-
-    email body may contain variables, which will be replaced by values from imported CSV file:
-    [GN] - will be replaced by value from "First Name" column
-    [NTLOGIN] - will be replaced by value from "NT Login" column
-    [PASSWORD] - will be replaced by value from "password" column
-    [EMAIL] - will be replaced by value from "Target email address" column
-
-    CSV header required: "Display Name";"First Name";"NT Login";"Source email address";"Target email address";"password"
-    they were created for particular project reuqirement.
+    Long description
 .EXAMPLE
-    .\send-PasswordsByMail.ps1 -inputListCSV migratedUsers.csv -delimiter ';'
-
-    dispatches emails to all users from CSV saved with Polish regional settings, with default subject.
-.EXAMPLE
-    .\send-PasswordsByMail.ps1 -inputListCSV migratedUsers.csv -subject 'Automated Migration Information' -attachment .\welcome.docx
-
-    dispatches emails to all users from CSV, adding subject and a welocome document as attachment.
+    .\Untitled-1
+    Explanation of what the example does
+.INPUTS
+    None.
+.OUTPUTS
+    None.
 .LINK
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201104
+    version 201111
         last changes
-        - 201104 target address added as variable, saveCreds
-        - 201102 initialized
+        - 201111 initialized
 #>
 [CmdletBinding()]
 param (
-    #CSV file containing emails and passwords
+    #input file name
     [Parameter(mandatory=$true,position=0)]
-        [string]$inputListCSV,
-    # email subject 
+        [string]$inputCSV,
+    #export CSV file name
     [Parameter(mandatory=$false,position=1)]
-        [string]$subject="automated message",
-    #full path to a file to be attached
+        [string]$outputCSV="transformed-$(get-date -format 'yyMMddHHmm').csv",
+    #delimiter for CSV
     [Parameter(mandatory=$false,position=2)]
-        [string[]]$attachment,
-    #once credentials are saved, script will use them instead of querying
-    [Parameter(mandatory=$false,position=3)]
-        [switch]$saveCredentials,
-    #CSV delimiter
-    [Parameter(mandatory=$false,position=4)]
-        [string][validateSet(',',';')]$delimiter=','
+        [string][validateSet(';',',')]$delimiter=';'
 )
 function start-Logging {
     param()
@@ -186,72 +161,29 @@ function load-CSV {
     }
     return $CSVData
 }
-
 start-Logging
-if(-not (Test-Path $inputListCSV)){
-    write-log "$inputListCSV not found." -type error
+if(-not (test-path $inputCSV)) {
+    write-log "can't read message file $inputCSV" -type error
     exit -1
 }
-if( $NULL -ne $attachment ) {
-    if (-not (test-path $attachment -ErrorAction SilentlyContinue)) {
-        write-log -type error "attachment $attachment not found."
-        exit -2
-    }
-}
-$header=@('First Name','NT Login','Source email address','password','Target email address')
-$recipientList=load-CSV -delimiter $delimiter -headerIsCritical -header $header -inputCSV $inputListCSV
+$header=@('Type','Name','Source Mailbox')
+$entryList=load-CSV -inputCSV $inputCSV -header $header -headerIsCritical -delimiter $delimiter
+$prefixToAdd="SDS"
 
-$credsFile=$PSScriptRoot+'\mailReport.crds'
-if(test-path $credsFile) {
-    $myCreds = Import-CliXml -Path $credsFile
-    write-log "used saved credentials in $credsFile" -type info
-} else {
-    $myCreds=Get-Credential
-    if($NULL -eq $myCreds) {
-        write-log 'Cancelled.' -type error
-        exit -3
+[regex]$emailName='(?i)(?<eName>[\w\d_.\-\+]+)@'
+$resultList=@()
+foreach($row in $entryList) {
+    if($row.type -ne 'SharedMailbox') { 
+        write-log "not a shared mailbox. skipping" -type info -silent
+        continue 
     }
-    if($saveCredentials) {
-        $myCreds | Export-Clixml -Path $credsFile
-        write-log "credentials saved as $credsFile" -type info
-    }
+    $newEntry=[PSObject]$row
+    $newEntry|add-member -MemberType NoteProperty -Name 't_name' -Value ($prefixToAdd+' '+$row.name)
+    $alias=$prefixToAdd+'.'+ ( $emailName.Match($row."source mailbox").groups['eName'].value )
+    $newEntry|Add-Member -MemberType NoteProperty -Name 't_alias' -value $alias
+    $newEntry|Add-Member -MemberType NoteProperty -Name 't_targetMail' -value ($alias+'@sykes.com')
+    $resultList+=$newEntry
 }
-
-$messageBody="<b>Hello, [GN]</b><p />
-your new login is: [NTLOGIN]<br />
-one time password: [PASSWORD]<br />
-have a great new experience!
-"
-$sendMailParam=@{
-    Subject=$subject
-    Body=""
-    BodyAsHtml=$true
-    SmtpServer = 'smtp.office365.com'
-    UseSSL = $true
-    Port = 587
-    From = $myCreds.UserName
-    Credential =  $myCreds
-    To = ""
-}
-if($attachment) {
-    $sendMailParam.Add('attachment',$attachment)
-}
-
-foreach($recipient in $recipientList) {
-    $mailTo=$recipient.'Source email address'
-    write-log "sending email to $mailTo ..." -type info
-    $sendMailParam['To'] = $mailTo
-        $body=$messageBody.Replace('[PASSWORD]',$recipient.password)
-        $body=$body.Replace('[NTLOGIN]',$recipient.'NT Login')
-        $body=$body.Replace('[GN]',$recipient.'First Name')
-        $body=$body.Replace('[EMAIL]',$recipient.'')
-    $sendMailParam['Body']=$body
-    try {
-        Send-MailMessage @sendMailParam
-        write-log "sent." -type info
-    } catch {
-        Write-Log "Finished with error: $($_.Exception)" -type error
-        continue
-    }
-}
-write-log 'All done.' -type ok
+$resultList|export-csv -nti -Delimiter $delimiter -Path $outputCSV
+write-log "$outputCSV exported."
+write-log "done." -type ok

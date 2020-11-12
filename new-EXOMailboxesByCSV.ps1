@@ -1,59 +1,30 @@
 <#
 .SYNOPSIS
-    support script for migration project. dispatches passwords to users via email, using CSV as input
+    create new cloud-native mailboxes based on information from CSV.
 .DESCRIPTION
-    support script for bulk user operations created for the sake of migration. it addresses the need to send out
-    passwords for newly created accounts (eg. in a new tenant) using users' email addresses from current environment.
-    you can set up subject and add attachment if needed.
-    in order to send password via Exchange Online with MFA-enabled account, you need to provide Application Password
-    instead of regular user password.
-
-    email should be sent *encrypted*, you can can e.g. create Transport Rule in Exchange Online to encrypt the messages 
-    from service account that is used for email dispatch based on specific subject or any other attribute for the 
-    project.
-
-    email body may contain variables, which will be replaced by values from imported CSV file:
-    [GN] - will be replaced by value from "First Name" column
-    [NTLOGIN] - will be replaced by value from "NT Login" column
-    [PASSWORD] - will be replaced by value from "password" column
-    [EMAIL] - will be replaced by value from "Target email address" column
-
-    CSV header required: "Display Name";"First Name";"NT Login";"Source email address";"Target email address";"password"
-    they were created for particular project reuqirement.
+    created for particualar migration project....
 .EXAMPLE
-    .\send-PasswordsByMail.ps1 -inputListCSV migratedUsers.csv -delimiter ';'
-
-    dispatches emails to all users from CSV saved with Polish regional settings, with default subject.
-.EXAMPLE
-    .\send-PasswordsByMail.ps1 -inputListCSV migratedUsers.csv -subject 'Automated Migration Information' -attachment .\welcome.docx
-
-    dispatches emails to all users from CSV, adding subject and a welocome document as attachment.
+    .\Untitled-1
+    Explanation of what the example does
+.INPUTS
+    None.
+.OUTPUTS
+    None.
 .LINK
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201104
+    version 201109
         last changes
-        - 201104 target address added as variable, saveCreds
-        - 201102 initialized
+        - 201109 initialized
 #>
 [CmdletBinding()]
 param (
-    #CSV file containing emails and passwords
     [Parameter(mandatory=$true,position=0)]
-        [string]$inputListCSV,
-    # email subject 
+        [string]$inputCSV,
+    #delimiter for CSV files
     [Parameter(mandatory=$false,position=1)]
-        [string]$subject="automated message",
-    #full path to a file to be attached
-    [Parameter(mandatory=$false,position=2)]
-        [string[]]$attachment,
-    #once credentials are saved, script will use them instead of querying
-    [Parameter(mandatory=$false,position=3)]
-        [switch]$saveCredentials,
-    #CSV delimiter
-    [Parameter(mandatory=$false,position=4)]
-        [string][validateSet(',',';')]$delimiter=','
+        [string][validateSet(';',',')]$delimiter
 )
 function start-Logging {
     param()
@@ -186,72 +157,124 @@ function load-CSV {
     }
     return $CSVData
 }
+function check-ExchangeConnection {
+    param(
+        [parameter(mandatory=$false,position=0)]
+            [validateSet('OnPrem','EXO')][string]$ExType='EXO',
+            #defines if you need to check on-premise Exchange or Exchange Online.
+        [parameter(mandatory=$false,position=1)]
+            [switch]$isNonCritical
+            #defines if connection to Exchange is critical. by default script will exit when not connected.
+    )
+
+    $exConnection=$false
+    foreach($session in $(get-PSSession)) {
+        if($session.ConfigurationName -eq 'Microsoft.Exchange') {
+            if($ExType -eq 'EXO' -and $session.ComputerName -eq 'outlook.office365.com') {
+                $exConnection=$true
+            }
+            if($ExType -eq 'OnPrem' -and $session.ComputerName -ne 'outlook.office365.com') {
+                $exConnection=$true
+            }
+        }
+    }
+    if(-not $exConnection) {
+        if($isNonCritical) {
+            write-Log "connection to $ExType not established. functionality will be reduced." -type warning
+        } else {
+            write-log "connection to $ExType not established. you need to connect first. quitting." -type error
+            exit -1
+        }
+    }
+    
+}
+function new-RandomPassword {
+    param( 
+        [int]$length=8,
+        [int][validateSet(1,2,3,4)]$uniqueSets=4,
+        [int][validateSet(1,2,3)]$specialCharacterRange=1
+            
+    )
+    function generate-Set {
+        param(
+            # set up password length
+            [int]$length,
+            # number of 'sets of sets' defining complexity range
+            [int]$setSize
+        )
+        $safe=0
+        while ($safe++ -lt 100) {
+            $array=@()
+            1..$length|%{
+                $array+=(Get-Random -Maximum ($setSize) -Minimum 0)
+            }
+            if(($array|Sort-Object -Unique|Measure-Object).count -ge $setSize) {
+                return $array
+            } else {
+                Write-Verbose "[generate-Set]bad array: $($array -join ',')"
+            }
+        }
+        return $null
+    }
+    #prepare char-sets 
+    $smallLetters=$null
+    97..122|%{$smallLetters+=,[char][byte]$_}
+    $capitalLetters=$null
+    65..90|%{$capitalLetters+=,[char][byte]$_}
+    $numbers=$null
+    48..57|%{$numbers+=,[char][byte]$_}
+    $specialCharacterL1=$null
+    @(33;35..38;43;45..46;95)|%{$specialCharacterL1+=,[char][byte]$_} # !"#$%&
+    $specialCharacterL2=$null
+    58..64|%{$specialCharacterL2+=,[char][byte]$_} # :;<=>?@
+    $specialCharacterL3=$null
+    @(34;39..42;44;47;91..94;96;123..125)|%{$specialCharacterL3+=,[char][byte]$_} # [\]^`  
+      
+    $ascii=@()
+    $ascii+=,$smallLetters
+    $ascii+=,$capitalLetters
+    $ascii+=,$numbers
+    if($specialCharacterRange -ge 2) { $specialCharacterL1+=,$specialCharacterL2 }
+    if($specialCharacterRange -ge 3) { $specialCharacterL1+=,$specialCharacterL3 }
+    $ascii+=,$specialCharacterL1
+    #prepare set of character-sets ensuring that there will be at least one character from at least 3 different sets
+    $passwordSet=generate-Set -length $length -setSize $uniqueSets 
+
+    $password=$NULL
+    0..($length-1)|% {
+        $password+=($ascii[$passwordSet[$_]] | Get-Random)
+    }
+    return $password
+}
 
 start-Logging
-if(-not (Test-Path $inputListCSV)){
-    write-log "$inputListCSV not found." -type error
+if(-not (test-path $inputCSV)) {
+    write-log "can't read message file $inputCSV" -type error
     exit -1
 }
-if( $NULL -ne $attachment ) {
-    if (-not (test-path $attachment -ErrorAction SilentlyContinue)) {
-        write-log -type error "attachment $attachment not found."
-        exit -2
-    }
-}
-$header=@('First Name','NT Login','Source email address','password','Target email address')
-$recipientList=load-CSV -delimiter $delimiter -headerIsCritical -header $header -inputCSV $inputListCSV
+$header=@('t_targetMail','t_name','t_alias')
+$mailboxList=load-CSV -inputCSV $inputCSV -header $header -headerIsCritical -delimiter $delimiter
+check-ExchangeConnection
 
-$credsFile=$PSScriptRoot+'\mailReport.crds'
-if(test-path $credsFile) {
-    $myCreds = Import-CliXml -Path $credsFile
-    write-log "used saved credentials in $credsFile" -type info
-} else {
-    $myCreds=Get-Credential
-    if($NULL -eq $myCreds) {
-        write-log 'Cancelled.' -type error
-        exit -3
-    }
-    if($saveCredentials) {
-        $myCreds | Export-Clixml -Path $credsFile
-        write-log "credentials saved as $credsFile" -type info
-    }
+foreach($mailbox in $mailboxList) {
+    if($mailbox.type -eq 'SharedMailbox') {
+        write-log "creating shared mailbox $($mailbox.name) ..." -type info
+        $UPN=$mailbox.t_targetMail
+        $displayName = $mailbox.t_name
+        $alias=$mailbox.t_alias
+        $accountPassword=new-RandomPassword
+        try {
+            new-mailbox -shared `
+                -UserPrincipalName $UPN `
+                -name $displayName `
+                -displayName $displayName `
+                -alias $alias `
+                -PrimarySMTPAddress $UPN `
+                -ResetPasswordOnNextLogon $true `
+                -Password (ConvertTo-SecureString -String $accountPassword -AsPlainText -Force)
+            write-log "shared mailbox $UPN created."
+        } catch {
+            write-log "not able to create mailbox with error: $($_.exception)" -type error
+        }
 }
-
-$messageBody="<b>Hello, [GN]</b><p />
-your new login is: [NTLOGIN]<br />
-one time password: [PASSWORD]<br />
-have a great new experience!
-"
-$sendMailParam=@{
-    Subject=$subject
-    Body=""
-    BodyAsHtml=$true
-    SmtpServer = 'smtp.office365.com'
-    UseSSL = $true
-    Port = 587
-    From = $myCreds.UserName
-    Credential =  $myCreds
-    To = ""
-}
-if($attachment) {
-    $sendMailParam.Add('attachment',$attachment)
-}
-
-foreach($recipient in $recipientList) {
-    $mailTo=$recipient.'Source email address'
-    write-log "sending email to $mailTo ..." -type info
-    $sendMailParam['To'] = $mailTo
-        $body=$messageBody.Replace('[PASSWORD]',$recipient.password)
-        $body=$body.Replace('[NTLOGIN]',$recipient.'NT Login')
-        $body=$body.Replace('[GN]',$recipient.'First Name')
-        $body=$body.Replace('[EMAIL]',$recipient.'')
-    $sendMailParam['Body']=$body
-    try {
-        Send-MailMessage @sendMailParam
-        write-log "sent." -type info
-    } catch {
-        Write-Log "Finished with error: $($_.Exception)" -type error
-        continue
-    }
-}
-write-log 'All done.' -type ok
+write-log "all done." -type ok
