@@ -1,16 +1,16 @@
 <#
 .SYNOPSIS
-    enforce MFA on a user
-.DESCRIPTION
-    Long description
+    enforce MFA on a user.
+.EXAMPLE
+    .\enable-MFAforMSOLUser.ps1 -UserPrincipalName nexor@w-files.pl 
+
+    single user MFA enablement.
 .EXAMPLE
     cat userfile.txt|.\enable-MFAforMSOLUser.ps1 
 
-.EXAMPLE
-    .\enable-MFAforMSOLUser.ps1 -inputCSV userList.csv -delimiter ','
-    
+    bulk user enablement by pipelinging names on the script.
 .INPUTS
-    User UPNs.
+    User UPN(s).
 .OUTPUTS
     None.
 .LINK
@@ -24,15 +24,9 @@
 #requires -module MSOnline
 [CmdletBinding()]
 param (
-    #User Principal Name pipelined from console
-    [Parameter(ParameterSetName="pipe",ValueFromPipeline=$true,mandatory=$true,position=0)]
-        [string]$UserPrincipalName,
-    #get names from CSV
-    [Parameter(ParameterSetName='CSV',mandatory=$true,position=0)]
-        [string]$inputCSV,
-    #delimiter for CSV files
-    [Parameter(ParameterSetName='CSV',mandatory=$false,position=1)]
-        [string][validateSet(';',',')]$delimiter=';'
+    #User Principal Names pipelined from console
+    [Parameter(ValueFromPipeline=$true,mandatory=$true,position=0)]
+        [string]$UserPrincipalName
 )
 begin {
     function start-Logging {
@@ -113,59 +107,6 @@ begin {
             $_
         }    
     }
-    function load-CSV {
-        param(
-            [parameter(mandatory=$true,position=0)]
-                [string]$inputCSV,
-            [parameter(mandatory=$true,position=1)]
-                [string[]]$header,
-            #expected header
-            [parameter(mandatory=$false,position=2)]
-                [switch]$headerIsCritical,
-            #this flag will exit on load if any column is missing. 
-            [parameter(mandatory=$false,position=3)]
-                [string]$delimiter=','
-        )
-    
-        try {
-            $CSVData=import-csv -path "$inputCSV" -delimiter $delimiter -Encoding UTF8
-        } catch {
-            Write-log "not able to open $inputCSV. quitting." -type error 
-            exit -1
-        }
-    
-        $csvHeader=$CSVData|get-Member -MemberType NoteProperty|select-object -ExpandProperty Name
-        $hmiss=@()
-        foreach($el in $header) {
-            if($csvHeader -notcontains $el) {
-                Write-log "$el column missing in imported csv" -type warning
-                $hmiss+=$el
-            }
-        }
-        if($hmiss) {
-            if($headerIsCritical) {
-                Write-log "Wrong CSV header. check delimiter used. quitting." -type error
-                exit -2
-            }
-            $ans=Read-Host -Prompt "some columns are missing. type 'add' to add them, 'c' to continue or anything else to cancel"
-            switch($ans) {
-                'add' {
-                    foreach($newCol in $hmiss) {
-                        $CSVData|add-member  -MemberType NoteProperty -Name $newCol -value ''
-                    }
-                    write-log "header extended" -type info
-                }
-                'c' {
-                    write-log "continuing without header change" -type info
-                }
-                default {
-                    write-log "cancelled. exitting." -type info
-                    exit -7
-                }
-            }
-        }
-        return $CSVData
-    }
     start-Logging
     try {
         $msoldomain=Get-MsolDomain -ErrorAction Stop
@@ -178,12 +119,15 @@ begin {
     $auth.State="Enforced"
 }
 process {
+    write-Log "processing $UserPrincipalName..." -type info -silent
     try {
         Set-MsolUser -UserPrincipalName $UserPrincipalName -StrongAuthenticationRequirements @($auth) 
+        write-log "MFA enabled for $UserPrincipalName" -type info
     } catch {
         write-log "error enabling MFA for $UserPrincipalName" -type error
         continue
     }
 }
 end {
+    write-log "done." -type ok
 }

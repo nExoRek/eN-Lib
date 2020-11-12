@@ -1,11 +1,10 @@
 <#
 .SYNOPSIS
-    enforce MFA on a users from CSV file.
-.DESCRIPTION
-    Long description
+    enforce MFA on a users from CSV file, using "Source Mailbox" column as user UPN.
 .EXAMPLE
     .\enable-MFAforMSOLUser.ps1 -inputCSV userList.csv -delimiter ','
-    
+
+    import user list from migration csv file and use it as input for bulk MFA enablement.
 .INPUTS
     CSV file with colum "Source Mailbox" which need to actually be UPN value. 
 .OUTPUTS
