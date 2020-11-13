@@ -4,18 +4,19 @@
 .DESCRIPTION
     created for particualar migration project....
 .EXAMPLE
-    .\Untitled-1
-    Explanation of what the example does
+    .\new-SharedMailboxesFromCSV.ps1 -inputCSV targetSharedMailboxes.csv
+    
 .INPUTS
-    None.
+    shared mailbox list
 .OUTPUTS
     None.
 .LINK
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201109
+    version 201113
         last changes
+        - 201113 beta 1
         - 201109 initialized
 #>
 [CmdletBinding()]
@@ -24,7 +25,7 @@ param (
         [string]$inputCSV,
     #delimiter for CSV files
     [Parameter(mandatory=$false,position=1)]
-        [string][validateSet(';',',')]$delimiter
+        [string][validateSet(';',',')]$delimiter=';'
 )
 function start-Logging {
     param()
@@ -258,23 +259,28 @@ check-ExchangeConnection
 
 foreach($mailbox in $mailboxList) {
     if($mailbox.type -eq 'SharedMailbox') {
-        write-log "creating shared mailbox $($mailbox.name) ..." -type info
+        write-log "creating shared mailbox $($mailbox.t_name) ..." -type info
         $UPN=$mailbox.t_targetMail
         $displayName = $mailbox.t_name
         $alias=$mailbox.t_alias
         $accountPassword=new-RandomPassword
         try {
             new-mailbox -shared `
-                -UserPrincipalName $UPN `
                 -name $displayName `
                 -displayName $displayName `
                 -alias $alias `
                 -PrimarySMTPAddress $UPN `
-                -ResetPasswordOnNextLogon $true `
-                -Password (ConvertTo-SecureString -String $accountPassword -AsPlainText -Force)
-            write-log "shared mailbox $UPN created."
+                -Password (ConvertTo-SecureString -String $accountPassword -AsPlainText -Force) 
+            write-log "shared mailbox $UPN created." -type info
         } catch {
             write-log "not able to create mailbox with error: $($_.exception)" -type error
         }
+        #for shared mailbox - no need to export passwords, as accounts are disabled.
+    } else {
+            #-ResetPasswordOnNextLogon $true `
+            #below doesn't work for shared mailbox.
+            #-MicrosoftOnlineServicesID $UPN `
+            write-log "read $($mailbox.name) but it's not type shared. skipping" -type info -silent
+    }
 }
 write-log "all done." -type ok

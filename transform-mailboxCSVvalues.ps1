@@ -2,20 +2,21 @@
 .SYNOPSIS
     transform columns in CSV to prepare values for new tenant.
 .DESCRIPTION
-    Long description
+    <temp support script for migration project>
 .EXAMPLE
-    .\Untitled-1
-    Explanation of what the example does
+    .\transform-mailbxoCSVvalues.ps1 -inputCSV sourceMailboxes.csv -delimiter ','
+    
 .INPUTS
-    None.
+    source mailbox list CSV
 .OUTPUTS
-    None.
+    target mailbox list CSV
 .LINK
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201111
+    version 201113
         last changes
+        - 201113 beta 1
         - 201111 initialized
 #>
 [CmdletBinding()]
@@ -26,8 +27,11 @@ param (
     #export CSV file name
     [Parameter(mandatory=$false,position=1)]
         [string]$outputCSV="transformed-$(get-date -format 'yyMMddHHmm').csv",
+    #target domain name ofr transformation
+    [Parameter(mandatory=$true,position=2)]
+        [string]$targetDomain,
     #delimiter for CSV
-    [Parameter(mandatory=$false,position=2)]
+    [Parameter(mandatory=$false,position=3)]
         [string][validateSet(';',',')]$delimiter=';'
 )
 function start-Logging {
@@ -181,7 +185,7 @@ foreach($row in $entryList) {
     $newEntry|add-member -MemberType NoteProperty -Name 't_name' -Value ($prefixToAdd+' '+$row.name)
     $alias=$prefixToAdd+'.'+ ( $emailName.Match($row."source mailbox").groups['eName'].value )
     $newEntry|Add-Member -MemberType NoteProperty -Name 't_alias' -value $alias
-    $newEntry|Add-Member -MemberType NoteProperty -Name 't_targetMail' -value ($alias+'@sykes.com')
+    $newEntry|Add-Member -MemberType NoteProperty -Name 't_targetMail' -value ($alias+'@'+$targetDomain)
     $resultList+=$newEntry
 }
 $resultList|export-csv -nti -Delimiter $delimiter -Path $outputCSV
