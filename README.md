@@ -29,6 +29,12 @@
       usefull during moving from direct to Groub Based Licensing.
   * [list-AADAdmins.ps1](https://github.com/nExoRek/eN-Lib/blob/master/list-AADAdmins.ps1)
     basic security report listing all priviledged accounts (but not PIM) and their statuses
+  * [enable-MFAforUPN.ps1](https://github.com/nExoRek/eN-Lib/blob/master/enable-MFAforUPN.ps1)
+    enforce MFA for a user. accepts pipelining of UPNs for bulk operation.
+  * [set-mailboxOoOForwarding.ps1](https://github.com/nExoRek/eN-Lib/blob/master/set-mailboxOoOForwarding.ps1)
+    another migration project support script. set up forward to target mailbox and OoO message. 
+  * [disable-mailboxOoOForwarding.ps1](https://github.com/nExoRek/eN-Lib/blob/master/disable-mailboxOoOForwarding.ps1)
+    reverse operation - disable forward rule and OoO.
 
 ## EXCHANGE
   * [grant-SharedMailboxAccess.ps1](https://github.com/nExoRek/eN-Lib/blob/master/grant-SharedMailboxAccess.ps1) 
