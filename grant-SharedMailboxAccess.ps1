@@ -21,10 +21,9 @@
 
     bulk permission of mailboxes based on CSV import
 .EXAMPLE
-    .\grant-eNLibSharedMailboxAccess.ps1 -sharedMbxName shared@w-files.pl -grantTo nexor@w-files.pl -accessType SendOnBehalf
+    .\grant-eNLibSharedMailboxAccess.ps1 -sharedMbxName shared@w-files.pl -grantTo nexor@w-files.pl -accessType FullAccess,SendOnBehalf
 
-    grants Full Access and SendOnBehalf to a signgle mailbox
-
+    grants Full Access and SendOnBehalf to a single mailbox
 .NOTES
     nExoR ::))o-
     ver.201115
