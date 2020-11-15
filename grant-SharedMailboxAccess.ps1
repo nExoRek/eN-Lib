@@ -2,7 +2,7 @@
 .SYNOPSIS
     script granting permissions to shared mailboxes. created for migration project but useful in everyday
     EXO administration. 
-    grants 'full access' and 'send as'. 
+    grants 'full access' and 'send as' or 'send on behalf'. 
 .DESCRIPTION
     script has been created for customers implementing hybrid Exchange and to support bulk permissioning
     operations for shared mailboxes. it may work in bulk mode using CSV or for single user. 
@@ -10,27 +10,31 @@
         'emailAddress' : any email alias of shared mailbox 
         'grantAccessTo': semi-colon separated list of email aliases of users that need to have access 
                          to shared mailbox.
+        'accessType'   : optional, default is 'sendAs'. can be sendAs or sendOnBehalf
     this is 'compact' version - no additional libraries are necessary (functions included in-line)
     in future - it is planned to have a support module with all functions in there. 
 .EXAMPLE
     .\grant-eNLibSharedMailboxAccess.ps1 -inputCSV c:\temp\listOfMailboxes.csv -delimiter ';'
+
     bulk permission of mailboxes based on CSV import
 .EXAMPLE
-    .\grant-eNLibSharedMailboxAccess.ps1 -sharedMbxName shared@w-files.pl -grantTo nexor@w-files.pl
-    grants Full Access and Send As to a signgle user 
+    .\grant-eNLibSharedMailboxAccess.ps1 -sharedMbxName shared@w-files.pl -grantTo nexor@w-files.pl -accessType SendOnBehalf
+
+    grants Full Access and SendOnBehalf to a signgle mailbox
 
 .NOTES
     nExoR ::))o-
-    ver.20200930
-    - 20200930 githubbed
-    - 20200914 enforce EXO cmdlets
-    - 20200821 initiate-logging
-    - 20200727 better error handling
-    - 20200724 writelog standardisation
-    - 20200721 minor information change
-    - 20200720 loadCSV bugfix
-    - 20200629 trim 
-    - 20200623 v1
+    ver.200930
+    - 201115 sendOfBehalf/sendAs handling thru accessType parameter
+    - 200930 githubbed
+    - 200914 enforce EXO cmdlets
+    - 200821 initiate-logging
+    - 200727 better error handling
+    - 200724 writelog standardisation
+    - 200721 minor information change
+    - 200720 loadCSV bugfix
+    - 200629 trim 
+    - 200623 v1
  
 #>
 [cmdletbinding(DefaultParameterSetName="CSV")]
@@ -46,7 +50,10 @@ param(
         [string]$sharedMbxName,
     #you can provide semicolon delimited list of mailboxes (don't forget to quote the string)
     [parameter(ParameterSetName="single",mandatory=$true,position=1)]
-        [string]$grantTo
+        [string]$grantTo,
+    #permission type
+    [parameter(ParameterSetName="single",mandatory=$false,position=2)]
+        [string][validateSet('SendAs','SendOnBehalf')]$accessType='sendAs'
 )
 
 function write-log {
@@ -121,7 +128,8 @@ function initiate-Logging {
 function grant-SharedMailboxPermissions {
     param(
         [string]$shared,
-        [string]$accessTo
+        [string]$accessTo,
+        [string][validateSet('SendAs','SendOnBehalf')]$accessType
     )
 
     #error handling is incorrect - both functions do not cast errors 
@@ -133,10 +141,19 @@ function grant-SharedMailboxPermissions {
         $retValue="mbxperm: $($_.Exception)"
     }
     #https://docs.microsoft.com/en-us/powershell/module/exchange/add-recipientpermission?view=exchange-ps
-    try {
-        add-recipientpermission -identity $shared -accessrights SendAs -trustee $accessTo -confirm:$false
-    } catch {
-        $retValue+="recperm: $($_.Exception)"
+    #for sendonbehalf: https://docs.microsoft.com/en-us/exchange/recipients-in-exchange-online/manage-permissions-for-recipients
+    if($accessType -eq 'SendAs') {
+        try {
+            add-recipientpermission -identity $shared -accessrights SendAs -trustee $accessTo -confirm:$false
+        } catch {
+            $retValue+="recperm: $($_.Exception)"
+        }
+    } else {
+        try {
+            set-mailbox -Identity $shared -GrantSendOnBehalfTo $accessTo -Confirm:$false
+        } catch {
+            $retValue+="recperm: $($_.Exception)"
+        }
     }
    return $retValue
 }
@@ -204,12 +221,17 @@ if(-not (check-ExchangeConnection)) {
 
 if($PSCmdlet.ParameterSetName -eq 'CSV') {
     #information required in CSV
-    $header=@("emailAddress","grantAccessTo")
+    $header=@("emailAddress","grantAccessTo","AccessType")
 
     #import CSV file
     $userList=load-CSV -inputCSV $inputCSV -expectedHeader $header -delimiter $delimiter
 } else {
-    $userList=@(@{emailAddress=$sharedMbxName;grantAccessTo=$grantTo})
+    $userList=@( @{ 
+        emailAddress = $sharedMbxName
+        grantAccessTo = $grantTo
+        accessType = $accessType
+    } )
+
 }
 
 foreach($user in $userList) {
@@ -222,6 +244,11 @@ foreach($user in $userList) {
     if(-not $user.emailAddress) {
         write-log -message "no Shared Mbx email - not able to process. skipping." -type warning
         continue
+    }
+    if( [string]::IsNullOrEmpty($user.accessType) ) {
+        $accessType = 'SendAs'
+    } else {
+        $accessType = $user.accessType
     }
 
     #check for mailbox existence. it must be EXO mailbox -> get-mailbox
@@ -239,7 +266,7 @@ foreach($user in $userList) {
             Write-log -message "recipient $accessTo not found. skipping" -type error
             continue
         }
-        $gperm=grant-SharedMailboxPermissions -shared $shared -accessTo $accessTo
+        $gperm=grant-SharedMailboxPermissions -shared $shared -accessTo $accessTo -accessType $accessType
         if( (-not $gperm) ) {
             write-log -message "[shared $shared] error adding permissions to $accessTo`:" -type error
             #write-log -message $gperm
