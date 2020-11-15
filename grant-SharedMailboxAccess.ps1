@@ -24,7 +24,7 @@
 
 .NOTES
     nExoR ::))o-
-    ver.200930
+    ver.201115
     - 201115 sendOfBehalf/sendAs handling thru accessType parameter
     - 200930 githubbed
     - 200914 enforce EXO cmdlets
@@ -129,33 +129,38 @@ function grant-SharedMailboxPermissions {
     param(
         [string]$shared,
         [string]$accessTo,
-        [string][validateSet('SendAs','SendOnBehalf')]$accessType
+        [string][validateSet('SendAs','SendOnBehalf','FullAccess')]$accessType
     )
 
     #error handling is incorrect - both functions do not cast errors 
     $retValue=$null
-    #here comes mailbox permission setting https://docs.microsoft.com/en-us/powershell/module/exchange/add-mailboxpermission?view=exchange-ps
-    try {
-        add-mailboxpermission -identity $shared -accessrights FullAccess -user $accessTo -errorAction stop
-    } catch {
-        $retValue="mbxperm: $($_.Exception)"
-    }
-    #https://docs.microsoft.com/en-us/powershell/module/exchange/add-recipientpermission?view=exchange-ps
-    #for sendonbehalf: https://docs.microsoft.com/en-us/exchange/recipients-in-exchange-online/manage-permissions-for-recipients
-    if($accessType -eq 'SendAs') {
-        try {
-            add-recipientpermission -identity $shared -accessrights SendAs -trustee $accessTo -confirm:$false
-        } catch {
-            $retValue+="recperm: $($_.Exception)"
+    switch($accessType) {
+        'FullAccess' {
+            #here comes mailbox permission setting https://docs.microsoft.com/en-us/powershell/module/exchange/add-mailboxpermission?view=exchange-ps
+            try {
+                add-mailboxpermission -identity $shared -accessrights FullAccess -user $accessTo -errorAction stop
+            } catch {
+                $retValue="mbxperm: $($_.Exception)"
+            }
         }
-    } else {
-        try {
-            set-mailbox -Identity $shared -GrantSendOnBehalfTo $accessTo -Confirm:$false
-        } catch {
-            $retValue+="recperm: $($_.Exception)"
+        "SendAs" {
+            try {
+                add-recipientpermission -identity $shared -accessrights SendAs -trustee $accessTo -confirm:$false
+            } catch {
+                $retValue+="recperm: $($_.Exception)"
+            }
+        }
+        #https://docs.microsoft.com/en-us/powershell/module/exchange/add-recipientpermission?view=exchange-ps
+        #for sendonbehalf: https://docs.microsoft.com/en-us/exchange/recipients-in-exchange-online/manage-permissions-for-recipients
+        "SendOnBehalf" {
+            try {
+                set-mailbox -Identity $shared -GrantSendOnBehalfTo $accessTo -Confirm:$false
+            } catch {
+                $retValue+="recperm: $($_.Exception)"
+            }
         }
     }
-   return $retValue
+    return $retValue
 }
 function check-ExchangeConnection {
     param(
@@ -258,7 +263,7 @@ foreach($user in $userList) {
         continue
     }
 
-    foreach($grantPerm in $user.grantAccessTo.split(';') ) {
+    foreach($grantPerm in $user.grantAccessTo.split(';,') ) {
 
         #check for recipient existence - it may be any existent mail-enabled object -> get-recipient
         $accessTo=$grantPerm.trim()        

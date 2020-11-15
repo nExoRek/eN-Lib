@@ -18,6 +18,7 @@
     last changes
     - 201115 initialized
 #>
+#requires -module ExchangeOnlineManagement
 [cmdletbinding(DefaultParameterSetName='pipe')]
 param( 
   #mailbox object for pipeline
@@ -28,124 +29,92 @@ param(
       [switch]$exportToCSV,
   #CSV delimiter
   [Parameter(mandatory=$false,position=2)]
-      [string][validateSet(';',',')]$delimiter=';',
-  [switch]$FullAccess, 
-  [switch]$SendAs, 
-  [switch]$SendOnBehalf
+      [string][validateSet(';',',')]$delimiter=';'
 ) 
  
 begin { 
   #Getting Mailbox permission 
-  function Get_MBPermission { 
+  function Get-AccessPermissions { 
     param(
       #passed exomailbox object
       [Parameter(mandatory=$true,position=0)]
           [object]$mailbox
     )
 
-    $thisResults=@()
-    $upn = $mailbox.UserPrincipalName
-    $DisplayName = $mailbox.Displayname 
-    $MBType = $mailbox.RecipientTypeDetails 
-    $PrimarySMTPAddress = $mailbox.PrimarySMTPAddress
-    $EmailAddresses = $mailbox.EmailAddresses
-    $EmailAlias = ""
-
-    foreach ($EmailAddress in $EmailAddresses) {
-      if ($EmailAddress -clike "smtp:*") {
-        if ($EmailAlias -ne "") {
-          $EmailAlias = $EmailAlias + ","
-        }
-        $EmailAlias = $EmailAlias + ($EmailAddress -Split ":" | Select-Object -Last 1 )
-      }
-    }
-
     #Getting delegated Fullaccess permission for mailbox 
-    if (($FilterPresent -ne $true) -or ($FullAccess.IsPresent)) { 
-      $FullAccessPermissions = (Get-MailboxPermission -Identity $upn | 
-        Where-Object { 
-          ($_.AccessRights -contains "FullAccess") -and ($_.IsInherited -eq $false) -and -not ($_.User -match "NT AUTHORITY" -or $_.User -match "S-1-5-21") 
-        }).User 
-      if ([string]$FullAccessPermissions -ne "") { 
-        $AccessType = "FullAccess" 
-        $userwithAccess= $FullAccessPermissions -join ','
-        <#
-        foreach ($FullAccessPermission in $FullAccessPermissions) { 
-          if ($UserWithAccess -ne "") {
-            $UserWithAccess = $UserWithAccess + ","
-          }
-          $UserWithAccess = $UserWithAccess + $FullAccessPermission 
-        } 
-        #>
-        $thisResults += new-object -TypeName psobject -Property @{
-          'displayName' = $Displayname
-          'UserPrinciPalName' = $upn
-          'emailAddress' = $PrimarySMTPAddress
-          'accessType' = $AccessType
-          'grantAccessTo' = $userwithAccess
-          'aliases' = $EmailAlias
-          'MBXType' = $MBType   
-        } 
-        write-host "found full access for $displayName"
+    $FullAccessPermissions = (Get-MailboxPermission -Identity $upn | 
+      Where-Object { 
+        ($_.AccessRights -contains "FullAccess") -and ($_.IsInherited -eq $false) -and -not ($_.User -match "NT AUTHORITY" -or $_.User -match "S-1-5-21") 
       }
-    } 
+    ).User 
+    if ([string]$FullAccessPermissions -ne "") { 
+      $retObject += new-object -TypeName psobject -Property @{
+        'displayName' = $mailbox.Displayname
+        'UserPrinciPalName' = $mailbox.UserPrincipalName
+        'emailAddress' = $mailbox.PrimarySMTPAddress
+        'accessType' = "FullAccess" 
+        'grantAccessTo' = ($FullAccessPermissions -join ',')
+        'aliases' = ( ( ( $mailbox.EmailAddresses | Select-String -CaseSensitive "smtp:" ) -join ',' ) -replace 'smtp:','' )
+        'MBXType' = $mailbox.RecipientTypeDetails  
+      }
+      write-host "found full access for $displayName"
+    }
+    return $AccessPermissions
+  }
+  function get-SendAsPermissions {
+    param(
+      #passed exomailbox object
+      [Parameter(mandatory=$true,position=0)]
+          [object]$mailbox
+    )
   
     #Getting delegated SendAs permission for mailbox 
-    if (($FilterPresent -ne $true) -or ($SendAs.IsPresent)) { 
-      $SendAsPermissions = (Get-RecipientPermission -Identity $upn | Where-Object { 
-        -not (($_.Trustee -match "NT AUTHORITY") -or ($_.Trustee -match "S-1-5-21")) 
-      }).Trustee 
-      if ([string]$SendAsPermissions -ne "") { 
-        $AccessType = "SendAs" 
-        $userwithAccess= $SendAsPermissions -join ','
-        <#
-        foreach ($SendAsPermission in $SendAsPermissions) { 
-          if ($UserWithAccess -ne "") {
-            $UserWithAccess = $UserWithAccess + ","
-          }
-          $UserWithAccess = $UserWithAccess + $SendAsPermission 
-        } 
-        #>
-        $thisResults += new-object -TypeName psobject -Property @{
-          'displayName' = $Displayname
-          'UserPrinciPalName' = $upn
-          'emailAddress' = $PrimarySMTPAddress
-          'accessType' = $AccessType
-          'grantAccessTo' = $userwithAccess
-          'aliases' = $EmailAlias
-          'MBXType' = $MBType   
-        } 
-        write-host "found sendAs for $displayName"
+    $SendAsPermissions = (Get-RecipientPermission -Identity $upn | Where-Object { 
+      -not (($_.Trustee -match "NT AUTHORITY") -or ($_.Trustee -match "S-1-5-21")) 
+    }).Trustee 
+    if ([string]$SendAsPermissions -ne "") { 
+      $retObject += new-object -TypeName psobject -Property @{
+        'displayName' = $mailbox.Displayname
+        'UserPrinciPalName' = $mailbox.UserPrincipalName
+        'emailAddress' = $mailbox.PrimarySMTPAddress
+        'accessType' = "sendAs"
+        'grantAccessTo' = ($SendAsPermissions -join ',')
+        'aliases' = ( ( ( $mailbox.EmailAddresses | Select-String -CaseSensitive "smtp:" ) -join ',' ) -replace 'smtp:','' )
+        'MBXType' = $mailbox.RecipientTypeDetails  
       } 
+      write-host "found sendAs for $displayName"
     } 
-  
+    return $retObject
+  }
+  function get-SendOnBehalfPermissions {
+    param(
+      #passed exomailbox object
+      [Parameter(mandatory=$true,position=0)]
+          [object]$mailbox
+    )
+
     #Getting delegated SendOnBehalf permission for mailbox 
-    if (($FilterPresent -ne $true) -or ($SendOnBehalf.IsPresent)) { 
-      $SendOnBehalfPermissions = $_.GrantSendOnBehalfTo 
-      if ([string]$SendOnBehalfPermissions -ne "") { 
-        $UserWithAccess = "" 
-        $AccessType = "SendOnBehalf" 
-        foreach ($SendOnBehalfPermissionDN in $SendOnBehalfPermissions) { 
-          if ($UserWithAccess -ne "") {
-            $UserWithAccess = $UserWithAccess + ","
-          }
-          $filter = "name -eq ""$SendOnBehalfPermissionDN"""
-          $onBehalfUserName = (get-recipient -filter $filter).PrimarySmtpAddress
-          $UserWithAccess = $UserWithAccess + $onBehalfUserName
-        } 
-        $thisResults += new-object -TypeName psobject -Property @{
-          'displayName' = $Displayname
-          'UserPrinciPalName' = $upn
-          'emailAddress' = $PrimarySMTPAddress
-          'accessType' = $AccessType
-          'grantAccessTo' = $userwithAccess
-          'aliases' = $EmailAlias
-          'MBXType' = $MBType   
-        } 
-        write-host "found sendOnBehalf $displayName"
+    $SendOnBehalfPermissions = $mailbox.GrantSendOnBehalfTo 
+    if ([string]$SendOnBehalfPermissions -ne "") { 
+      $UserWithAccess = @()
+      foreach ($SendOnBehalfName in $SendOnBehalfPermissions) { 
+        $filter = "name -eq ""$SendOnBehalfName"""
+        $onBehalfUserName = (get-recipient -filter $filter).PrimarySmtpAddress
+        $UserWithAccess += $onBehalfUserName
       } 
+      
+      $retObject += new-object -TypeName psobject -Property @{
+        'displayName' = $mailbox.Displayname
+        'UserPrinciPalName' = $mailbox.UserPrincipalName
+        'emailAddress' = $mailbox.PrimarySMTPAddress
+        'accessType' = "SendOnBehalf"
+        'grantAccessTo' = [string]($userwithAccess -join ',')
+        'aliases' = ( ( $mailbox.EmailAddresses | Select-String -CaseSensitive "smtp:" ) -join ',' ) -replace 'smtp:',''
+        'MBXType' = $mailbox.RecipientTypeDetails  
+      } 
+      write-host "found sendOnBehalf $displayName"
     } 
-    return $thisResults
+    return $retObject
   } 
   function check-ExchangeConnection {
     param(
@@ -175,30 +144,24 @@ begin {
 
   #Set output file 
   $ExportCSV = ".\SharedMBPermissionReport_$(Get-Date -format yyMMddhhmm).csv" 
-  $Results = @() 
-
-  #Check for AccessType filter 
-  if (($FullAccess.IsPresent) -or ($SendAs.IsPresent) -or ($SendOnBehalf.IsPresent)) {
-    $FilterPresent = $true
-  } 
+  $AllResults = @() 
 
 }
 
 process {
   write-host -ForegroundColor DarkGray "processing $($EXOmailbox.displayName)..."
-  $readPermissions = Get_MBPermission $EXOmailbox
-  if($NULL -ne $readPermissions) {
-    $Results += $readPermissions
-  }
+  $AllResults += Get-AccessPermissions $EXOmailbox
+  $AllResults += get-SendAsPermissions $EXOmailbox
+  $AllResults += get-SendOnBehalfPermissions $EXOmailbox
 }
 
 end {
   #Open output file after execution  
   Write-Host "`nScript executed successfully "
   if($exportToCSV.IsPresent) {
-    $Results | Select-Object MBXType,emailAddress,grantAccessTo,AccessType,DisplayName,Aliases | Export-Csv -Path $ExportCSV -NoTypeInformation -encoding UTF8 -Delimiter $delimiter
+    $AllResults | Select-Object MBXType,emailAddress,grantAccessTo,AccessType,DisplayName,Aliases | Export-Csv -Path $ExportCSV -NoTypeInformation -encoding UTF8 -Delimiter $delimiter
     Write-Host "Detailed report available in: $ExportCSV"  -ForegroundColor Green
   } else {
-    $Results
+    $AllResults
   }
 }
