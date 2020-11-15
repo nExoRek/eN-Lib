@@ -37,8 +37,11 @@
     reverse operation - disable forward rule and OoO.
 
 ## EXCHANGE
+  * [get-SharedMailboxAccess.ps1](https://github.com/nExoRek/eN-Lib/blob/master/Get-SharedMailboxAccess.ps1) 
+    prepares output for 'grant-SharedMailboxAccess' - use in source tenant, transform emails, use for target as import
   * [grant-SharedMailboxAccess.ps1](https://github.com/nExoRek/eN-Lib/blob/master/grant-SharedMailboxAccess.ps1) 
-    suport script to grant "full access" + "send as" for a list of users and shared mailboxes. 
+    suport script to grant "full access" + "send as" for a list of users and shared mailboxes. can as well be used as 
+    import from source/backup.
   * [get-mobileDeviceReport.ps1](https://github.com/nExoRek/eN-Lib/blob/master/get-mobileDeviceReport.ps1)
     generate report on mobile devices registered under EXO users.
 
