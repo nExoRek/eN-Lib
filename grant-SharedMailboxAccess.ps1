@@ -10,7 +10,7 @@
         'emailAddress' : any email alias of shared mailbox 
         'grantAccessTo': semi-colon separated list of email aliases of users that need to have access 
                          to shared mailbox.
-        'accessType'   : optional, default is 'sendAs'. can be sendAs or sendOnBehalf
+        'accessType'   : optional, default is 'sendAs+Full'. can be sendAs or sendOnBehalf or FullAccess, or combination
     
     'accessType' may be empty - then default will be 'sendAs+FullAccess'
     
