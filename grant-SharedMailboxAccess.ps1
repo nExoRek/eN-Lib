@@ -53,7 +53,7 @@ param(
         [string]$grantTo,
     #permission type
     [parameter(ParameterSetName="single",mandatory=$false,position=2)]
-        [string][validateSet('SendAs','SendOnBehalf')]$accessType='sendAs'
+        [string[]][validateSet('SendAs','SendOnBehalf','FullAccess')]$accessType=@('sendAs','FullAccess')
 )
 
 function write-log {
@@ -132,35 +132,36 @@ function grant-SharedMailboxPermissions {
         [string][validateSet('SendAs','SendOnBehalf','FullAccess')]$accessType
     )
 
-    #error handling is incorrect - both functions do not cast errors 
-    $retValue=$null
-    switch($accessType) {
+    switch($access) {
         'FullAccess' {
             #here comes mailbox permission setting https://docs.microsoft.com/en-us/powershell/module/exchange/add-mailboxpermission?view=exchange-ps
             try {
                 add-mailboxpermission -identity $shared -accessrights FullAccess -user $accessTo -errorAction stop
             } catch {
-                $retValue="mbxperm: $($_.Exception)"
+                write-log "error adding FullAccess permissions to $accessTo : $($_.Exception)"
+                return $null
             }
         }
         "SendAs" {
             try {
-                add-recipientpermission -identity $shared -accessrights SendAs -trustee $accessTo -confirm:$false
+                add-recipientpermission -identity $shared -accessrights SendAs -trustee $accessTo -confirm:$false -ErrorAction stop
             } catch {
-                $retValue+="recperm: $($_.Exception)"
+                write-log "error adding SendAs permissions to $accessTo : $($_.Exception)"
+                return $null
             }
         }
         #https://docs.microsoft.com/en-us/powershell/module/exchange/add-recipientpermission?view=exchange-ps
         #for sendonbehalf: https://docs.microsoft.com/en-us/exchange/recipients-in-exchange-online/manage-permissions-for-recipients
         "SendOnBehalf" {
             try {
-                set-mailbox -Identity $shared -GrantSendOnBehalfTo $accessTo -Confirm:$false
+                set-mailbox -Identity $shared -GrantSendOnBehalfTo $accessTo -Confirm:$false -ErrorAction stop
             } catch {
-                $retValue+="recperm: $($_.Exception)"
+                write-log "error adding SendOnBehalf permissions to $accessTo : $($_.Exception)"
+                return $null
             }
         }
     }
-    return $retValue
+    return $null
 }
 function check-ExchangeConnection {
     param(
@@ -250,10 +251,10 @@ foreach($user in $userList) {
         write-log -message "no Shared Mbx email - not able to process. skipping." -type warning
         continue
     }
-    if( [string]::IsNullOrEmpty($user.accessType) ) {
-        $accessType = 'SendAs'
+    if($PSCmdlet.ParameterSetName -eq 'CSV' -and [string]::IsNullOrEmpty($user.accessType) ) {
+        $accessType = @('SendAs','FullAccess')
     } else {
-        $accessType = $user.accessType
+        $accessType = ($user.accessType).split(',;')
     }
 
     #check for mailbox existence. it must be EXO mailbox -> get-mailbox
@@ -264,19 +265,19 @@ foreach($user in $userList) {
     }
 
     foreach($grantPerm in $user.grantAccessTo.split(';,') ) {
-
         #check for recipient existence - it may be any existent mail-enabled object -> get-recipient
         $accessTo=$grantPerm.trim()        
         if(-not (get-recipient $accessTo -errorAction SilentlyContinue)) {
             Write-log -message "recipient $accessTo not found. skipping" -type error
             continue
         }
-        $gperm=grant-SharedMailboxPermissions -shared $shared -accessTo $accessTo -accessType $accessType
-        if( (-not $gperm) ) {
-            write-log -message "[shared $shared] error adding permissions to $accessTo`:" -type error
-            #write-log -message $gperm
-        } else { 
-            write-log -message "[shared $shared] access for $accessTo granted" -type ok
+        foreach($access in $accessType) {
+            $gperm=grant-SharedMailboxPermissions -shared $shared -accessTo $accessTo -accessType $access
+            if( (-not $gperm) ) {
+                #write-log -message "[shared $shared] error adding $access to $accessTo" -type error
+            } else { 
+                write-log -message "[shared $shared] $access for $accessTo granted" -type ok
+            }
         }
     }
 }
