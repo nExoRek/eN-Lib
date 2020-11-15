@@ -1,15 +1,21 @@
 ﻿<#
 .SYNOPSIS
-  list mailbox permissions.
+  list mailbox permissions - fullAccess, SendOnBehalf and SendAs. 
 .DESCRIPTION
-  later
+  migration support script to backup source mailboxes accesses. after emails are translated to target
+  values - they can be later used by 'grant-SharedMailboxAccess.ps1' to write them back to target EXO.
 .EXAMPLE
-  .\Get-EXOMailboxPermissions.ps1
-  Explanation of what the example does
+  get-mailbox -resultsize unlimited| .\Get-SharedMailboxAccess.ps1 -exportCSV
+
+  reads all mailboxes and relevant permissions, and back them up in CSV file
+.EXAMPLE
+  get-mailbox -resultsize unlimited| .\Get-SharedMailboxAccess.ps1
+
+  reads all mailboxes and relevant permissions, and display them to screen
 .INPUTS
-  None.
+  Mailbox objects
 .OUTPUTS
-  None.
+  list of permissions - to CSV or on screen.
 .LINK
   https://w-files.pl
 .NOTES
@@ -42,7 +48,7 @@ begin {
     )
 
     #Getting delegated Fullaccess permission for mailbox 
-    $FullAccessPermissions = (Get-MailboxPermission -Identity $upn | 
+    $FullAccessPermissions = (Get-MailboxPermission -Identity $mailbox.UserPrincipalName | 
       Where-Object { 
         ($_.AccessRights -contains "FullAccess") -and ($_.IsInherited -eq $false) -and -not ($_.User -match "NT AUTHORITY" -or $_.User -match "S-1-5-21") 
       }
@@ -57,9 +63,9 @@ begin {
         'aliases' = ( ( ( $mailbox.EmailAddresses | Select-String -CaseSensitive "smtp:" ) -join ',' ) -replace 'smtp:','' )
         'MBXType' = $mailbox.RecipientTypeDetails  
       }
-      write-host "found full access for $displayName"
+      write-host "found full access for $($mailbox.Displayname)"
     }
-    return $AccessPermissions
+    return $retObject
   }
   function get-SendAsPermissions {
     param(
@@ -69,7 +75,7 @@ begin {
     )
   
     #Getting delegated SendAs permission for mailbox 
-    $SendAsPermissions = (Get-RecipientPermission -Identity $upn | Where-Object { 
+    $SendAsPermissions = (Get-RecipientPermission -Identity $mailbox.UserPrincipalName | Where-Object { 
       -not (($_.Trustee -match "NT AUTHORITY") -or ($_.Trustee -match "S-1-5-21")) 
     }).Trustee 
     if ([string]$SendAsPermissions -ne "") { 
@@ -82,7 +88,7 @@ begin {
         'aliases' = ( ( ( $mailbox.EmailAddresses | Select-String -CaseSensitive "smtp:" ) -join ',' ) -replace 'smtp:','' )
         'MBXType' = $mailbox.RecipientTypeDetails  
       } 
-      write-host "found sendAs for $displayName"
+      write-host "found sendAs for $($mailbox.Displayname)"
     } 
     return $retObject
   }
@@ -95,7 +101,7 @@ begin {
 
     #Getting delegated SendOnBehalf permission for mailbox 
     $SendOnBehalfPermissions = $mailbox.GrantSendOnBehalfTo 
-    if ([string]$SendOnBehalfPermissions -ne "") { 
+    if ( -not [string]::IsNullOrEmpty($SendOnBehalfPermissions) ) { 
       $UserWithAccess = @()
       foreach ($SendOnBehalfName in $SendOnBehalfPermissions) { 
         $filter = "name -eq ""$SendOnBehalfName"""
@@ -112,7 +118,7 @@ begin {
         'aliases' = ( ( $mailbox.EmailAddresses | Select-String -CaseSensitive "smtp:" ) -join ',' ) -replace 'smtp:',''
         'MBXType' = $mailbox.RecipientTypeDetails  
       } 
-      write-host "found sendOnBehalf $displayName"
+      write-host "found sendOnBehalf $($mailbox.Displayname)"
     } 
     return $retObject
   } 

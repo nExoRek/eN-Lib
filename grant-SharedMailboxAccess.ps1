@@ -6,13 +6,16 @@
 .DESCRIPTION
     script has been created for customers implementing hybrid Exchange and to support bulk permissioning
     operations for shared mailboxes. it may work in bulk mode using CSV or for single user. 
-    CSV file need to have two columns: 
+    CSV file need to have three columns: 
         'emailAddress' : any email alias of shared mailbox 
         'grantAccessTo': semi-colon separated list of email aliases of users that need to have access 
                          to shared mailbox.
         'accessType'   : optional, default is 'sendAs'. can be sendAs or sendOnBehalf
+    
+    'accessType' may be empty - then default will be 'sendAs+FullAccess'
+    
     this is 'compact' version - no additional libraries are necessary (functions included in-line)
-    in future - it is planned to have a support module with all functions in there. 
+    
 .EXAMPLE
     .\grant-eNLibSharedMailboxAccess.ps1 -inputCSV c:\temp\listOfMailboxes.csv -delimiter ';'
 
@@ -37,6 +40,7 @@
     - 200623 v1
  
 #>
+#requires -module ExchangeOnlineManagement
 [cmdletbinding(DefaultParameterSetName="CSV")]
 param(
     #CSV input file with user information, for which IDs will be generated. header: "emailAddress","grantAccessTo"
