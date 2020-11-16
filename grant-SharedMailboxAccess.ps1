@@ -2,7 +2,7 @@
 .SYNOPSIS
     script granting permissions to shared mailboxes. created for migration project but useful in everyday
     EXO administration. 
-    grants 'full access' and 'send as' or 'send on behalf'. 
+    grants 'full access' and 'send as' or 'send on behalf' for a mailbox.
 .DESCRIPTION
     script has been created for customers implementing hybrid Exchange and to support bulk permissioning
     operations for shared mailboxes. it may work in bulk mode using CSV or for single user. 
@@ -21,12 +21,17 @@
 
     bulk permission of mailboxes based on CSV import
 .EXAMPLE
+    .\grant-eNLibSharedMailboxAccess.ps1 -sharedMbxName shared@w-files.pl -grantTo nexor@w-files.pl
+
+    grants Full Access and SendAs (no accessType defaults to) to a single mailbox.
+.EXAMPLE
     .\grant-eNLibSharedMailboxAccess.ps1 -sharedMbxName shared@w-files.pl -grantTo nexor@w-files.pl -accessType FullAccess,SendOnBehalf
 
     grants Full Access and SendOnBehalf to a single mailbox
 .NOTES
     nExoR ::))o-
-    ver.201115
+    ver.201116
+    - 201116 minor standardization fixes
     - 201115 sendOfBehalf/sendAs handling thru accessType parameter
     - 200930 githubbed
     - 200914 enforce EXO cmdlets
@@ -59,6 +64,35 @@ param(
         [string[]][validateSet('SendAs','SendOnBehalf','FullAccess')]$accessType=@('sendAs','FullAccess')
 )
 
+function start-Logging {
+    param()
+
+    $scriptRun                          = $PSCmdlet.MyInvocation.MyCommand #(get-variable MyInvocation -scope 1).Value.MyCommand
+    [System.IO.fileInfo]$scriptRunPaths = $scriptRun.Path 
+    $scriptBaseName                     = $scriptRunPaths.BaseName
+    $scriptFolder                       = $scriptRunPaths.Directory.FullName
+    $logFolder                          = "$scriptFolder\Logs"
+
+    if(-not (test-path $logFolder) ) {
+        try{ 
+            New-Item -ItemType Directory -Path $logFolder|Out-Null
+            write-host "$LogFolder created."
+        } catch {
+            $_
+            exit -1
+        }
+    }
+
+    $script:logFile="{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+    write-Log "*logging initiated $(get-date)" -silent -skipTimestamp
+    write-Log "*script parameters:" -silent -skipTimestamp
+    if($script:PSBoundParameters.count -gt 0) {
+        write-log $script:PSBoundParameters -silent -skipTimestamp
+    } else {
+        write-log "<none>" -silent -skipTimestamp
+    }
+    write-log "***************************************************" -silent -skipTimestamp
+}
 function write-log {
     param(
         [parameter(mandatory=$true,position=0)]
@@ -100,33 +134,6 @@ function write-log {
         Write-Error 'not able to write to log. suggest to cancel the script run.'
         $_
     }    
-}
-function initiate-Logging {
-    param()
-
-    $scriptRun                          = $PSCmdlet.MyInvocation.MyCommand #(get-variable MyInvocation -scope 1).Value.MyCommand
-    [System.IO.fileInfo]$scriptRunPaths = $scriptRun.Path 
-    $scriptBaseName                     = $scriptRunPaths.BaseName
-    $scriptFolder                       = $scriptRunPaths.Directory.FullName
-    $logFolder                          = "$scriptFolder\Logs"
-
-    if(-not (test-path $logFolder) ) {
-        try{ 
-            New-Item -ItemType Directory -Path $logFolder|Out-Null
-            write-host "$LogFolder created."
-        } catch {
-            $_
-            exit -1
-        }
-    }
-
-    $script:logFile="{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
-    write-Log "*logging initiated $(get-date)" -type info -silent
-    write-Log "*script parameters:" -type info -silent
-    foreach($param in $scriptRun.parameters) {
-        write-log (Get-Variable -Name $Param.Values.Name -ErrorAction SilentlyContinue ) -silent
-    }
-    write-log "***************************************************" -type info -silent
 }
 function grant-SharedMailboxPermissions {
     param(
@@ -204,7 +211,7 @@ function load-CSV {
     $hmiss=@()
     foreach($el in $expectedHeader) {
         if($csvHeader -notcontains $el) {
-            Write-log -type error "$el column missing in imported csv"
+            Write-log -type error """$el"" column missing in imported csv"
             $hmiss+=$el
         }
     }
@@ -221,7 +228,7 @@ function load-CSV {
 #          SCRIPT  BODY
 #
 ###################################>
-initiate-Logging
+start-Logging
 
 if(-not (check-ExchangeConnection)) {
     write-log -message "you need Exchange Online connection. quitting." -type error
