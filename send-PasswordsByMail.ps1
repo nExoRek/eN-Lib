@@ -1,16 +1,19 @@
 <#
 .SYNOPSIS
-    support script for migration project. dispatches passwords to users via email, using CSV as input
+    support script for migration project. dispatches passwords to users via email on EXO or SendGrid, using CSV as input.
 .DESCRIPTION
     support script for bulk user operations created for the sake of migration. it addresses the need to send out
     passwords for newly created accounts (eg. in a new tenant) using users' email addresses from current environment.
     you can set up subject and add attachment if needed.
-    in order to send password via Exchange Online with MFA-enabled account, you need to provide Application Password
-    instead of regular user password.
+    special considerations:
+    * in order to send password via Exchange Online with MFA-enabled account, you need to provide Application Password
+      instead of regular user password. 
+    * if you're using sendgrid, username is 'apikey', so you need to define 'From' address. locate $sendGridFromAddress 
+      variable and set it for value of your choice.
 
-    email should be sent *encrypted*, you can can e.g. create Transport Rule in Exchange Online to encrypt the messages 
-    from service account that is used for email dispatch based on specific subject or any other attribute for the 
-    project.
+    email should be *encrypted*, you can can e.g. create Transport Rule in Exchange Online to encrypt the messages 
+    from service account that is used for email dispatch, based on specific subject or any other attribute specific for 
+    the project.
 
     email body may contain variables, which will be replaced by values from imported CSV file:
     [GN] - will be replaced by value from "First Name" column
@@ -18,8 +21,9 @@
     [PASSWORD] - will be replaced by value from "password" column
     [EMAIL] - will be replaced by value from "Target email address" column
 
-    CSV header required: "Display Name";"First Name";"NT Login";"Source email address";"Target email address";"password"
+    CSV header required: "First Name";"NT Login";"Source email address";"Target email address";"password"
     they were created for particular project reuqirement.
+
 .EXAMPLE
     .\send-PasswordsByMail.ps1 -inputListCSV migratedUsers.csv -delimiter ';'
 
@@ -32,8 +36,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201112
+    version 201116
         last changes
+        - 201116 use SendGrid
         - 201112 multiple attachments fix
         - 201104 target address added as variable, saveCreds
         - 201102 initialized
@@ -52,8 +57,11 @@ param (
     #once credentials are saved, script will use them instead of querying
     [Parameter(mandatory=$false,position=3)]
         [switch]$saveCredentials,
-    #CSV delimiter
+    #Use SendGrid instead of EXO
     [Parameter(mandatory=$false,position=4)]
+        [switch]$useSendGrid,
+    #CSV delimiter
+    [Parameter(mandatory=$false,position=5)]
         [string][validateSet(',',';')]$delimiter=','
 )
 function start-Logging {
@@ -159,7 +167,7 @@ function load-CSV {
     $hmiss=@()
     foreach($el in $header) {
         if($csvHeader -notcontains $el) {
-            Write-log "$el column missing in imported csv" -type warning
+            Write-log """$el"" column missing in imported csv" -type warning
             $hmiss+=$el
         }
     }
@@ -199,10 +207,28 @@ if( $NULL -ne $attachment ) {
         exit -2
     }
 }
+
+$sendGridFromAddress = "automation@w-files.pl" #SET IT UP IF YOU'RE USING SENDGRID
 $header=@('First Name','NT Login','Source email address','password','Target email address')
 $recipientList=load-CSV -delimiter $delimiter -headerIsCritical -header $header -inputCSV $inputListCSV
+$sendMailParam=@{
+    Subject=$subject
+    Body=""
+    BodyAsHtml=$true
+    SmtpServer = ''
+    UseSSL = $true
+    Port = 587
+    From = "" 
+    Credential =  ''
+    To = ""
+}
 
-$credsFile=$PSScriptRoot+'\mailReport.crds'
+#get credential - GUI or saved
+if($useSendGrid.IsPresent) {
+    $credsFile=$PSScriptRoot+'\sendSG.crds'
+} else {
+    $credsFile=$PSScriptRoot+'\sendEXO.crds'
+}
 if(test-path $credsFile) {
     $myCreds = Import-CliXml -Path $credsFile
     write-log "used saved credentials in $credsFile" -type info
@@ -217,23 +243,23 @@ if(test-path $credsFile) {
         write-log "credentials saved as $credsFile" -type info
     }
 }
+#set up creds in parameters
+if($useSendGrid.IsPresent) {
+    $sendMailParam.SmtpServer = 'smtp.sendgrid.net'
+    $sendMailParam.From = $sendGridFromAddress #configure any valid user from your domain
+    $sendMailParam.Credential =  $myCreds #sendgird auth is using 'apikey' user and API key as password
+} else {
+    $sendMailParam.SmtpServer = 'smtp.office365.com'
+    $sendMailParam.From = $myCreds.UserName
+    $sendMailParam.Credential =  $myCreds
+}
 
 $messageBody="<b>Hello, [GN]</b><p />
 your new login is: [NTLOGIN]<br />
+your new email is: [EMAIL]<br />
 one time password: [PASSWORD]<br />
-have a great new experience!
+<i>have a great new experience!</i><p />
 "
-$sendMailParam=@{
-    Subject=$subject
-    Body=""
-    BodyAsHtml=$true
-    SmtpServer = 'smtp.office365.com'
-    UseSSL = $true
-    Port = 587
-    From = $myCreds.UserName
-    Credential =  $myCreds
-    To = ""
-}
 if($attachment) {
     $sendMailParam.Add('attachment',$attachment)
 }
