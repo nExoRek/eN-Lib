@@ -9,7 +9,7 @@
     - create new output with taget names extended with the defined prefix
     - adds groupID as it will be required for matching
 .EXAMPLE
-    .\enrich-TeamsList.ps1 -inputCSV sourceTenantTeamsList.csv -prefix 'newCmpny'
+    .\enrich-TeamsList.ps1 -inputCSV sourceTenantTeamsList.csv -targetPrefix 'newCmpny'
     
     checks if all teams from exit and fills in 'source groupID' that will be later used during QoD translation.
 .INPUTS
