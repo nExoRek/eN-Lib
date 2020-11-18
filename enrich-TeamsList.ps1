@@ -6,12 +6,14 @@
     this is 'STEP 1' script in 2-step migration process. what it does:
     - reads the exported list of teams from Quest On Demand
     - validates if they exist
-    - create new output with taget names extended with the defined prefix
+    - create new output with taget names extended with the defined prefix (group 'source team' will 
+      be named 'prefix source group')
     - adds groupID as it will be required for matching
 .EXAMPLE
     .\enrich-TeamsList.ps1 -inputCSV sourceTenantTeamsList.csv -targetPrefix 'newCmpny'
     
     checks if all teams from exit and fills in 'source groupID' that will be later used during QoD translation.
+    targetPrefix creates new names with given prefix.
 .INPUTS
     CSV list exported from Quest On Demand
 .OUTPUTS
