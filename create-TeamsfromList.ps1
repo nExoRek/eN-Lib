@@ -1,16 +1,17 @@
 <#
 .SYNOPSIS
-    STEP to in teams migration - create teams based on prepared input. 
+    STEP 2 to in teams migration - create teams based on prepared input. 
 .DESCRIPTION
     support script for Quest on Demand which do not support on-the-fly teams name change - create
     teams with new name, import file back to QoD to migrate the rest.
 .EXAMPLE
-    .\create-TeamsFromList.ps1
-    Explanation of what the example does
+    .\create-TeamsFromList.ps1 -inputCSV enrichedTeamsList.csv
+    
+    creates teams using list enriched by 'enrich-TeamsList.ps1' and extends information with taget groupID.
 .INPUTS
-    None.
+    CSV created by 'enrich-TeamsList.ps1'
 .OUTPUTS
-    None.
+    CSV to be imported in QoD.
 .LINK
     https://w-files.pl
 .NOTES
