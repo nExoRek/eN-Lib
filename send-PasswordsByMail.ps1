@@ -36,8 +36,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201116
+    version 201118
         last changes
+        - 201118 test-path moed to load-csv
         - 201116 use SendGrid
         - 201112 multiple attachments fix
         - 201104 target address added as variable, saveCreds
@@ -80,6 +81,16 @@ function start-Logging {
         } catch {
             $_
             exit -1
+        }
+    }
+
+    if(-not (test-path $logFolder) ) {
+        try{ 
+            New-Item -ItemType Directory -Path $logFolder|Out-Null
+            write-host "$LogFolder created."
+        } catch {
+            $_
+            exit -2
         }
     }
 
@@ -197,10 +208,7 @@ function load-CSV {
 }
 
 start-Logging
-if(-not (Test-Path $inputListCSV)){
-    write-log "$inputListCSV not found." -type error
-    exit -1
-}
+
 if( $NULL -ne $attachment ) {
     if (-not (test-path $attachment -ErrorAction SilentlyContinue)) {
         write-log -type error "attachment $attachment not found."
