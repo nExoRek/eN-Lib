@@ -3,7 +3,7 @@
     STEP 2 to in teams migration - create teams based on prepared input. 
 .DESCRIPTION
     support script for Quest on Demand which do not support on-the-fly teams name change - create
-    teams with new name, import file back to QoD to migrate the rest.
+    teams with new name, and adds 'target groupID' so you can import file back to QoD to migrate the rest.
 .EXAMPLE
     .\create-TeamsFromList.ps1 -inputCSV enrichedTeamsList.csv
     
@@ -20,6 +20,7 @@
         last changes
         - 201118 initialized
 #>
+#requires -module MicrosoftTeams
 [CmdletBinding()]
 param (
     #input list file
