@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    reads QuestOnDemand export file with Teams list and adds objectID and prepares 
-    for target output. 
+    STEP 1 to teams migration in QoD. reads QuestOnDemand export file with Teams list and adds 
+    objectID and prepares for target output. 
 .DESCRIPTION
     this is 'STEP 1' script in 2-step migration process. what it does:
     - reads the exported list of teams from Quest On Demand
@@ -180,8 +180,8 @@ $exportCSV = "targetTeamsToCreate-$(get-date -Format yyMMddHHmm).csv"
 $header=@('Team Name','Target Team Name','Source MailNickname')
 $teamsList=load-CSV -inputCSV $inputCSV -delimiter $delimiter -headerIsCritical -header $header
 #extend the list to get groupID and prepare for target output
-$teamsList|Add-Member -MemberType NoteProperty -Name 'source GroupId' -Value ''
-$teamsList|Add-Member -MemberType NoteProperty -Name 'target GroupId' -Value ''
+$teamsList|Add-Member -MemberType NoteProperty -Name 'objectID' -Value '' #QoD is case sensitive and need to have exactly 'objectID'
+$teamsList|Add-Member -MemberType NoteProperty -Name 'target objectID' -Value ''
 $teamsList|Add-Member -MemberType NoteProperty -Name 'target mailNickName' -Value ''
 
 foreach($team in $teamsList) {
@@ -195,7 +195,7 @@ foreach($team in $teamsList) {
     }
     $team.'Target Team Name' = $targetPrefix+' '+$team.'Team Name'
     $team.'Target mailNickName' = $targetPrefix+$team.'Source MailNickname'
-    $team.'source GroupId'=$testTeam.groupID
+    $team.'objectID'=$testTeam.groupID
 
 }
 $teamsList|export-csv -Delimiter $delimiter -NoTypeInformation $exportCSV -Encoding UTF8

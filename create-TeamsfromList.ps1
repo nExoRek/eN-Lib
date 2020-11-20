@@ -168,14 +168,14 @@ function load-CSV {
 }
 start-Logging
 $exportCSV =  ([System.IO.fileInfo]$PSCommandPath).BaseName+ "-enriched-$(get-date -Format yyMMddHHmm).csv"
-$header=@('Team Name','Target Team Name','Source MailNickname','target mailNickName','target groupid','source groupid')
+$header=@('Team Name','Target Team Name','Source MailNickname','target mailNickName','target objectID','objectID')
 $teamsList=load-CSV -inputCSV $inputCSV -delimiter $delimiter -headerIsCritical -header $header
 foreach($team in $teamsList) {
     $ttName=$($team.'Target Team Name')
     write-log "creating ""$ttName""..."
     try {
         $newTeam=new-team -DisplayName $ttName -MailNickName $team.'target mailNickName' -Description $team.description -ErrorAction stop
-        $team.'target groupid'=$newTeam.groupID
+        $team.'target objectID'=$newTeam.groupID
         write-log """$ttName"" created."
     } catch {
         write-log "error creating ""$ttName"": $($_.Exception)"
