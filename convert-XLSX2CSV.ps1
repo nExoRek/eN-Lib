@@ -65,6 +65,10 @@ begin {
     $Excel.DisplayAlerts = $false
     $workBookFile = $Excel.Workbooks.Open($fileName)
 
+    #excel file save statics
+    $fileType=62 #CSVUTF8 https://docs.microsoft.com/en-us/office/vba/api/excel.xlfileformat
+    $addToMRU=$false #https://docs.microsoft.com/en-us/office/vba/api/excel.worksheet.saveas
+    $localLanguage=$true
 }
 process {
     write-host verbose "converting $fileName tables to CSV files..."
@@ -83,7 +87,7 @@ process {
                 $tempWS=$workBookFile.Worksheets.add()
                 $table.range.copy()|out-null
                 $tempWS.paste($tempWS.range("A1"))
-                $tempWS.SaveAs($exportFileName, 6,$null,$null,$null,$null,$null,$null,$null,'True')
+                $tempWS.SaveAs($exportFileName, $fileType,$null,$null,$null,$null,$sddToMRU,$null,$null,$localLanguage)
                 write-host "$($table.name) saved as $exportFileName"
                 $tempWS.delete()
                 Remove-Variable -Name tempWS
@@ -91,9 +95,7 @@ process {
         } else {
             Write-Verbose "$($worksheet.name) does not contain tables. exporting whole sheet..."
             $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9\-_]', '') + '_sheet.csv'
-            $fileType=62 #CSVUTF8 https://docs.microsoft.com/en-us/office/vba/api/excel.xlfileformat
-            $addToMRU=$false #https://docs.microsoft.com/en-us/office/vba/api/excel.worksheet.saveas
-            $worksheet.SaveAs($exportFileName, $fileType,$null,$null,$null,$null,$sddToMRU,$null,$null,'True')
+            $worksheet.SaveAs($exportFileName, $fileType,$null,$null,$null,$null,$sddToMRU,$null,$null,$localLanguage)
             write-host "worksheet $($worksheet.name) saved as $exportFileName"
         }
     }
