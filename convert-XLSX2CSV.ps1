@@ -24,7 +24,7 @@
     nExoR ::))o-
     version 201121
         last changes
-        - 201121 output folder changed, descirption, do not export hidden by default
+        - 201121 output folder changed, descirption, do not export hidden by default, saveAs CSVUTF8
         - 201101 initialized
 #>
 [cmdletbinding()]
@@ -91,7 +91,9 @@ process {
         } else {
             Write-Verbose "$($worksheet.name) does not contain tables. exporting whole sheet..."
             $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9\-_]', '') + '_sheet.csv'
-            $worksheet.SaveAs($exportFileName, 6,$null,$null,$null,$null,$null,$null,$null,'True')
+            $fileType=62 #CSVUTF8 https://docs.microsoft.com/en-us/office/vba/api/excel.xlfileformat
+            $addToMRU=$false #https://docs.microsoft.com/en-us/office/vba/api/excel.worksheet.saveas
+            $worksheet.SaveAs($exportFileName, $fileType,$null,$null,$null,$null,$sddToMRU,$null,$null,'True')
             write-host "worksheet $($worksheet.name) saved as $exportFileName"
         }
     }
