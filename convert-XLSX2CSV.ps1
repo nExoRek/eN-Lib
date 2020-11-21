@@ -5,6 +5,11 @@
 .DESCRIPTION
     if file contain information out of table objects - they will be exported as a whole worksheet.
     files will be named after the sheet name + table/worksheet name and placed in seperate directory.
+
+    using such exports a lot? why not create a desktop shortcut to just drag'n'drop xlsx files into?
+    create a shortcut and type: 
+    C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -noprofile -file "<path to script>\convert-XLSX2CSV.ps1"
+    enjoy quick xlsx->convert with one mouse move (=
 .EXAMPLE
     .\convert-XLSX2CSV.ps1 -fileName .\myFile.xlsx
 
@@ -17,8 +22,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201101
+    version 201121
         last changes
+        - 201121 output folder changed, descirption
         - 201101 initialized
 #>
 [cmdletbinding()]
@@ -47,7 +53,8 @@ begin {
         exit -3
     }
     #endregion initial_checks
-    $outputFolder=$PSScriptRoot + '\' + $file.BaseName
+    #$outputFolder=$PSScriptRoot + '\' + $file.BaseName #decided that output is better to have in original file location rather then script root
+    $outputFolder=$file.DirectoryName+'\'+$file.BaseName+'.exported'
     if( -not (test-path($outputFolder)) ) {
         new-Item -ItemType Directory $outputFolder
     }
@@ -65,7 +72,7 @@ process {
         if($tableList) {
             foreach($table in $tableList ) {
                 Write-Verbose "found table $($table.name) on $($worksheet.name)"
-                $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9\-_]', '') + '_' + ($table.name -replace '[^a-zA-Z0-9]', '') + '.csv'
+                $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^\w\d\-_\.]', '') + '_' + ($table.name -replace '[^\w\d]', '') + '.csv'
                 $tempWS=$workBookFile.Worksheets.add()
                 $table.range.copy()|out-null
                 $tempWS.paste($tempWS.range("A1"))
