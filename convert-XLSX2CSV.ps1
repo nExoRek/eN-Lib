@@ -24,14 +24,17 @@
     nExoR ::))o-
     version 201121
         last changes
-        - 201121 output folder changed, descirption
+        - 201121 output folder changed, descirption, do not export hidden by default
         - 201101 initialized
 #>
 [cmdletbinding()]
 param(
     # XLSX file to be converted to CSV files
     [Parameter(mandatory=$true,position=0)]
-        [string]$fileName
+        [string]$fileName,
+    #include hidden worksheets? 
+    [Parameter(mandatory=$false,position=1)]
+        [switch]$includeHiddenWorksheets
 )
 
 begin {
@@ -67,6 +70,10 @@ process {
     write-host verbose "converting $fileName tables to CSV files..."
 
     foreach($worksheet in $workBookFile.Worksheets) {
+        if($worksheet.Visible -eq $false -and -not $includeHiddenWorksheets.IsPresent) {
+            write-verbose "worksheet $($worksheet.name) found but it is hidden. use -includeHiddenWorksheets to export"
+            continue
+        }
         Write-Verbose "worksheet $($worksheet.name)"
         $tableList=$worksheet.listObjects|Where-Object SourceType -eq 1
         if($tableList) {
