@@ -1,5 +1,7 @@
 #INGNORE ALL
 *
+#and some directories
+!QoD\ Migration/*.ps1
 #...except PS
 !*.ps1
 !*.psm1
@@ -8,5 +10,3 @@
 !.gitignore
 !README.md
 !LICENSE
-#and some directories
-!QoD\ Migration/*.ps1
