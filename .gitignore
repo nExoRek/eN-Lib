@@ -9,4 +9,4 @@
 !README.md
 !LICENSE
 #and some directories
-!QoD Migration\*.ps1
+!QoD Migration/*.ps1
