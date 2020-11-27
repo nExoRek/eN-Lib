@@ -233,9 +233,9 @@ $sendMailParam=@{
 
 #get credential - GUI or saved
 if($useSendGrid.IsPresent) {
-    $credsFile=$PSScriptRoot+'\sendSG.crds'
+    $credsFile=$env:USERNAME+'_sendSG.crds'
 } else {
-    $credsFile=$PSScriptRoot+'\sendEXO.crds'
+    $credsFile=$env:USERNAME+'_sendEXO.crds'
 }
 if(test-path $credsFile) {
     $myCreds = Import-CliXml -Path $credsFile
