@@ -1231,12 +1231,17 @@ $gbReviewContactInfo.height = 180
 $gbReviewContactInfo.text = "User Contact Information"
 $gbReviewContactInfo.location = New-Object System.Drawing.Point(15, 250)
 
+$btNowaNazwak = New-Object System.Windows.Forms.Button
+$btNowaNazwak.Location = New-Object System.Drawing.Size(30,30) 
+$btNowaNazwak.Size = New-Object System.Drawing.Size(100,20)
+$btNowaNazwak.Text = "TEST"
+
 $lblReviewManager = New-Object system.Windows.Forms.Label
 $lblReviewManager.text = "Manager:"
 $lblReviewManager.AutoSize = $true
-$lblReviewManager.width = 100
-$lblReviewManager.height = 20
-$lblReviewManager.location = New-Object System.Drawing.Point(15, 15)
+$lblReviewNowa Nazwa .width = 100
+$lblReviewNowa Nazwa .height = 20
+$lblReviewNowa Nazwa .location = New-Object System.Drawing.Point(15, 15)
 
 $lblReviewManagerValue = New-Object System.Windows.Forms.Label
 $lblReviewManagerValue.width = 400
@@ -1673,7 +1678,7 @@ if($USEONLINE) {
 } else {
     $UPN=new-SAMname -uType internal
 }
-$txtUPN.Text=$UPN+'@w-files.lab'
+$txtUPN.Text=$UPN+'@w-files.pl'
 [void]$NewUserMain.ShowDialog()
 
 #i have no idea why... but on Terminal environment application do not run again.
