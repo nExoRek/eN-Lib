@@ -19,7 +19,7 @@
     nExoR ::))o-
     version 201204
         last changes
-        - 201204 minor fixes
+        - 201204 minor fixes, accesstype
         - 201130 initialized
 #>
 #requires -module ExchangeOnlineManagement
@@ -176,7 +176,7 @@ foreach($group in $groupsList) {
     $gName=$($group.'target Group Name')
     write-log "creating ""$gName""..."
     try {
-        $newGroup=new-UnifiedGroup -DisplayName $gName -Alias $group.'target mailNickName'
+        $newGroup=new-UnifiedGroup -DisplayName $gName -Alias $group.'target mailNickName' -accessType private
         $group.'target objectID'=$newGroup.ExternalDirectoryObjectId
         write-log """$gName"" created."
     } catch {
