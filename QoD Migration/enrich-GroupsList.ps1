@@ -196,7 +196,7 @@ foreach($group in $groupsList) {
         continue
     }
     $group.'target Group Name' = $targetPrefix+' '+$group.'Group Name'
-    $group.'target mailNickName' = $targetPrefix+$group.'Source MailNickname'
+    $group.'target mailNickName' = $targetPrefix+'.'+$group.'Source MailNickname'
     $group.'objectID'=$testGroup.ExternalDirectoryObjectId    
 }
 $groupsList|export-csv -Delimiter $delimiter -NoTypeInformation $exportCSV -Encoding UTF8
