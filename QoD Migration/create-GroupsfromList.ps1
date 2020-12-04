@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
     STEP 2 to in groups migration - create groups based on prepared input. 
+    LOG ON TO TARGET TENANT
 .DESCRIPTION
     support script for Quest on Demand which do not support on-the-fly groups name change - create
     groups with new name, and adds 'target groupID' so you can import file back to QoD to migrate the rest.
@@ -18,7 +19,7 @@
     nExoR ::))o-
     version 201204
         last changes
-        - 201204 
+        - 201204 minor fixes
         - 201130 initialized
 #>
 #requires -module ExchangeOnlineManagement
