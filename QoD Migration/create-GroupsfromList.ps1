@@ -16,8 +16,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201130
+    version 201204
         last changes
+        - 201204 
         - 201130 initialized
 #>
 #requires -module ExchangeOnlineManagement
@@ -28,7 +29,7 @@ param (
         [string]$inputCSV,
     #delimiter for CSV files
     [Parameter(mandatory=$false,position=1)]
-        [string][validateSet(',',';')]$delimiter=';'
+        [string][validateSet(',',';')]$delimiter=','
 )
 function start-Logging {
     param()
@@ -167,15 +168,15 @@ function load-CSV {
     return $CSVData
 }
 start-Logging
-$exportCSV =  ([System.IO.fileInfo]$PSCommandPath).BaseName+ "-enriched-$(get-date -Format yyMMddHHmm).csv"
-$header=@('Group Name','Target Group Name','Source MailNickname','target mailNickName','target objectID','objectID')
+$exportCSV =  ([System.IO.fileInfo]$PSCommandPath).BaseName+ "-newlyCreated-$(get-date -Format yyMMddHHmm).csv"
+$header=@('target Group Name','target mailNickName')
 $groupsList=load-CSV -inputCSV $inputCSV -delimiter $delimiter -headerIsCritical -header $header
 foreach($group in $groupsList) {
-    $gName=$($group.'Target Group Name')
+    $gName=$($group.'target Group Name')
     write-log "creating ""$gName""..."
     try {
-        $newGroup=new-UnifiedGroup -DisplayName $gName -Alias $group.'target mailNickName' -PrimarySMTPAddress !ADDRESSHERE! -ErrorAction stop
-        $group.'target objectID'=$newGroup.groupID
+        $newGroup=new-UnifiedGroup -DisplayName $gName -Alias $group.'target mailNickName'
+        $group.'target objectID'=$newGroup.ExternalDirectoryObjectId
         write-log """$gName"" created."
     } catch {
         write-log "error creating ""$gName"": $($_.Exception)"
@@ -183,4 +184,4 @@ foreach($group in $groupsList) {
     }
 }
 $groupsList|export-csv -Delimiter $delimiter -NoTypeInformation $exportCSV -Encoding UTF8
-write-log "done. saved in $exportCSV" -type ok
+write-log "done. saved in .\$exportCSV" -type ok

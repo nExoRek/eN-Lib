@@ -2,7 +2,6 @@
 *
 #and some directories
 !/QoD\ Migration/
-!/gui-newUser/
 #...except PS
 !*.ps1
 !*.psm1
