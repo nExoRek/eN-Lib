@@ -2,6 +2,7 @@
 *
 #and some directories
 !/QoD\ Migration/
+!/GroupMove/
 #...except PS
 !*.ps1
 !*.psm1
