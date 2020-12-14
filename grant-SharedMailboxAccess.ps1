@@ -101,39 +101,46 @@ function start-Logging {
 }
 function write-log {
     param(
+        #message to display - can be an object
         [parameter(mandatory=$true,position=0)]
-            $message,
+              $message,
+        #adds description and colour dependently on message type
         [parameter(mandatory=$false,position=1)]
             [string][validateSet('error','info','warning','ok')]$type,
         #do not output to a screen - logfile only
         [parameter(mandatory=$false,position=2)]
-            [switch]$silent
+            [switch]$silent,
+        # do not show timestamp with the message
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$skipTimestamp
     )
 
     #ensure that whatever the type is - array, object.. - it will be output as string, add runtime
+    if($null -eq $message) {$message=''}
     $message=($message|out-String).trim() 
     
     try {
-        switch($type) {
-            'error' {
-                if(-not $silent) { write-host -ForegroundColor Red $message }
-                Add-Content -Path $logFile -Value "$(Get-Date -Format "hh:mm:ss>") ERROR: $message"
-            }
-            'info' {
-                if(-not $silent) { Write-Host -ForegroundColor DarkGray "INFO: $message" }
-                Add-Content -Path $logFile -Value "$(Get-Date -Format "hh:mm:ss>") INFO: $message"
-            }
-            'warning' {
-                if(-not $silent) { Write-Host -ForegroundColor Yellow "WARNING: $message" }
-                Add-Content -Path $logFile -Value "$(Get-Date -Format "hh:mm:ss>") WARNING: $message"
-            }
-            'ok' {
-                if(-not $silent) { Write-Host -ForegroundColor Green "$message" }
-                Add-Content -Path $logFile -Value "$(Get-Date -Format "hh:mm:ss>") OK: $message"
-            }
-            default {
-                if(-not $silent) { Write-Host $message }
-                Add-Content -Path $logFile -Value "$(Get-Date -Format "hh:mm:ss>") $message"
+        if(-not $skipTimestamp) {
+            $message = "$(Get-Date -Format "hh:mm:ss>") "+$type.ToUpper()+": "+$message
+        }
+        Add-Content -Path $logFile -Value $message
+        if(-not $silent) {
+            switch($type) {
+                'error' {
+                    write-host -ForegroundColor Red $message
+                }
+                'info' {
+                    Write-Host -ForegroundColor DarkGray $message
+                }
+                'warning' {
+                    Write-Host -ForegroundColor Yellow $message
+                }
+                'ok' {
+                    Write-Host -ForegroundColor Green $message
+                }
+                default {
+                    Write-Host $message 
+                }
             }
         }
     } catch {

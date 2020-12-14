@@ -39,7 +39,8 @@ process {
     $macAddressToVerify=$macAddress.Replace(':','').Replace('-','').ToLower()
     $macAddressToVerify=$macAddressToVerify.Substring(0,6)
     if($macAddressToVerify -notmatch [regex]'[0-9a-f]{6}') {
-        throw 'NOT VALID MAC ADDRESS'   
+        $result=$macAddressToVerify+";NOT VALID MAC ADDRESS"
+        return $result
     }
     Write-Verbose "lookup for $macAddress..."
 
@@ -69,6 +70,6 @@ process {
         }
     }
 
-    $result
+    return $result
 }
 end{}
