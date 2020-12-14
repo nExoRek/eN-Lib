@@ -30,7 +30,8 @@
     grants Full Access and SendOnBehalf to a single mailbox
 .NOTES
     nExoR ::))o-
-    ver.201116
+    ver.201214
+    - 201214 start-logging update
     - 201116 minor standardization fixes
     - 201115 sendOfBehalf/sendAs handling thru accessType parameter
     - 200930 githubbed
@@ -65,13 +66,18 @@ param(
 )
 
 function start-Logging {
-    param()
+    param(
+        #create log in profile folder rather than script run path
+        [Parameter(mandatory=$false,position=0)]
+            [switch]$userProfilePath
+    )
 
-    $scriptRun                          = $PSCmdlet.MyInvocation.MyCommand #(get-variable MyInvocation -scope 1).Value.MyCommand
-    [System.IO.fileInfo]$scriptRunPaths = $scriptRun.Path 
-    $scriptBaseName                     = $scriptRunPaths.BaseName
-    $scriptFolder                       = $scriptRunPaths.Directory.FullName
-    $logFolder                          = "$scriptFolder\Logs"
+    $scriptBaseName = ([System.IO.FileInfo]$PSCommandPath).basename
+    if($userProfilePath.IsPresent) {
+        $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+    } else {
+        $logFolder = "$PSScriptRoot\Logs"
+    }
 
     if(-not (test-path $logFolder) ) {
         try{ 
@@ -79,7 +85,7 @@ function start-Logging {
             write-host "$LogFolder created."
         } catch {
             $_
-            exit -1
+            exit -2
         }
     }
 

@@ -17,8 +17,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201112
+    version 201214
         last changes
+        - 201214 start-logging update
         - 201112 initialized
 #>
 #requires -module MSOnline
@@ -30,13 +31,18 @@ param (
 )
 begin {
     function start-Logging {
-        param()
+        param(
+            #create log in profile folder rather than script run path
+            [Parameter(mandatory=$false,position=0)]
+                [switch]$userProfilePath
+        )
     
-        $scriptRun                          = $PSCmdlet.MyInvocation.MyCommand #(get-variable MyInvocation -scope 1).Value.MyCommand
-        [System.IO.fileInfo]$scriptRunPaths = $scriptRun.Path 
-        $scriptBaseName                     = $scriptRunPaths.BaseName
-        $scriptFolder                       = $scriptRunPaths.Directory.FullName
-        $logFolder                          = "$scriptFolder\Logs"
+        $scriptBaseName = ([System.IO.FileInfo]$PSCommandPath).basename
+        if($userProfilePath.IsPresent) {
+            $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+        } else {
+            $logFolder = "$PSScriptRoot\Logs"
+        }
     
         if(-not (test-path $logFolder) ) {
             try{ 
@@ -44,7 +50,7 @@ begin {
                 write-host "$LogFolder created."
             } catch {
                 $_
-                exit -1
+                exit -2
             }
         }
     

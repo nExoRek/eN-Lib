@@ -29,9 +29,10 @@
 
 .NOTES
     nExoR ::))o-
-    ver.201015 verificaiton of domain
+    ver.201214
     last changes
-    - 202015 contains is case sensitive? O_o
+    - 201214 start-logging update
+    - 202015 verificaiton of domain, contains is case sensitive? O_o
     - 200930 check if on accepted domain list
     - 200916 beta, signle mode, standardized functions.
 
@@ -58,14 +59,19 @@ param(
         [switch]$disableDomainVerification
 
 )
-function initiate-Logging {
-    param()
+function start-Logging {
+    param(
+        #create log in profile folder rather than script run path
+        [Parameter(mandatory=$false,position=0)]
+            [switch]$userProfilePath
+    )
 
-    $scriptRun                          = $PSCmdlet.MyInvocation.MyCommand #(get-variable MyInvocation -scope 1).Value.MyCommand
-    [System.IO.fileInfo]$scriptRunPaths = $scriptRun.Path 
-    $scriptBaseName                     = $scriptRunPaths.BaseName
-    $scriptFolder                       = $scriptRunPaths.Directory.FullName
-    $logFolder                          = "$scriptFolder\Logs"
+    $scriptBaseName = ([System.IO.FileInfo]$PSCommandPath).basename
+    if($userProfilePath.IsPresent) {
+        $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+    } else {
+        $logFolder = "$PSScriptRoot\Logs"
+    }
 
     if(-not (test-path $logFolder) ) {
         try{ 
@@ -73,17 +79,19 @@ function initiate-Logging {
             write-host "$LogFolder created."
         } catch {
             $_
-            exit -1
+            exit -2
         }
     }
 
     $script:logFile="{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
-    write-Log "*logging initiated $(get-date)" -type info -silent
-    write-Log "*script parameters:" -type info -silent
-    foreach($param in $scriptRun.parameters) {
-        write-log (Get-Variable -Name $Param.Values.Name -ErrorAction SilentlyContinue ) -silent
+    write-Log "*logging initiated $(get-date)" -silent -skipTimestamp
+    write-Log "*script parameters:" -silent -skipTimestamp
+    if($script:PSBoundParameters.count -gt 0) {
+        write-log $script:PSBoundParameters -silent -skipTimestamp
+    } else {
+        write-log "<none>" -silent -skipTimestamp
     }
-    write-log "***************************************************" -type info -silent
+    write-log "***************************************************" -silent -skipTimestamp
 }
 function write-log {
     param(
@@ -181,7 +189,7 @@ function load-CSV {
     return $CSVData
 }
 
-initiate-Logging
+start-Logging
 
 [regex]$rxEmail='^[\w\d_.\-\+]+@(?<domain>[\w\d_.\-]+)$'
 
