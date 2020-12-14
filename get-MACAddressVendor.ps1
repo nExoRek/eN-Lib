@@ -7,7 +7,7 @@
 
     lookup for vendor of 00:FF:E2 MAC prefix.
 .EXAMPLE
-    Get-NetAdapter|select -ExpandProperty macaddress|.\get-MACAddressVendor.ps1
+    Get-NetAdapter|.\get-MACAddressVendor.ps1
 
     check vendors for all local network card.
 .LINK
@@ -20,13 +20,15 @@
 .NOTES
     nExoR 2o16
     ver. 201214
-        - 201214 lift and shift. webAPI still unavailable.
+        - 201214 lift and shift, netadapter query. webAPI still unavailable /:
 #>
-[cmdletbinding()]
+[cmdletbinding(DefaultParameterSetName="text")]
 param(
     #MAC address - may be formed with 'AA:BB', 'AA-BB' or concete form 'AABB' 
-    [parameter(position=0,mandatory=$true,valueFromPipeline=$true)]
+    [parameter(ParameterSetName='text',position=0,mandatory=$true,valueFromPipeline=$true)]
         [string]$macAddress,
+    [parameter(ParameterSetName='cim',position=0,mandatory=$true,valueFromPipeline=$true)]
+        [Microsoft.Management.Infrastructure.CimInstance]$netAdapter,
     #use remote webAPI and do not download&cache oui file locally - by default oui.txt is downloaded locally
     [parameter(position=1)]
         [switch]$webAPI,
@@ -36,7 +38,12 @@ param(
 ) 
 begin {}
 process {
-    $macAddressToVerify=$macAddress.Replace(':','').Replace('-','').ToLower()
+    if($PSCmdlet.ParameterSetName -eq 'cim') {
+        $macAddressToVerify=$netAdapter.MacAddress
+    } else {
+        $macAddressToVerify=$macAddress
+    }
+    $macAddressToVerify=$macAddressToVerify.Replace(':','').Replace('-','').ToLower()
     $macAddressToVerify=$macAddressToVerify.Substring(0,6)
     if($macAddressToVerify -notmatch [regex]'[0-9a-f]{6}') {
         $result=$macAddressToVerify+";NOT VALID MAC ADDRESS"
