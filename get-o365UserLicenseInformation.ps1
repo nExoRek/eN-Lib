@@ -47,7 +47,7 @@
 .NOTES
     nExoR ::))o-
     version 201015
-    - 202015 usageLocation, -includeServicePlans, connection check fix, licenseName fix, -exportToCSV
+    - 201015 usageLocation, -includeServicePlans, connection check fix, licenseName fix, -exportToCSV
     - 201012 v1
 
     TO|DO
@@ -78,7 +78,7 @@ begin {
         Write-Verbose "getting tenant SKUs..."
         $LicenseSKUs=@()
         try{
-            Get-MsolAccountSku -ErrorAction stop|%{
+            Get-MsolAccountSku -ErrorAction Stop|%{
                 $LicenseSKUs+= [PSCustomObject]@{
                     SKUID=$_.SkuId
                     AccountSkuId=$_.AccountSkuId

@@ -52,6 +52,9 @@
   * [gui-ForceShutdownAzVMforms.ps1](https://github.com/nExoRek/eN-Lib/blob/master/gui-ForceShutdownAzVMforms.ps1)
     demo how to use element of Forms GUI in PS, force shutdown VM in Azure
 
+  * [destroy-AzureVM.ps1](https://github.com/nExoRek/eN-Lib/blob/master/destroy-AzureVM.ps1)
+    delete Azure VM along with related resources. v1 is limited - not giving an option to choose which resources. 
+
 ## AD
   * [remove-ProtectedOUStructure.ps1](https://github.com/nExoRek/eN-Lib/blob/master/remove-ProtectedOUStructure.ps1)
     remove whole OU structure removing 'Protect Object From Accidental Deletion' flag.

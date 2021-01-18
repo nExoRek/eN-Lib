@@ -16,12 +16,12 @@
 #>
 [cmdletbinding()]
 param(
+    #show extended information 
     [parameter(mandatory=$false,position=0,ParameterSetName='extended')]
         [switch]$extended,
-        #show extended information 
+    #output only IP number for pipelining
     [parameter(mandatory=$false,position=0)]
         [switch]$pureIP
-        #output only IP number for pipelining
 )
 
 if($pureIP) {
