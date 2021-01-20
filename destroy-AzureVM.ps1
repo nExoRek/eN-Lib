@@ -19,7 +19,8 @@
 
          *USE WITH CARE*
 .EXAMPLE
-    .\005-DestroyOldVMAndRelatedResources.ps1
+    .\destroy-AzureVM.ps1
+
     lanunches GUI-wizard allowing to choose VM for destruction.
 .INPUTS
     None.
