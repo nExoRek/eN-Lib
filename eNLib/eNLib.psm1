@@ -16,6 +16,7 @@
 #>
 
 #################################################### GENERAL
+$logFile=''
 
 function start-Logging {
     <#
@@ -45,8 +46,9 @@ function start-Logging {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210127
+        version 210203
         changes:
+            - 210203 added 'logFolder' and proper log initilization when called indirectly
             - 210127 v1
             - 201018 initialize
     #>
@@ -58,7 +60,11 @@ function start-Logging {
         #create log in profile folder rather than script run path
         [Parameter(ParameterSetName='userProfile',mandatory=$false,position=0)]
             [alias('useProfile')]
-            [switch]$userProfilePath    
+            [switch]$userProfilePath,
+        #similar to logFileName - but provide only folder for log, not full logFile name
+        [Parameter(ParameterSetName='logFolder',mandatory=$false,position=0)]
+            [string]$logFolder
+            
     )
 
     #check if not run outside script
@@ -69,19 +75,28 @@ function start-Logging {
     #}
     $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename
 
-    if($userProfilePath.IsPresent) {
-        $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-        $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
-    } elseif ([string]::IsNullOrEmpty($logFileName)) {
-        $logFolder="$($MyInvocation.PSScriptRoot)\Logs"
-        $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
-    } else {
-        $logFolder=Split-Path $logFileName -Parent
-        if([string]::isNullOrEmpty($logFolder) ) {
-            $logFolder = $MyInvocation.PSScriptRoot
+    switch($PSCmdlet.ParameterSetName) {
+        'userProfile' {
+            $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+            $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
-        $script:logFile = $logFileName
+        'logFolder' {
+            $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+        }
+        default {
+            if ([string]::IsNullOrEmpty($logFileName)) {
+                $logFolder="$($MyInvocation.PSScriptRoot)\Logs"
+                $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
+            } else {
+                $logFolder=Split-Path $logFileName -Parent
+                if([string]::isNullOrEmpty($logFolder) ) {
+                    $logFolder = $MyInvocation.PSScriptRoot
+                }
+                $script:logFile = $logFileName
+            }
+        }
     }
+
     if(-not (test-path $logFolder) ) {
         try{ 
             New-Item -ItemType Directory -Path $logFolder|Out-Null
@@ -91,7 +106,7 @@ function start-Logging {
             exit -2
         }
     }
-    write-Log "*logging initiated $(get-date)" -silent -skipTimestamp
+    write-Log "*logging initiated $(get-date) in $($script:logFile)" -skipTimestamp #-silent
     write-Log "*script parameters:" -silent -skipTimestamp
     if($script:PSBoundParameters.count -gt 0) {
         write-log $script:PSBoundParameters -silent -skipTimestamp
@@ -100,7 +115,7 @@ function start-Logging {
     }
     write-log "***************************************************" -silent -skipTimestamp
 }
-Export-ModuleMember -Function start-Logging
+#Export-ModuleMember -Function start-Logging
 
 function write-log {
     <#
@@ -137,8 +152,9 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210127
+        version 210203
         changes:
+            - 210203 properly initiating log with new start-loggging, when called indirectly
             - 210127 v1
             - 201018 initialize
     #>
@@ -158,8 +174,8 @@ function write-log {
             [switch]$skipTimestamp
     )
 
-    if($null -eq $script:logFile) {
-        start-Logging
+    if( [string]::isNullOrEmpty($script:logFile) ){
+        start-Logging -logFolder "$($MyInvocation.PSScriptRoot)\Logs"
     }
     #ensure that whatever the type is - array, object.. - it will be output as string, add runtime
     if($null -eq $message) {$message=''}
@@ -200,7 +216,7 @@ function write-log {
         $_.exception
     }      
 }
-Export-ModuleMember -Function write-Log
+#Export-ModuleMember -Function write-Log
 
 function new-RandomPassword {
     <#
@@ -280,7 +296,7 @@ function new-RandomPassword {
     }
     return $password
 }
-Export-ModuleMember -Function new-randomPassword
+#Export-ModuleMember -Function new-randomPassword
 
 #################################################### PowerShell GUI
 function get-AnswerBox {
@@ -358,7 +374,7 @@ function get-AnswerBox {
     } 
     return $false
 }
-Export-ModuleMember -Function get-AnswerBox
+#Export-ModuleMember -Function get-AnswerBox
 
 function get-valueFromInputBox {
     <#
@@ -455,7 +471,7 @@ function get-valueFromInputBox {
         return $null
     }   
 }
-Export-ModuleMember -Function get-valueFromInputBox
+#Export-ModuleMember -Function get-valueFromInputBox
 
 #################################################### OFFICE 365
 function get-ExchangeConnectionStatus {
@@ -476,7 +492,7 @@ function get-ExchangeConnectionStatus {
     }
     return $exConnection
 }
-Export-ModuleMember -Function get-ExchangeConnectionStatus
+#Export-ModuleMember -Function get-ExchangeConnectionStatus
 
 function connect-Azure {
     try {
@@ -497,5 +513,7 @@ function connect-Azure {
     write-host -foreground Yellow "$($AzSourceContext.account.id)"
     Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 }
-Export-ModuleMember -Function connect-Azure
+#Export-ModuleMember -Function connect-Azure
+
+Export-ModuleMember -Function * -Variable 'logFile'
 
