@@ -25,18 +25,40 @@ function start-Logging {
         initilizes log file under $logFile variable for write-log function.
     .DESCRIPTION
         all scripts require logging mechinism. write-log function forking each output to screen and to logfile
-        is a most common function i use in my scripts. in order to simplify $logFile variable - this function
-        initilized environment for write-log function. 
+        is a very convinient way keeping all logs consistent with very nice host output. 
+        this function initilizeds $logFile variable creation, and initiates the log file itself. in order to 
+        ease the creation there are several ways of initilizing $logFile:
+        - using write-log directly
+            - from console host
+            - from script
+        - using this function directly 
+            - no parameters - defaults to $ScriptRoot/Logs folder
+            - using 'useProfile' - to store logs in User Documents/Logs directory
+            - using 'logFolder' parameter to define particular folder for logs
+            - using 'logFileName' - (exclusive to logFolder) presenting full path for the log or logfile name 
     .EXAMPLE
-        start-Logging
+        write-log 
 
-        simply initializes the log file with generic name, saved in 'Logs' subfolder under script run path. 
+        using write-log will inderctly call start-logging function and initializes the log file with generic name,
+        saved in 'Logs' subfolder under script run path. 
     .EXAMPLE
         start-Logging -logFileName c:\temp\myLogs\somelog.log
+        write-log 'test message'
 
         initializes the log file as c:\temp\myLogs\somelog.log .
     .EXAMPLE
+        start-Logging -logFileName somelog.log
+        write-log 'test message'
+
+        initializes the log file as .\somelog.log .
+    .EXAMPLE
+        start-Logging -logFolder c:\temp\myLogs
+        write-log 'test message'
+
+        initializes the log file under c:\temp\myLogs\ folder with generic name containing script name and date.
+    .EXAMPLE
         start-Logging -userProfilePath
+        write-log 'test message'
 
         initializes the log file in Logs subfolder uder user profile path
     .INPUTS
@@ -68,12 +90,6 @@ function start-Logging {
             [string]$logFolder
     )
 
-    #check if not run outside script
-    #if( $scriptRun.commandType -ne 'ExternalScript' ) {
-    #    write-host "don't run this function outside script" -ForegroundColor Red
-    #    remove-module -name eNLib
-    #    return $null
-    #}
     $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename
     if([string]::isNullOrEmpty($scriptBaseName) ) {
         $scriptBaseName = 'console'
@@ -93,8 +109,12 @@ function start-Logging {
                 $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
             } else {
                 $logFolder = Split-Path $logFileName -Parent
-                if([string]::isNullOrEmpty($logFolder) ) {
-                    $logFolder = $MyInvocation.PSScriptRoot
+                if([string]::isNullOrEmpty($logFolder) ) { #logfile name without full path, name only
+                    if( [string]::isNullOrEmpty($MyInvocation.PSScriptRoot) ) { #run directly from console
+                        $logFolder = '.'
+                    } else {
+                        $logFolder = $MyInvocation.PSScriptRoot
+                    }
                 }
                 $logFile = Split-Path $logFileName -Leaf
                 if( test-path $logFile -PathType Container ) {
@@ -124,7 +144,6 @@ function start-Logging {
     }
     write-log "***************************************************" -silent -skipTimestamp
 }
-#Export-ModuleMember -Function start-Logging
 
 function write-log {
     <#
@@ -139,17 +158,24 @@ function write-log {
         information is written to a $logFile - you must initialize the value with 'start-Logging' 
         or configure it manually.
 
+        in order to use write-log, $logFile variable requires to be set up. this is during initialization
+        by start-logging. by default logs are stored in $PSScriptRoot/Logs directory with generic file
+        name. if you need special location refer to start-logging help how to initialize variable. 
+
+        function may also be used from command line - in this scenario log file will be created in 
+        Logs directory under User Documents folder. file with be named 'console-<date>.log'.
+
     .EXAMPLE
-        .\write-log "all is fine"
+        write-log "all is fine"
 
         output 'all is fine' on the screen and to the log file.
     .EXAMPLE
-        .\write-log -message "trees are green" -type ok
+        write-log -message "trees are green" -type ok
 
         shows 'trees are green' in Green colour, and send text to a log file.
     .EXAMPLE
         $someObject=get-process
-        .\write-log -message $someObject -type info -noTimestamp -silent
+        write-log -message $someObject -type info -noTimestamp -silent
 
         outputs processes object to the log file as -silent disables screen output. it will lack
         timestamp in a message header but will contain '[INFO]' block.
@@ -167,6 +193,10 @@ function write-log {
             - 210203 properly initiating log with new start-logging, when called indirectly
             - 210127 v1
             - 201018 initialize
+
+        #TO|DO
+        - greedy variables as for write-host
+        - colouring codes for text 
     #>
     
     param(
@@ -239,16 +269,21 @@ function write-log {
         $_.exception
     }      
 }
-#Export-ModuleMember -Function write-Log
 
 function new-RandomPassword {
     <#
     .SYNOPSIS
-        generate random password with given ranges
+        generate random password with given char ranges (complexity) and lenght
     .DESCRIPTION
-        #TODO
+        by default it genrates 8-long string with 
     .EXAMPLE
-        #TODO
+        $pass = new-RandomPassword
+
+        generated 8-char long semi-complex password
+    .EXAMPLE
+        $pass = new-RandomPassword -specialCharacterRange 3
+
+        generated 8-char long password with full complexity
     .INPUTS
         None.
     .OUTPUTS
@@ -263,9 +298,15 @@ function new-RandomPassword {
     #>
     
     param( 
-        [int]$length=8,
-        [int][validateSet(1,2,3,4)]$uniqueSets=4,
-        [int][validateSet(1,2,3)]$specialCharacterRange=1
+        #password length
+        [Parameter(mandatory=$false,position=0)]
+            [int]$length=8,
+        #password complexity based on a range of special characters.
+        [Parameter(mandatory=$false,position=1)]
+            [int][validateSet(1,2,3)]$specialCharacterRange=1,
+        #uniquness - related to complexity, recommended to leave. this guarantee that password will have characters from given number of char sets.
+        [Parameter(mandatory=$false,position=2)]
+            [int][validateSet(1,2,3,4)]$uniqueSets=4
             
     )
     function generate-Set {
@@ -310,8 +351,8 @@ function new-RandomPassword {
     if($specialCharacterRange -ge 2) { $specialCharacterL1+=,$specialCharacterL2 }
     if($specialCharacterRange -ge 3) { $specialCharacterL1+=,$specialCharacterL3 }
     $ascii+=,$specialCharacterL1
-    #prepare set of character-sets ensuring that there will be at least one character from at least 3 different sets
-    $passwordSet=generate-Set -length $length -setSize $uniqueSets 
+    #prepare set of character-sets ensuring that there will be at least one character from at least $uniqueSets different sets
+    $passwordSet = generate-Set -length $length -setSize $uniqueSets 
 
     $password=$NULL
     0..($length-1)|% {
@@ -319,7 +360,6 @@ function new-RandomPassword {
     }
     return $password
 }
-#Export-ModuleMember -Function new-randomPassword
 
 #################################################### PowerShell GUI
 function get-AnswerBox {
@@ -397,7 +437,6 @@ function get-AnswerBox {
     } 
     return $false
 }
-#Export-ModuleMember -Function get-AnswerBox
 
 function get-valueFromInputBox {
     <#
@@ -494,9 +533,8 @@ function get-valueFromInputBox {
         return $null
     }   
 }
-#Export-ModuleMember -Function get-valueFromInputBox
 
-#################################################### OFFICE 365
+#################################################### connection checkers
 function get-ExchangeConnectionStatus {
     param(
         [parameter(mandatory=$false,position=0)][validateSet('OnPrem','EXO')][string]$ExType='EXO'
@@ -515,7 +553,6 @@ function get-ExchangeConnectionStatus {
     }
     return $exConnection
 }
-#Export-ModuleMember -Function get-ExchangeConnectionStatus
 
 function connect-Azure {
     try {
@@ -536,7 +573,6 @@ function connect-Azure {
     write-host -foreground Yellow "$($AzSourceContext.account.id)"
     Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 }
-#Export-ModuleMember -Function connect-Azure
 
 Export-ModuleMember -Function * -Variable 'logFile'
 
