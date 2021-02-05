@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210202
+    version 210205
     changes
+        - 210205 write-log fixes
         - 210202 tuned write-log and start-logging, fixes and logical separation. v0.9
         - 201018 initialize 
 #>
@@ -74,6 +75,9 @@ function start-Logging {
     #    return $null
     #}
     $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename
+    if([string]::isNullOrEmpty($scriptBaseName) ) {
+        $scriptBaseName = 'console'
+    }
     switch($PSCmdlet.ParameterSetName) {
         'userProfile' {
             $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
@@ -159,7 +163,8 @@ function write-log {
         nExoR ::))o-
         version 210203
         changes:
-            - 210203 properly initiating log with new start-loggging, when called indirectly
+            - 210205 fix when run directly from console, init fixes
+            - 210203 properly initiating log with new start-logging, when called indirectly
             - 210127 v1
             - 201018 initialize
     #>
@@ -182,8 +187,16 @@ function write-log {
     #if function is called without pre-initialize with start-logging, run it to initialize log.
     if( [string]::isNullOrEmpty($script:logFile) ){
         #these need to be calculated here, as $myinvocation context changes giving library name instead of script
-        $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
-        $logFolder = "$($MyInvocation.PSScriptRoot)\Logs"
+        if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #it's run directly from console.
+            $scriptBaseName = 'console'
+        } else {
+            $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
+        }
+        if([string]::isNullOrEmpty($MyInvocation.PSScriptRoot) ) { #it's run directly from console
+            $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+        } else {
+            $logFolder = "$($MyInvocation.PSScriptRoot)\Logs"
+        }
         $logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         start-Logging -logFileName $logFile
     }
