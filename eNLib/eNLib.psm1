@@ -46,8 +46,9 @@ function start-Logging {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210203
+        version 210205
         changes:
+            - 210205 fixes to logfilename initialization
             - 210203 added 'logFolder' and proper log initilization when called indirectly
             - 210127 v1
             - 201018 initialize
@@ -61,10 +62,9 @@ function start-Logging {
         [Parameter(ParameterSetName='userProfile',mandatory=$false,position=0)]
             [alias('useProfile')]
             [switch]$userProfilePath,
-        #similar to logFileName - but provide only folder for log, not full logFile name
-        [Parameter(ParameterSetName='logFolder',mandatory=$false,position=0)]
+        #similar to logFileName, but takes folder only and log file name is generic.
+        [Parameter(ParameterSetName='Folder',mandatory=$false,position=0)]
             [string]$logFolder
-            
     )
 
     #check if not run outside script
@@ -74,25 +74,30 @@ function start-Logging {
     #    return $null
     #}
     $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename
-
     switch($PSCmdlet.ParameterSetName) {
         'userProfile' {
             $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
             $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
-        'logFolder' {
+        'Folder' {
             $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
         default {
-            if ([string]::IsNullOrEmpty($logFileName)) {
+            #by default 'filepath' is used and empty 
+            if ( [string]::IsNullOrEmpty($logFileName) ) {
                 $logFolder="$($MyInvocation.PSScriptRoot)\Logs"
                 $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
             } else {
-                $logFolder=Split-Path $logFileName -Parent
+                $logFolder = Split-Path $logFileName -Parent
                 if([string]::isNullOrEmpty($logFolder) ) {
                     $logFolder = $MyInvocation.PSScriptRoot
                 }
-                $script:logFile = $logFileName
+                $logFile = Split-Path $logFileName -Leaf
+                if( test-path $logFile -PathType Container ) {
+                    write-host "$logFileName seems to be an existing folder. use 'logFolder' parameter or change log name. quitting." -ForegroundColor Red
+                    exit -1
+                }
+                $script:logFile = "$logFolder\$logFile"
             }
         }
     }
@@ -174,8 +179,13 @@ function write-log {
             [switch]$skipTimestamp
     )
 
+    #if function is called without pre-initialize with start-logging, run it to initialize log.
     if( [string]::isNullOrEmpty($script:logFile) ){
-        start-Logging -logFolder "$($MyInvocation.PSScriptRoot)\Logs"
+        #these need to be calculated here, as $myinvocation context changes giving library name instead of script
+        $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
+        $logFolder = "$($MyInvocation.PSScriptRoot)\Logs"
+        $logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+        start-Logging -logFileName $logFile
     }
     #ensure that whatever the type is - array, object.. - it will be output as string, add runtime
     if($null -eq $message) {$message=''}
