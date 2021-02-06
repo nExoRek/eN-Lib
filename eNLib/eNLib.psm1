@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210205
+    version 210206
     changes
+        - 210206 write-log accepts all unnamed parameters as messages
         - 210205 write-log fixes
         - 210202 tuned write-log and start-logging, fixes and logical separation. v0.9
         - 201018 initialize 
@@ -111,7 +112,7 @@ function start-Logging {
                 $logFolder = Split-Path $logFileName -Parent
                 if([string]::isNullOrEmpty($logFolder) ) { #logfile name without full path, name only
                     if( [string]::isNullOrEmpty($MyInvocation.PSScriptRoot) ) { #run directly from console
-                        $logFolder = '.'
+                        $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
                     } else {
                         $logFolder = $MyInvocation.PSScriptRoot
                     }
@@ -170,6 +171,14 @@ function write-log {
 
         output 'all is fine' on the screen and to the log file.
     .EXAMPLE
+        write-log all is fine
+
+        outputs 
+            all 
+            is 
+            fine
+        on the screen and to the log file - all unnamed parameters are displayed
+    .EXAMPLE
         write-log -message "trees are green" -type ok
 
         shows 'trees are green' in Green colour, and send text to a log file.
@@ -187,8 +196,9 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210203
+        version 210206
         changes:
+            - 210206 valueFromRemainingArguments 
             - 210205 fix when run directly from console, init fixes
             - 210203 properly initiating log with new start-logging, when called indirectly
             - 210127 v1
@@ -201,16 +211,13 @@ function write-log {
     
     param(
         #message to display - can be an object
-        [parameter(mandatory=$false,position=0)]
+        [parameter(ValueFromRemainingArguments=$true,mandatory=$false,position=0)]
             $message,
         #adds description and colour dependently on message type
-        [parameter(mandatory=$false,position=1)]
             [string][validateSet('error','info','warning','ok')]$type,
         #do not output to a screen - logfile only
-        [parameter(mandatory=$false,position=2)]
             [switch]$silent,
         # do not show timestamp with the message
-        [Parameter(mandatory=$false,position=3)]
             [switch]$skipTimestamp
     )
 
