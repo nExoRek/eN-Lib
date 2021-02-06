@@ -21,13 +21,13 @@ ModuleVersion = '0.9.4'
 GUID = 'cdcd02e1-9fad-4374-9d9b-454294ebc3c3'
 
 # Author of this module
-Author = 'nExoR ::))o-'
+Author = '::))o-'
 
 # Company or vendor of this module
 CompanyName = 'LogicUnion'
 
 # Copyright statement for this module
-Copyright = '(GNU) 2021 nExoR ::))o-'
+Copyright = '(MIT) 2021 nExoR ::))o-'
 
 # Description of the functionality provided by this module
 Description = 'Some support functions helpful to speed up building scripts.'
@@ -95,13 +95,13 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        # Tags = @()
+        Tags = @('general','logging','log')
 
         # A URL to the license for this module.
-        # LicenseUri = ''
+        LicenseUri = 'https://opensource.org/licenses/MIT'
 
         # A URL to the main website for this project.
-        # ProjectUri = ''
+        ProjectUri = 'https://github.com/nExoRek/eN-Lib/tree/master/eNLib'
 
         # A URL to an icon representing this module.
         # IconUri = ''
