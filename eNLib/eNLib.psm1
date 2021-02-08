@@ -136,7 +136,7 @@ function start-Logging {
             exit -2
         }
     }
-    write-Log "*logging initiated $(get-date) in $($script:logFile)" -skipTimestamp #-silent
+    write-Log "*logging initiated $(get-date) in $($script:logFile)" -skipTimestamp -silent
     write-Log "*script parameters:" -silent -skipTimestamp
     if($script:PSBoundParameters.count -gt 0) {
         write-log $script:PSBoundParameters -silent -skipTimestamp
@@ -389,8 +389,9 @@ function get-AnswerBox {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210127
+        version 210208
             last changes
+            - 210208 icon, tune, info -> title
             - 210127 module
             - 210110 initialized
         
@@ -400,20 +401,32 @@ function get-AnswerBox {
     #>
     
     param(
-        [string]$OKButtonText = "OK",
-        [string]$CancelButtonText = "Cancel",
-        [string]$info = "Which option?",
-        [string]$detailedInfo = "What is your choice:"
+        #OK button text
+        [Parameter(mandatory=$false,position=0)]
+            [string]$OKButtonText = "OK",
+        #Canel button text
+        [Parameter(mandatory=$false,position=1)]
+            [string]$CancelButtonText = "Cancel",
+        #title bar text
+        [Parameter(mandatory=$false,position=2)]
+            [string]$title = "Which option?",
+        #message text
+        [Parameter(mandatory=$false,position=3)]
+            [string]$detailedInfo = "What is your choice:",
+        #messagebox icon
+        [Parameter(mandatory=$false,position=4)]
+            [validateSet('Asterisk','Error','Exclamation','Hand','Information','None','Question','Stop','Warning')]
+            [string]$icon='Question'
     )
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
     
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = $info
+    $form.Text = $title
     $form.Size = New-Object System.Drawing.Size(300,120)
     $form.StartPosition = 'CenterScreen'
-    $form.Icon = [System.Drawing.SystemIcons]::Question
+    $form.Icon = [System.Drawing.SystemIcons]::$icon
     $form.Topmost = $true
    
     $okButton = New-Object System.Windows.Forms.Button
@@ -475,7 +488,7 @@ function get-valueFromInputBox {
             - 210113 initialized
         
         TO|DO
-        - docked layout
+        - docked layout/autosize
     #>
     
     param(
@@ -531,7 +544,7 @@ function get-valueFromInputBox {
     $promptWindowForm.Controls.AddRange(@($lblPromptInfo, $txtUserInput,$btOK,$btCancel))
     $promptWindowForm.Topmost = $true
     $promptWindowForm.Add_Shown( { $promptWindowForm.Activate();$txtUserInput.Select() })
-    $result=$promptWindowForm.ShowDialog()
+    $result = $promptWindowForm.ShowDialog()
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         $response = $txtUserInput.Text
         return $response
@@ -543,8 +556,48 @@ function get-valueFromInputBox {
 
 #################################################### connection checkers
 function get-ExchangeConnectionStatus {
+    <#
+    .SYNOPSIS
+        check Ex/EXO connection status.
+    .DESCRIPTION
+        Exchange is using Remoting commands. this function verifies if session connection exists.
+    .EXAMPLE
+        get-ExchangeConnectionStatus -isCritical
+
+        checks connection and exits if not present.
+    .EXAMPLE
+        if(-not get-ExchangeConnectionStatus) {
+            write-log "you should connect to Exchange first, scrpt will run with limited options"
+        }
+
+        checks connection and warns about lack of Exchange connectivity.
+    .INPUTS
+        None.
+    .OUTPUTS
+        None.
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210208
+            last changes
+            - 210208 initialized
+    
+        #TO|DO
+        - isCritical flag
+        - verify domain name
+
+    #>
+    
     param(
-        [parameter(mandatory=$false,position=0)][validateSet('OnPrem','EXO')][string]$ExType='EXO'
+        #define if connection to EXO or Ex Onprem
+        [parameter(mandatory=$false,position=0)]
+            [validateSet('OnPrem','EXO')]
+            [string]$ExType='EXO',
+        #if connection is not established exit with error instead of returning $false.
+        [parameter(mandatory=$false,position=1)]
+            [switch]$isCritical
+            
     )
 
     $exConnection=$false
@@ -558,19 +611,56 @@ function get-ExchangeConnectionStatus {
             }
         }
     }
+    if($isCritical.IsPresent -and !$exConnection) {
+        write-log "connection to $ExType not established. quitting." -type error
+        exit -1
+    }
     return $exConnection
 }
 
 function connect-Azure {
+    <#
+    .SYNOPSIS
+        quick Azure connection check by verifying AzContext.
+    .DESCRIPTION
+        there is no session to Azure and Az commandlets are using saved AzContext and token. when 
+        token expires, context is returned, but connection attemt will return error. to clean it up
+        - best is to clear context and exforce re-authentication.
+    .EXAMPLE
+        connect-Azure
+
+        checks AzContext
+    .INPUTS
+        None.
+    .OUTPUTS
+        None.
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210208
+            last changes
+            - 210208 initialized
+    
+        #TO|DO
+    #>
+    
     try {
         $AzSourceContext=Get-AzContext
     } catch {
         write-log $_.exception -type error
+        write-log "trying to fix" -type info
+        Clear-AzContext -Force
+        write-log "re-run the script."
         exit -1
     }
     if([string]::IsNullOrEmpty( $AzSourceContext ) ) {
-            write-log "you need to be connected before running this script. use connect-AzAccount first." -type error
-            exit -1
+            write-log "you need to be connected before running this script. use connect-AzAccount first." -type warning
+            $AzSourceContext = Connect-AzAccount
+            if([string]::isNullOrEmpty($AzSourceContext) ) {
+                write-log "cancelled"
+                exit 0
+            }
     }
     write-log "connected to $($AzSourceContext.Subscription.name) as $($AzSourceContext.account.id)" -silent -type info
     write-host "Your Azure connection:"
