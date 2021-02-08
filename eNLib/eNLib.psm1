@@ -196,8 +196,9 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210206
+        version 210208
         changes:
+            - 210208 init from console fix
             - 210206 valueFromRemainingArguments 
             - 210205 fix when run directly from console, init fixes
             - 210203 properly initiating log with new start-logging, when called indirectly
@@ -205,8 +206,7 @@ function write-log {
             - 201018 initialize
 
         #TO|DO
-        - greedy variables as for write-host
-        - colouring codes for text 
+        - colouring codes for text - change screen text colour on ** <y></y> <r></r> <g></g> 
     #>
     
     param(
@@ -224,12 +224,12 @@ function write-log {
     #if function is called without pre-initialize with start-logging, run it to initialize log.
     if( [string]::isNullOrEmpty($script:logFile) ){
         #these need to be calculated here, as $myinvocation context changes giving library name instead of script
-        if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #it's run directly from console.
+        if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) -or ($MyInvocation.PSCommandPath -match '.psm1$')  ) { #it's run directly from console.
             $scriptBaseName = 'console'
         } else {
             $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
         }
-        if([string]::isNullOrEmpty($MyInvocation.PSScriptRoot) ) { #it's run directly from console
+        if([string]::isNullOrEmpty($MyInvocation.PSScriptRoot) -or ($MyInvocation.PSCommandPath -match '.psm1$')  ) { #it's run directly from console
             $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
         } else {
             $logFolder = "$($MyInvocation.PSScriptRoot)\Logs"
