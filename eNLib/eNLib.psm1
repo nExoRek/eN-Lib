@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210206
+    version 210209
     changes
+        - 210209 get-answerBox changes, wl fix
         - 210206 write-log accepts all unnamed parameters as messages
         - 210205 write-log fixes
         - 210202 tuned write-log and start-logging, fixes and logical separation. v0.9
@@ -196,9 +197,10 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210208
+        version 210209
         changes:
-            - 210208 init from console fix
+            - 210209 when initialized on console, wl was not creating script log and using console file. 
+            - 210209 init from console fix
             - 210206 valueFromRemainingArguments 
             - 210205 fix when run directly from console, init fixes
             - 210203 properly initiating log with new start-logging, when called indirectly
@@ -222,7 +224,7 @@ function write-log {
     )
 
     #if function is called without pre-initialize with start-logging, run it to initialize log.
-    if( [string]::isNullOrEmpty($script:logFile) ){
+    if( [string]::isNullOrEmpty($script:logFile) -and $script:logFile -notmatch '_console-[\d]*.log' ){
         #these need to be calculated here, as $myinvocation context changes giving library name instead of script
         if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) -or ($MyInvocation.PSCommandPath -match '.psm1$')  ) { #it's run directly from console.
             $scriptBaseName = 'console'
@@ -377,7 +379,7 @@ function get-AnswerBox {
         replacement for simple messageBox giving option to customize buttons, giving option
         to add some additional information
     .EXAMPLE
-        $response =  get-answerBox -OKButtonText 'YES' -CancelButtonText 'NO' -info 'choose your answer' -detailedInfo 'do you find this function useful?'
+        $response =  get-answerBox -OKButtonText 'YES' -CancelButtonText 'NO' -info 'choose your answer' -message 'do you find this function useful?'
         if($response) {
             write-host 'thank you!'
         }
@@ -389,14 +391,14 @@ function get-AnswerBox {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210208
+        version 210209
             last changes
+            - 210209 detailedInfo -> message (alias left for compatibility)
             - 210208 icon, tune, info -> title
             - 210127 module
             - 210110 initialized
         
-        TO|DO
-         - icon
+        #TO|DO
          - docked layouts
     #>
     
@@ -412,7 +414,8 @@ function get-AnswerBox {
             [string]$title = "Which option?",
         #message text
         [Parameter(mandatory=$false,position=3)]
-            [string]$detailedInfo = "What is your choice:",
+            [alias('detailedInfo')]
+            [string]$message = "What is your choice:",
         #messagebox icon
         [Parameter(mandatory=$false,position=4)]
             [validateSet('Asterisk','Error','Exclamation','Hand','Information','None','Question','Stop','Warning')]
@@ -448,7 +451,7 @@ function get-AnswerBox {
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(10,20)
     $label.Size = New-Object System.Drawing.Size(280,30)
-    $label.Text = $detailedInfo
+    $label.Text = $message
     $form.Controls.Add($label)
    
     $result = $form.ShowDialog()

@@ -20,8 +20,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201019
+    version 210208
         last changes
+        - 210208 run using relative path fix
         - 201019 initialized
 #>
 
@@ -56,7 +57,8 @@ try {
     if(-not (test-path $eNLibFolder) ) {
         new-item -Type Directory $eNLibFolder|Out-Null 
     }
-    Copy-Item -Path *.psd1,*.psm1 -Destination $eNLibFolder
+    $sourceFolder = get-item $MyInvocation.InvocationName
+    Copy-Item -Path "$($sourceFolder.Directory.FullName)\*.psd1","$($sourceFolder.Directory.FullName)\*.psm1" -Destination $eNLibFolder
 } catch {
     throw
 }
