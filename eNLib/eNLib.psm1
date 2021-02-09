@@ -393,13 +393,12 @@ function get-AnswerBox {
         nExoR ::))o-
         version 210209
             last changes
-            - 210209 detailedInfo -> message (alias left for compatibility)
+            - 210209 detailedInfo -> message (alias left for compatibility), autosize, anchors
             - 210208 icon, tune, info -> title
             - 210127 module
             - 210110 initialized
         
         #TO|DO
-         - docked layouts
     #>
     
     param(
@@ -428,13 +427,16 @@ function get-AnswerBox {
     $form = New-Object System.Windows.Forms.Form
     $form.Text = $title
     $form.Size = New-Object System.Drawing.Size(300,120)
+    $form.AutoSize = $true
     $form.StartPosition = 'CenterScreen'
+    $form.FormBorderStyle = 'Fixed3D'
     $form.Icon = [System.Drawing.SystemIcons]::$icon
     $form.Topmost = $true
    
     $okButton = New-Object System.Windows.Forms.Button
-    $okButton.Location = New-Object System.Drawing.Point(65,50)
+    $okButton.Location = New-Object System.Drawing.Point(50,50)
     $okButton.Size = New-Object System.Drawing.Size(75,23)
+    $okButton.Anchor = 'left,bottom'
     $okButton.Text = $OKButtonText
     $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
     $form.AcceptButton = $okButton
@@ -443,6 +445,7 @@ function get-AnswerBox {
     $cancelButton = New-Object System.Windows.Forms.Button
     $cancelButton.Location = New-Object System.Drawing.Point(160,50)
     $cancelButton.Size = New-Object System.Drawing.Size(75,23)
+    $cancelButton.Anchor = 'right,bottom'
     $cancelButton.Text = $CancelButtonText
     $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
     $form.CancelButton = $cancelButton
@@ -450,7 +453,9 @@ function get-AnswerBox {
     
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(10,20)
-    $label.Size = New-Object System.Drawing.Size(280,30)
+    
+    $label.AutoSize = $true
+    $label.Anchor = 'left,top'
     $label.Text = $message
     $form.Controls.Add($label)
    
