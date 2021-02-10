@@ -9,9 +9,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210209
+    version 210210
     changes
-        - 210209 get-answerBox changes, wl fix
+        - 210210 write-log and start-logging init fix
+        - 210209 get-answerBox changes, get-valueFromInputBox, wl fix
         - 210206 write-log accepts all unnamed parameters as messages
         - 210205 write-log fixes
         - 210202 tuned write-log and start-logging, fixes and logical separation. v0.9
@@ -71,8 +72,9 @@ function start-Logging {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210205
+        version 210210
         changes:
+            - 210210 removing recurrency to write-log (loop elimination)
             - 210205 fixes to logfilename initialization
             - 210203 added 'logFolder' and proper log initilization when called indirectly
             - 210127 v1
@@ -92,9 +94,15 @@ function start-Logging {
             [string]$logFolder
     )
 
-    $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename
-    if([string]::isNullOrEmpty($scriptBaseName) ) {
+    #write-host -ForegroundColor red ">>$($MyInvocation.PSCommandPath)<<"
+    if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) {
         $scriptBaseName = 'console'
+        $script:lastScriptUsed = 'console'
+    } elseif( $MyInvocation.PSCommandPath -match 'eNLib.psm1$' ) {
+        $scriptBaseName = $script:lastScriptUsed
+    } else {
+        $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename
+        $script:lastScriptUsed = $scriptBaseName
     }
     switch($PSCmdlet.ParameterSetName) {
         'userProfile' {
@@ -104,12 +112,15 @@ function start-Logging {
         'Folder' {
             $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
-        default {
-            #by default 'filepath' is used and empty 
-            if ( [string]::IsNullOrEmpty($logFileName) ) {
+        'filePath' {
+            if($scriptBaseName -eq 'console') {
+                $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+                $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
+            }elseif ( [string]::IsNullOrEmpty($logFileName) ) {          #by default 'filepath' is used and empty 
                 $logFolder="$($MyInvocation.PSScriptRoot)\Logs"
                 $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
             } else {
+                #logfile can be: 1. file, 2. folder, 3. fullpath
                 $logFolder = Split-Path $logFileName -Parent
                 if([string]::isNullOrEmpty($logFolder) ) { #logfile name without full path, name only
                     if( [string]::isNullOrEmpty($MyInvocation.PSScriptRoot) ) { #run directly from console
@@ -126,27 +137,31 @@ function start-Logging {
                 $script:logFile = "$logFolder\$logFile"
             }
         }
+        default {
+            write-host -ForegroundColor Magenta 'very strange error'
+            exit -666
+        }
     }
 
     if(-not (test-path $logFolder) ) {
         try{ 
-            New-Item -ItemType Directory -Path $logFolder|Out-Null
+            New-Item -ItemType Directory -Path $logFolder -ErrorAction Stop|Out-Null
             write-host "$LogFolder created."
         } catch {
             write-error $_.exception
             exit -2
         }
     }
-    write-Log "*logging initiated $(get-date) in $($script:logFile)" -skipTimestamp -silent
-    write-Log "*script parameters:" -silent -skipTimestamp
+    "*logging initiated $(get-date) in $($script:logFile)"|Out-File $script:logFile -Append
+    write-host "*logging initiated $(get-date) in $($script:logFile)"
+    "*script parameters:"|Out-File $script:logFile -Append
     if($script:PSBoundParameters.count -gt 0) {
-        write-log $script:PSBoundParameters -silent -skipTimestamp
+        $script:PSBoundParameters|Out-File $script:logFile -Append
     } else {
-        write-log "<none>" -silent -skipTimestamp
+        "<none>"|Out-File $script:logFile -Append
     }
-    write-log "***************************************************" -silent -skipTimestamp
+    "***************************************************"|Out-File $script:logFile -Append
 }
-
 function write-log {
     <#
     .SYNOPSIS
@@ -197,8 +212,9 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210209
+        version 210210
         changes:
+            - 210210 v2. init finally works!
             - 210209 when initialized on console, wl was not creating script log and using console file. 
             - 210209 init from console fix
             - 210206 valueFromRemainingArguments 
@@ -223,22 +239,19 @@ function write-log {
             [switch]$skipTimestamp
     )
 
-    #if function is called without pre-initialize with start-logging, run it to initialize log.
-    if( [string]::isNullOrEmpty($script:logFile) -and $script:logFile -notmatch '_console-[\d]*.log' ){
-        #these need to be calculated here, as $myinvocation context changes giving library name instead of script
-        if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) -or ($MyInvocation.PSCommandPath -match '.psm1$')  ) { #it's run directly from console.
-            $scriptBaseName = 'console'
-        } else {
-            $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
-        }
-        if([string]::isNullOrEmpty($MyInvocation.PSScriptRoot) -or ($MyInvocation.PSCommandPath -match '.psm1$')  ) { #it's run directly from console
-            $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-        } else {
-            $logFolder = "$($MyInvocation.PSScriptRoot)\Logs"
-        }
-        $logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
-        start-Logging -logFileName $logFile
+    if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #it's run directly from console.
+        $scriptBaseName = 'console'
+        $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+    } else {
+        $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
+        $logFolder = "$($MyInvocation.PSScriptRoot)\Logs"
     }
+    if( [string]::isNullOrEmpty($script:logFile) -or ( $script:lastScriptUsed -ne $scriptbasename) ) {   
+        $script:lastScriptUsed = $scriptBaseName
+        $logFileName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+        start-Logging -logFileName $logFileName
+    }
+
     #ensure that whatever the type is - array, object.. - it will be output as string, add runtime
     if($null -eq $message) {$message=''}
     $message=($message|out-String).trim() 
@@ -424,14 +437,15 @@ function get-AnswerBox {
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
     
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = $title
-    $form.Size = New-Object System.Drawing.Size(300,120)
-    $form.AutoSize = $true
-    $form.StartPosition = 'CenterScreen'
-    $form.FormBorderStyle = 'Fixed3D'
-    $form.Icon = [System.Drawing.SystemIcons]::$icon
-    $form.Topmost = $true
+    $messageBoxForm = New-Object System.Windows.Forms.Form
+    $messageBoxForm.Text = $title
+    $messageBoxForm.Size = New-Object System.Drawing.Size(300,120)
+    $messageBoxForm.AutoSize = $true
+    $messageBoxForm.StartPosition = 'CenterScreen'
+    $messageBoxForm.FormBorderStyle = 'Fixed3D'
+    $messageBoxForm.Icon = [System.Drawing.SystemIcons]::$icon
+    $messageBoxForm.Topmost = $true
+    $messageBoxForm.MaximizeBox = $false
    
     $okButton = New-Object System.Windows.Forms.Button
     $okButton.Location = New-Object System.Drawing.Point(50,50)
@@ -439,8 +453,8 @@ function get-AnswerBox {
     $okButton.Anchor = 'left,bottom'
     $okButton.Text = $OKButtonText
     $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $form.AcceptButton = $okButton
-    $form.Controls.Add($okButton)
+    $messageBoxForm.AcceptButton = $okButton
+    $messageBoxForm.Controls.Add($okButton)
     
     $cancelButton = New-Object System.Windows.Forms.Button
     $cancelButton.Location = New-Object System.Drawing.Point(160,50)
@@ -448,8 +462,8 @@ function get-AnswerBox {
     $cancelButton.Anchor = 'right,bottom'
     $cancelButton.Text = $CancelButtonText
     $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $form.CancelButton = $cancelButton
-    $form.Controls.Add($cancelButton)
+    $messageBoxForm.CancelButton = $cancelButton
+    $messageBoxForm.Controls.Add($cancelButton)
     
     $label = New-Object System.Windows.Forms.Label
     $label.Location = New-Object System.Drawing.Point(10,20)
@@ -457,9 +471,9 @@ function get-AnswerBox {
     $label.AutoSize = $true
     $label.Anchor = 'left,top'
     $label.Text = $message
-    $form.Controls.Add($label)
+    $messageBoxForm.Controls.Add($label)
    
-    $result = $form.ShowDialog()
+    $result = $messageBoxForm.ShowDialog()
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         return $true
     } 
@@ -491,59 +505,72 @@ function get-valueFromInputBox {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210113
-            last changes
+        version 210209
+        last changes
+            - 210209 anchored layout
             - 210113 initialized
         
-        TO|DO
-        - docked layout/autosize
+        #TO|DO
     #>
     
     param(
         [parameter(mandatory=$false,position=0)]
             [string]$title='input',
         [parameter(mandatory=$false,position=1)]
-            [string]$text='put your input',
+            [alias('text')]
+            [string]$message='put your input',
         [parameter(mandatory=$false,position=2)]
             [validateSet('Asterisk','Error','Exclamation','Hand','Information','None','Question','Stop','Warning')]
-            [string]$type='Question'
+            [string]$type='Question',
+        #maximum number of characters allowed
+        [Parameter(mandatory=$false,position=3)]
+            [int]$maxChars = 30
     )
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.Application]::EnableVisualStyles()
 
     $promptWindowForm = New-Object system.Windows.Forms.Form
-    $promptWindowForm.ClientSize = '250,100'
+    $promptWindowForm.Size = New-Object System.Drawing.Size(250,140)
     $promptWindowForm.text = $title
     $promptWindowForm.BackColor = "#ffffff"
     $promptWindowForm.AutoSize = $true
     $promptWindowForm.StartPosition = 'CenterScreen'
+    $promptWindowForm.FormBorderStyle = 'Fixed3D'
+    $promptWindowForm.MaximizeBox = $false
     $promptWindowForm.Icon = [System.Drawing.SystemIcons]::$type
     $promptWindowForm.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 10)
 
     $lblPromptInfo = New-Object System.Windows.Forms.Label 
     $lblPromptInfo.Location = New-Object System.Drawing.Size(10,5) 
-    $lblPromptInfo.Size = New-Object System.Drawing.Size(230,40)
-    $lblPromptInfo.Text = $text
+    #$lblPromptInfo.Size = New-Object System.Drawing.Size(230,40)
+    $lblPromptInfo.AutoSize = $true
+    $lblPromptInfo.MinimumSize = New-Object System.Drawing.Size(235,10)
+    $lblPromptInfo.Anchor = 'left,top'
+    $lblPromptInfo.Text = $message
 
     $txtUserInput = New-Object system.Windows.Forms.TextBox
     $txtUserInput.multiline = $false
     $txtUserInput.ReadOnly = $false
-    $txtUserInput.width = 230
-    $txtUserInput.height = 25
-    $txtUserInput.location = New-Object System.Drawing.Point(10, 50)
+    $txtUserInput.MinimumSize = New-Object System.Drawing.Size(230,25)
+    $txtUserInput.autosize = $true
+    $txtUserInput.Anchor = "none" #effectively - center
+    $txtUserInput.MaxLength = $maxChars
+    $txtUserInput.location = New-Object System.Drawing.Point(0, 35)
 
     $btOK = New-Object System.Windows.Forms.Button
-    $btOK.Location = New-Object System.Drawing.Size(30,80) 
+    $btOK.Location = New-Object System.Drawing.Size(30,70) 
     $btOK.Size = New-Object System.Drawing.Size(70,20)
     $btOK.ForeColor = "Green"
+    $btOK.Anchor = "left,bottom"
     $btOK.Text = "Continue"
     $btOK.DialogResult = [System.Windows.Forms.DialogResult]::OK
 
     $btCancel = New-Object System.Windows.Forms.Button
-    $btCancel.Location = New-Object System.Drawing.Size(150,80) 
+    $btCancel.Location = New-Object System.Drawing.Size(150,70) 
     $btCancel.Size = New-Object System.Drawing.Size(70,20)
     $btCancel.ForeColor = "Red"
+    $btCancel.Anchor = "right,bottom"
     $btCancel.Text = "Cancel"
     $btCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
 
