@@ -98,7 +98,7 @@ function start-Logging {
     if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) {
         $scriptBaseName = 'console'
         $script:lastScriptUsed = 'console'
-    } elseif( $MyInvocation.PSCommandPath -match 'eNLib.psm1$' ) {
+    } elseif( $MyInvocation.PSCommandPath -match '\.psm1$' ) {
         $scriptBaseName = $script:lastScriptUsed
     } else {
         $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename
@@ -107,18 +107,18 @@ function start-Logging {
     switch($PSCmdlet.ParameterSetName) {
         'userProfile' {
             $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-            $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+            $global:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
         'Folder' {
-            $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+            $global:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
         'filePath' {
             if($scriptBaseName -eq 'console') {
                 $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-                $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
+                $global:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
             }elseif ( [string]::IsNullOrEmpty($logFileName) ) {          #by default 'filepath' is used and empty 
                 $logFolder="$($MyInvocation.PSScriptRoot)\Logs"
-                $script:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
+                $global:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
             } else {
                 #logfile can be: 1. file, 2. folder, 3. fullpath
                 $logFolder = Split-Path $logFileName -Parent
@@ -134,7 +134,7 @@ function start-Logging {
                     write-host "$logFileName seems to be an existing folder. use 'logFolder' parameter or change log name. quitting." -ForegroundColor Red
                     exit -1
                 }
-                $script:logFile = "$logFolder\$logFile"
+                $global:logFile = "$logFolder\$logFile"
             }
         }
         default {
@@ -152,15 +152,15 @@ function start-Logging {
             exit -2
         }
     }
-    "*logging initiated $(get-date) in $($script:logFile)"|Out-File $script:logFile -Append
-    write-host "*logging initiated $(get-date) in $($script:logFile)"
-    "*script parameters:"|Out-File $script:logFile -Append
+    "*logging initiated $(get-date) in $($global:logFile)"|Out-File $global:logFile -Append
+    write-host "*logging initiated $(get-date) in $($global:logFile)"
+    "*script parameters:"|Out-File $global:logFile -Append
     if($script:PSBoundParameters.count -gt 0) {
-        $script:PSBoundParameters|Out-File $script:logFile -Append
+        $script:PSBoundParameters|Out-File $global:logFile -Append
     } else {
-        "<none>"|Out-File $script:logFile -Append
+        "<none>"|Out-File $global:logFile -Append
     }
-    "***************************************************"|Out-File $script:logFile -Append
+    "***************************************************"|Out-File $global:logFile -Append
 }
 function write-log {
     <#
@@ -239,14 +239,18 @@ function write-log {
             [switch]$skipTimestamp
     )
 
+    $callStack = (Get-PSCallStack |? ScriptName)[-1]
     if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #it's run directly from console.
         $scriptBaseName = 'console'
         $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+    } elseif( -not [string]::isNullOrEmpty( $callStack ) ){  #$MyInvocation.PSCommandPath -match '\.psm1') {
+        $logFolder = split-path "$($callStack.scriptname)\Logs" -Parent
+        $scriptBaseName = ([System.IO.FileInfo]$callStack.scriptname).basename
     } else {
         $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
         $logFolder = "$($MyInvocation.PSScriptRoot)\Logs"
     }
-    if( [string]::isNullOrEmpty($script:logFile) -or ( $script:lastScriptUsed -ne $scriptbasename) ) {   
+    if( [string]::isNullOrEmpty($global:logFile) -or ( $script:lastScriptUsed -ne $scriptbasename) ) {   
         $script:lastScriptUsed = $scriptBaseName
         $logFileName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         start-Logging -logFileName $logFileName
@@ -266,7 +270,7 @@ function write-log {
         }
         $finalMessageString += $message
         $message=$finalMessageString -join ''
-        Add-Content -Path $script:logFile -Value $message
+        Add-Content -Path $global:logFile -Value $message
         if(-not $silent) {
             switch($type) {
                 'error' {
