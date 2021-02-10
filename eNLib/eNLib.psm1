@@ -244,7 +244,7 @@ function write-log {
         $scriptBaseName = 'console'
         $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
     } elseif( -not [string]::isNullOrEmpty( $callStack ) ){  #$MyInvocation.PSCommandPath -match '\.psm1') {
-        $logFolder = split-path "$($callStack.scriptname)\Logs" -Parent
+        $logFolder = "$(split-path $callStack.scriptname -Parent)\Logs"
         $scriptBaseName = ([System.IO.FileInfo]$callStack.scriptname).basename
     } else {
         $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
