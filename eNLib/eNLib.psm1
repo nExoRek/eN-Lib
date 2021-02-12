@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210210
+    version 210212
     changes
+        - 210212 wl fix
         - 210210 write-log and start-logging init fix
         - 210209 get-answerBox changes, get-valueFromInputBox, wl fix
         - 210206 write-log accepts all unnamed parameters as messages
@@ -95,12 +96,16 @@ function start-Logging {
     )
 
     #write-host -ForegroundColor red ">>$($MyInvocation.PSCommandPath)<<"
-    if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) {
+    if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #if run from console - set the logfile name as 'console'
         $scriptBaseName = 'console'
         $script:lastScriptUsed = 'console'
-    } elseif( $MyInvocation.PSCommandPath -match '\.psm1$' ) {
-        $scriptBaseName = $script:lastScriptUsed
-    } else {
+    } elseif( $MyInvocation.PSCommandPath -match '\.psm1$' ) { #if run from inside module...
+        if([string]::isNullOrEmpty($script:lastScriptUsed) ) {
+            $scriptBaseName = 'console'
+        } else {
+            $scriptBaseName = $script:lastScriptUsed
+        }
+    } else { #regular run from the script - take a script basename as logfile name
         $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename
         $script:lastScriptUsed = $scriptBaseName
     }
@@ -212,8 +217,9 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210210
+        version 210212
         changes:
+            - 210212 imporper name when calling from console thru module
             - 210210 v2. init finally works!
             - 210209 when initialized on console, wl was not creating script log and using console file. 
             - 210209 init from console fix
@@ -239,13 +245,18 @@ function write-log {
             [switch]$skipTimestamp
     )
 
-    $callStack = (Get-PSCallStack |? ScriptName)[-1]
+    $callStack = (Get-PSCallStack |Where-Object ScriptName)[-1]
     if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #it's run directly from console.
         $scriptBaseName = 'console'
         $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-    } elseif( -not [string]::isNullOrEmpty( $callStack ) ){  #$MyInvocation.PSCommandPath -match '\.psm1') {
-        $logFolder = "$(split-path $callStack.scriptname -Parent)\Logs"
-        $scriptBaseName = ([System.IO.FileInfo]$callStack.scriptname).basename
+    } elseif( -not [string]::isNullOrEmpty( $callStack ) ){ 
+        if( $callStack.ScriptName -match '\.psm1$' ) { #run from inside module
+            $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+            $scriptBaseName = 'console'
+        } else {
+            $logFolder = "$(split-path $callStack.scriptname -Parent)\Logs"
+            $scriptBaseName = ([System.IO.FileInfo]$callStack.scriptname).basename
+        }
     } else {
         $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
         $logFolder = "$($MyInvocation.PSScriptRoot)\Logs"

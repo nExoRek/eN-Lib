@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.9.13'
+ModuleVersion = '0.9.14'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -30,7 +30,7 @@ CompanyName = 'LogicUnion'
 Copyright = '(MIT) 2021 nExoR ::))o-'
 
 # Description of the functionality provided by this module
-Description = 'write-log function forking information on the screen and to file, password generator, input message GUI, 
+Description = 'write-log function forking information to the screen and to the file, password generator, input message GUI, 
 connection checkers and couple other usefull functions helping to write scripts easier and faster.'
 
 # Minimum version of the Windows PowerShell engine required by this module
@@ -96,7 +96,7 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        Tags = @('general','logging','log')
+        Tags = @('write-log','logging','log','utility','GUI')
 
         # A URL to the license for this module.
         LicenseUri = 'https://opensource.org/licenses/MIT'
