@@ -27,7 +27,7 @@ foreach($site in $data) {
 
     $newSiteTitle = "SDS $($site.'site name')"
 
-    write-log "site $($site.URL) will be changed to $newSiteURL and title $newSiteTitle" -type info
+    write-log "site ""$($site.URL)"" will be changed to ""$newSiteURL"" and title ""$newSiteTitle""" -type info
     try {
         Start-SPOSiteRename -Identity $site.url -NewSiteUrl $newSiteURL -NewSiteTitle $newSiteTitle -Confirm:$false
     } catch {
