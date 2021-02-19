@@ -19,9 +19,10 @@
         - 210208 select-recoveryVault, descriptions, fixes...
         - 210202 initialized alpha
     #TO|DO
+    - -autoSelectSingleValue to all functions
+    - allow multiple selection for some of the resources
 
 #>
-import-module eNLib
 Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 
 #################################################### Az pseudo-GUI Extension
@@ -30,9 +31,11 @@ function select-Subscription {
     .SYNOPSIS
         pseudo-GUI function to allow Azure context change 
     .DESCRIPTION
-        #TODO
+        list all subscruption and displays as out-gridview. when selected - changes context.
     .EXAMPLE
-        #TODO
+        select-Subscription
+
+        show all available subscription and allow to change context.
     .INPUTS
         None.
     .OUTPUTS
@@ -102,7 +105,9 @@ function select-ResourceGroup {
     .DESCRIPTION
         #todo
     .EXAMPLE
-        #todo
+        $RG = select-resourceGroup
+
+        displays all ResourceGroups in current context and assign chosen under $RG
     .INPUTS
         None.
     .OUTPUTS
@@ -148,6 +153,30 @@ function select-ResourceGroup {
     return (Get-AzResourceGroup -Name $ResourceGroup.ResourceGroupName)
 }
 function select-StorageAccount {
+    <#
+    .SYNOPSIS
+        allows to select storage account in visual control.
+    .DESCRIPTION
+        #todo
+    .EXAMPLE
+        $sa = select-resourceGroup -isCritical|select-StorageAccount -title 'choose wisely' -message 'choose Storage Account for deletion' -isCritical
+
+        allows to choose ResourceGroup - if cancelled, operation will exit. then shows Storage Account withing this RG with some titles.
+    .INPUTS
+        None.
+    .OUTPUTS
+        None.
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210219
+            last changes
+            - 210219 initialized
+    
+        #TO|DO
+    #>
+    
     param(
     #message displayed on the screen before windows popup
     [Parameter(mandatory=$false,position=0)]
