@@ -4,6 +4,7 @@
 !/QoD\ Migration/
 !/GroupMove/
 !/eNLib/
+!/Az.PseudoGUI/
 !/PSCmdletTest/
 #...except PS
 !*.ps1
