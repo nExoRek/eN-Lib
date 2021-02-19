@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210212
+    version 210219
     changes
+        - 210219 load-CSV function added
         - 210212 wl fix
         - 210210 write-log and start-logging init fix
         - 210209 get-answerBox changes, get-valueFromInputBox, wl fix
@@ -305,6 +306,91 @@ function write-log {
         Write-Error 'not able to write to log. suggest to cancel the script run.'
         $_.exception
     }      
+}
+function load-CSV {
+    <#
+    .SYNOPSIS
+        loads CSV file with header check.
+    .DESCRIPTION
+        support function to gather data from CSV file with ability to ensure it is correct CSV file by
+        enumerating header.
+        with non-critical header function allows to add missing columns.
+    .EXAMPLE
+        $inputCSV = "c:\temp\mydata.csv"
+        $header=@('column1','column2')
+        $data = load-CSV -header $header -headerIsCritical -delimiter ';' -inputCSV $inputCSV
+        
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210219
+            last changes
+            - 210219 initialized
+    
+        #TO|DO
+        - automatic delimiter detection
+        - add nonCritical header + crit header handling
+    #>
+
+    param(
+        #path to CSV file containing data
+        [parameter(mandatory=$true,position=0)]
+            [string]$inputCSV,
+        #expected header
+        [parameter(mandatory=$true,position=1)]
+            [string[]]$header,
+        #this flag causes exit on load if any column is missing. 
+        [parameter(mandatory=$false,position=2)]
+            [switch]$headerIsCritical,
+        #CSV delimiter if different then regional settings
+        [parameter(mandatory=$false,position=3)]
+            [string]$delimiter=','
+    )
+
+    if(-not (test-path $inputCSV) ) {
+        write-log "$inputCSV not found." -type error
+        exit -1
+    }
+
+    try {
+        $CSVData=import-csv -path "$inputCSV" -delimiter $delimiter -Encoding UTF8
+    } catch {
+        Write-log "not able to open $inputCSV. quitting." -type error 
+        exit -2
+    }
+
+    $csvHeader=$CSVData|get-Member -MemberType NoteProperty|select-object -ExpandProperty Name
+    $hmiss=@()
+    foreach($el in $header) {
+        if($csvHeader -notcontains $el) {
+            Write-log """$el"" column missing in imported csv" -type warning
+            $hmiss+=$el
+        }
+    }
+    if($hmiss) {
+        if($headerIsCritical) {
+            Write-log "Wrong CSV header. check delimiter used. quitting." -type error
+            exit -2
+        }
+        $ans=Read-Host -Prompt "some columns are missing. type 'add' to add them, 'c' to continue or anything else to cancel"
+        switch($ans) {
+            'add' {
+                foreach($newCol in $hmiss) {
+                    $CSVData|add-member  -MemberType NoteProperty -Name $newCol -value ''
+                }
+                write-log "header extended" -type info
+            }
+            'c' {
+                write-log "continuing without header change" -type info
+            }
+            default {
+                write-log "cancelled. exitting." -type info
+                exit -7
+            }
+        }
+    }
+    return $CSVData
 }
 
 function new-RandomPassword {

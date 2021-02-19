@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.9.14'
+ModuleVersion = '0.9.15'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -30,8 +30,8 @@ CompanyName = 'LogicUnion'
 Copyright = '(MIT) 2021 nExoR ::))o-'
 
 # Description of the functionality provided by this module
-Description = 'write-log function forking information to the screen and to the file, password generator, input message GUI, 
-connection checkers and couple other usefull functions helping to write scripts easier and faster.'
+Description = 'write-log function forking information to the screen and to the file, load-CSV function, password generator, 
+input message GUI, connection checkers and couple other usefull functions helping to write scripts easier and faster.'
 
 # Minimum version of the Windows PowerShell engine required by this module
 PowerShellVersion = '5.0'
@@ -70,7 +70,7 @@ PowerShellVersion = '5.0'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = 'start-Logging', 'write-Log', 'new-randomPassword', 'get-AnswerBox', 'get-valueFromInputBox', 'get-ExchangeConnectionStatus', 'connect-Azure'
+FunctionsToExport = 'start-Logging', 'write-Log', 'load-CSV', 'new-randomPassword', 'get-AnswerBox', 'get-valueFromInputBox', 'get-ExchangeConnectionStatus', 'connect-Azure'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
@@ -96,7 +96,7 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        Tags = @('write-log','logging','log','utility','GUI')
+        Tags = @('write-log','logging','log','utility','GUI','CSV','password')
 
         # A URL to the license for this module.
         LicenseUri = 'https://opensource.org/licenses/MIT'

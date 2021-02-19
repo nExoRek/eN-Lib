@@ -13,4 +13,7 @@ function f2 {
     f1
 
 }
+function level1-callstack {
+    Get-PSCallStack
+}
 Export-ModuleMember -Function *
