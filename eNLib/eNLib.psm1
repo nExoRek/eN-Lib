@@ -11,7 +11,7 @@
     nExoR ::))o-
     version 210219
     changes
-        - 210219 load-CSV function added
+        - 210219 import-structuredCSV function added, with alias load-csv, fix to connect-azure
         - 210212 wl fix
         - 210210 write-log and start-logging init fix
         - 210209 get-answerBox changes, get-valueFromInputBox, wl fix
@@ -307,7 +307,7 @@ function write-log {
         $_.exception
     }      
 }
-function load-CSV {
+function import-structuredCSV {
     <#
     .SYNOPSIS
         loads CSV file with header check.
@@ -392,6 +392,7 @@ function load-CSV {
     }
     return $CSVData
 }
+set-alias -Name load-CSV -Value import-structuredCSV
 
 function new-RandomPassword {
     <#
@@ -762,10 +763,13 @@ function connect-Azure {
         there is no session to Azure and Az commandlets are using saved AzContext and token. when 
         token expires, context is returned, but connection attemt will return error. to clean it up
         - best is to clear context and exforce re-authentication.
+
+        function is checking azcontext and test connection by calling get-AzTenant. clears context if 
+        connection is broken.
     .EXAMPLE
         connect-Azure
 
-        checks AzContext
+        checks AzContext and connection health
     .INPUTS
         None.
     .OUTPUTS
@@ -774,8 +778,10 @@ function connect-Azure {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210208
+        version 210220
             last changes
+            - 210220 proper handiling of consonle call - return instead of exit
+            - 210219 extended handling of context expiration
             - 210208 initialized
     
         #TO|DO
@@ -787,16 +793,34 @@ function connect-Azure {
         write-log $_.exception -type error
         write-log "trying to fix" -type info
         Clear-AzContext -Force
-        write-log "re-run the script."
-        exit -1
     }
     if([string]::IsNullOrEmpty( $AzSourceContext ) ) {
             write-log "you need to be connected before running this script. use connect-AzAccount first." -type warning
-            $AzSourceContext = Connect-AzAccount
+            $AzSourceContext = Connect-AzAccount -ErrorAction SilentlyContinue
             if([string]::isNullOrEmpty($AzSourceContext) ) {
-                write-log "cancelled"
-                exit 0
+                if( (Get-PSCallStack).count -gt 2 ) { #run from script
+                    write-log "cancelled"
+                    exit 0
+                } else { #run from console  
+                    write-log "cancelled"
+                    return $null
+                }          
             }
+            $AzSourceContext = Get-AzContext
+    } else {
+        try{
+            $azTenant=Get-AzTenant -ErrorAction stop
+        } catch {
+            write-log $_.exception -type error
+            write-log "trying to fix" -type info
+            Clear-AzContext -Force
+            write-log "re-run the script."
+            if( (Get-PSCallStack).count -gt 2 ) { #run from script
+                exit -1
+            } else { #run from console  
+                return $null
+            }
+        }
     }
     write-log "connected to $($AzSourceContext.Subscription.name) as $($AzSourceContext.account.id)" -silent -type info
     write-host "Your Azure connection:"
@@ -807,5 +831,5 @@ function connect-Azure {
     Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 }
 
-Export-ModuleMember -Function * -Variable 'logFile'
+Export-ModuleMember -Function * -Variable 'logFile' -Alias 'load-CSV'
 

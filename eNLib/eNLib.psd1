@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.9.15'
+ModuleVersion = '0.9.17'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -30,7 +30,7 @@ CompanyName = 'LogicUnion'
 Copyright = '(MIT) 2021 nExoR ::))o-'
 
 # Description of the functionality provided by this module
-Description = 'write-log function forking information to the screen and to the file, load-CSV function, password generator, 
+Description = 'write-log function forking information to the screen and to the file, import-structuredCSV function, password generator, 
 input message GUI, connection checkers and couple other usefull functions helping to write scripts easier and faster.'
 
 # Minimum version of the Windows PowerShell engine required by this module
@@ -70,7 +70,7 @@ PowerShellVersion = '5.0'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = 'start-Logging', 'write-Log', 'load-CSV', 'new-randomPassword', 'get-AnswerBox', 'get-valueFromInputBox', 'get-ExchangeConnectionStatus', 'connect-Azure'
+FunctionsToExport = 'start-Logging', 'write-Log', 'import-structuredCSV', 'new-randomPassword', 'get-AnswerBox', 'get-valueFromInputBox', 'get-ExchangeConnectionStatus', 'connect-Azure'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
@@ -79,7 +79,7 @@ CmdletsToExport = @()
 VariablesToExport = @('logFile')
 
 # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
-AliasesToExport = @()
+AliasesToExport = @('load-CSV')
 
 # DSC resources to export from this module
 # DscResourcesToExport = @()
