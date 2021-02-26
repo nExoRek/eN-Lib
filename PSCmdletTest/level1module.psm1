@@ -2,6 +2,10 @@ function f1 {
     [cmdletbinding()]
     param()
 
+    <#
+        $myinvocation.MyCommand.Path is empty for functions - functions do not have paths
+        $myincocation.mycommand will return function name.
+    #>
     return $PSCommandPath
 
 }

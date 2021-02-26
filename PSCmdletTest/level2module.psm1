@@ -4,7 +4,7 @@ function level2-f1 {
 
     f1 
 }
-function level2-f2 {
+function level2-callstack {
     [cmdletbinding()]
     param()
 
