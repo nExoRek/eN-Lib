@@ -13,15 +13,15 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210301
+    version 210302
         last changes
-        - 210301 storageAccount choice fixed
+        - 210302 functions retun $null on cancel, autoselect, fixes and help 
+        - 210301 storageAccount choice fixed, select-networksecuritygroup added, multiselect for some functions
         - 210215 seelct-vnet and select-subnet fixes, select-recoveryContainer
         - 210208 select-recoveryVault, descriptions, fixes...
         - 210202 initialized alpha
     #TO|DO
     - -autoSelectSingleValue to all functions
-    - allow multiple selection for some of the resources
     - option to repeat-until for resource choices (-repeatUntilCancel)
 #>
 Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
@@ -43,8 +43,9 @@ function select-Subscription {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210127
+        version 210302
             last changes
+            - 210302 autoselectsingle
             - 210220 fixes to exit logic
             - 210127 initialized
     #>
@@ -57,7 +58,10 @@ function select-Subscription {
             [string]$title = 'Select Subscription',
         #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
-            [switch]$isCritical
+            [switch]$isCritical,
+        #automatically select value if there is only single option
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption
     )
     try {
         $subscriptionList = Get-AzSubscription
@@ -68,16 +72,21 @@ function select-Subscription {
             }
             return -1
         }
-        write-log $message
-        $sourceSubscription = $subscriptionList | out-GridView -title $title -OutputMode Single
-        if($null -eq $sourceSubscription) {
-            write-log "operation cancelled by the user."
-            if($isCritical.IsPresent) {
-                exit 0
-            }        
-            return 0
+        if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($subscriptionList.count) ) {
+            write-log "single subscription: $($subscriptionList.name) found. selecting." -type info
+            $sourceSubscription = $subscriptionList
+        } else {
+            write-log $message
+            $sourceSubscription = $subscriptionList | out-GridView -title $title -OutputMode Single
+            if($null -eq $sourceSubscription) {
+                write-log "operation cancelled by the user."
+                if($isCritical.IsPresent) {
+                    exit 0
+                }        
+                return $null
+            }
+            write-log "chosen subscription: $($sourceSubscription.name)" -type info
         }
-        write-log "chosen subscription: $($sourceSubscription.name)" -type info
     } catch {
         write-log "error getting Subscription list $($_.exception)" -type error
         if($isCritical.IsPresent) {
@@ -114,8 +123,9 @@ function select-ResourceGroup {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210220
+        version 210302
             last changes
+            - 210302 autoselectsingle
             - 210220 multichoice
             - 210127 initialized
     #>
@@ -129,8 +139,11 @@ function select-ResourceGroup {
         #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
             [switch]$isCritical,
-        #allow multiple choice
+        #automatically select value if there is only single option
         [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption,
+        #allow multiple choice
+        [Parameter(mandatory=$false,position=4)]
             [switch]$multiChoice
     )
     
@@ -150,23 +163,28 @@ function select-ResourceGroup {
         }
         return -1
     }
-    $ResourceGroup = $RGList | Out-GridView @ogvParam
-    if ([string]::isNullOrEmpty($ResourceGroup)) {
-        Write-log 'Cancelled by user'
-        if($isCritical.IsPresent) {
-            exit 0
-        }
-        return 0
-    }
-    if($multiChoice.IsPresent) {
-        foreach($RG in $ResourceGroup) {
-            write-log "ResourceGroup $($RG.name) chosen." -type info
-            Get-AzResourceGroup -Name $RG.ResourceGroupName
-        }
-
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($RGList.count) ) { #when single object available, 'count' does not exist
+        write-log "single RG available: $($RGList.ResourceGroupName) found. selecting." -type info
+        return (Get-AzResourceGroup -Name $RGList.ResourceGroupName)
     } else {
-        Write-log "RG $($ResourceGroup.ResourceGroupName) chosen. " -type info
-        return (Get-AzResourceGroup -Name $ResourceGroup.ResourceGroupName)
+        $ResourceGroup = $RGList | Out-GridView @ogvParam
+        if ([string]::isNullOrEmpty($ResourceGroup)) {
+            Write-log 'Cancelled by user'
+            if($isCritical.IsPresent) {
+                exit 0
+            }
+            return $null
+        }
+        if($multiChoice.IsPresent) {
+            foreach($RG in $ResourceGroup) {
+                write-log "ResourceGroup $($RG.name) chosen." -type info
+                Get-AzResourceGroup -Name $RG.ResourceGroupName
+            }
+
+        } else {
+            Write-log "RG $($ResourceGroup.ResourceGroupName) chosen. " -type info
+            return (Get-AzResourceGroup -Name $ResourceGroup.ResourceGroupName)
+        }
     }
 }
 function select-NetworkSecurityGroup { 
@@ -200,14 +218,17 @@ function select-NetworkSecurityGroup {
         #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
             [switch]$isCritical,
-        #allow multiple choice
+        #automatically select value if there is only single option
         [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption,
+        #allow multiple choice
+        [Parameter(mandatory=$false,position=4)]
             [switch]$multiChoice,
         #Resource Group object
-        [Parameter(parameterSetName='byObject',mandatory=$false,position=4,ValueFromPipeline=$true)]
+        [Parameter(parameterSetName='byObject',mandatory=$false,position=5,ValueFromPipeline=$true)]
             [Microsoft.Azure.Commands.ResourceManager.Cmdlets.SdkModels.PSResourceGroup]$ResourceGroup,
         #Parameter help description
-        [Parameter(parameterSetName='byName',mandatory=$false,position=4)]
+        [Parameter(parameterSetName='byName',mandatory=$false,position=5)]
             [string]$ResourceGroupName
     )
     
@@ -234,23 +255,28 @@ function select-NetworkSecurityGroup {
         }
         return -1
     }
-    $NSG = $NSGList | Out-GridView @ogvParam
-    if ([string]::isNullOrEmpty($NSG)) {
-        Write-log 'Cancelled by user'
-        if($isCritical.IsPresent) {
-            exit 0
-        }
-        return 0
-    }
-    if($multiChoice.IsPresent) {
-        foreach($nsgitem in $NSG) {
-            write-log "NSG $($nsgitem.name) chosen." -type info
-            Get-AzNetworkSecurityGroup -Name $nsgitem.name -ResourceGroupName $nsgitem.resourceGroupName
-        }
-
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($NSGList.count) ) { #when single object available, 'count' does not exist
+        write-log "single NSG available: $($NSGList.Name) found. selecting." -type info
+        return (Get-AzNetworkSecurityGroup -Name $NSGList.Name -ResourceGroupName $nsgList.resourceGroupName)
     } else {
-        Write-log "NSG $($NSG.ResourceGroupName) chosen. " -type info
-        return (Get-AzNetworkSecurityGroup -Name $nsg.name -ResourceGroupName $nsg.resourceGroupName)
+        $NSG = $NSGList | Out-GridView @ogvParam
+        if ([string]::isNullOrEmpty($NSG)) {
+            Write-log 'Cancelled by user'
+            if($isCritical.IsPresent) {
+                exit 0
+            }
+            return 0
+        }
+        if($multiChoice.IsPresent) {
+            foreach($nsgitem in $NSG) {
+                write-log "NSG $($nsgitem.name) chosen." -type info
+                Get-AzNetworkSecurityGroup -Name $nsgitem.name -ResourceGroupName $nsgitem.resourceGroupName
+            }
+
+        } else {
+            Write-log "NSG $($NSG.ResourceGroupName) chosen. " -type info
+            return (Get-AzNetworkSecurityGroup -Name $nsg.name -ResourceGroupName $nsg.resourceGroupName)
+        }
     }
 }
 Set-Alias -Name 'select-NSG' -Value 'select-networkSecurityGroup'
@@ -272,8 +298,9 @@ function select-StorageAccount {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210220
+        version 210302
             last changes
+            - 210302 autoSelectSingle
             - 210220 multichoice, descritpion
     #>
     [cmdletbinding(DefaultParameterSetName='byObject')]
@@ -287,14 +314,17 @@ function select-StorageAccount {
         #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
             [switch]$isCritical,
-        #allow multiple choice
+        #automatically select value if there is only single option
         [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption,
+        #allow multiple choice
+        [Parameter(mandatory=$false,position=4)]
             [switch]$multiChoice,
         #Resource Group object
-        [Parameter(parameterSetName='byObject',mandatory=$false,position=4,ValueFromPipeline=$true)]
+        [Parameter(parameterSetName='byObject',mandatory=$false,position=5,ValueFromPipeline=$true)]
             [Microsoft.Azure.Commands.ResourceManager.Cmdlets.SdkModels.PSResourceGroup]$ResourceGroup,
         #Parameter help description
-        [Parameter(parameterSetName='byName',mandatory=$false,position=4)]
+        [Parameter(parameterSetName='byName',mandatory=$false,position=5)]
             [string]$ResourceGroupName
     )
     
@@ -327,25 +357,31 @@ function select-StorageAccount {
             return -1
         }
     }        
-    $storageAccount = $saList | Out-GridView @ogvParam
-    if([string]::isNullOrEmpty($storageAccount) ) {
-        write-host "Cancelled."
-        if($isCritical.IsPresent) {
-            exit 0
-        } else {
-            return 0
-        }
-    }
-    if($multiChoice.IsPresent) {
-        foreach($SA in $storageAccount) {
-            write-log "SA $($SA.StorageAccountName) chosen." -type info
-            Get-AzStorageAccount -ResourceGroupName $SA.ResourceGroupName -Name $SA.StorageAccountName
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($saList.count) ) { #when single object available, 'count' does not exist
+        write-log "single SA available: $($saList.StorageAccountName) found. selecting." -type info
+        return (Get-AzStorageAccount -Name $saList.StorageAccountName -ResourceGroupName $saList.resourceGroupName)
+    } else {
+        $storageAccount = $saList | Out-GridView @ogvParam
+        if([string]::isNullOrEmpty($storageAccount) ) {
+            write-host "Cancelled."
+            if($isCritical.IsPresent) {
+                exit 0
+            } else {
+                return $null
+            }
         }
 
-    } else {
-        write-log "SA $($storageAccount.StorageAccountName) chosen." -type info
-        return (Get-AzStorageAccount -ResourceGroupName $storageAccount.resourceGroupName -Name $storageAccount.StorageAccountName)
-    }    
+        if($multiChoice.IsPresent) {
+            foreach($SA in $storageAccount) {
+                write-log "SA $($SA.StorageAccountName) chosen." -type info
+                Get-AzStorageAccount -ResourceGroupName $SA.ResourceGroupName -Name $SA.StorageAccountName
+            }
+
+        } else {
+            write-log "SA $($storageAccount.StorageAccountName) chosen." -type info
+            return (Get-AzStorageAccount -ResourceGroupName $storageAccount.resourceGroupName -Name $storageAccount.StorageAccountName)
+        }    
+    }
 }
 function select-VM {
     <#
@@ -370,12 +406,12 @@ function select-VM {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210220
+        version 210302
             last changes
-            - 210220 multichoice
+            - 210302 autoSelectSingle, backup status fix
+            - 210220 multichoice, backup info
             - 210209 initialized
     #TO|DO
-    - includeBackupInfo requires rethinking and retun value must change... this will impact scripts
 
     #>
     
@@ -390,20 +426,23 @@ function select-VM {
         #changes return to terminal - define if cancel/empty is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
             [switch]$isCritical,
-        #allow multiple choice
+        #automatically select value if there is only single option
         [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption,
+        #allow multiple choice
+        [Parameter(mandatory=$false,position=4)]
             [switch]$multiChoice,
         #resource group object containing VMs to list
-        [Parameter(ValueFromPipeline=$true,parameterSetName='byObject',mandatory=$false,position=4)]
+        [Parameter(ValueFromPipeline=$true,parameterSetName='byObject',mandatory=$false,position=5)]
             [Microsoft.Azure.Commands.ResourceManager.Cmdlets.SdkModels.PSResourceGroup]$ResourceGroup,  
         #resource group name containing VMs to list
-        [Parameter(ValueFromPipeline=$true,parameterSetName='byName',mandatory=$false,position=4)]
+        [Parameter(ValueFromPipeline=$true,parameterSetName='byName',mandatory=$false,position=5)]
             [string]$ResourceGroupName,  
         #include backup information on the list
-        [Parameter(mandatory=$false,position=5)]
+        [Parameter(mandatory=$false,position=6)]
             [switch]$status,
         #include backup information on the list
-        [Parameter(mandatory=$false,position=6)]
+        [Parameter(mandatory=$false,position=7)]
             [switch]$includeBackupInfo
     )
 
@@ -438,7 +477,7 @@ function select-VM {
         $VMList = $VMList | select-object *,backupVault
         foreach($VM in $VMList) {
             $backupStatus = Get-AzRecoveryServicesBackupStatus -ResourceGroupName $VM.ResourceGroupName -Name $VM.name -Type AzureVM
-            if( ![string]::isNullOrEmpty($backupStatus) ) {
+            if( $backupStatus.BackedUp ) {
                 $VM.backupVault = ($backupStatus.VaultId -split '/')[-1]
             } else {
                 $VM.backupVault = 'no backup'
@@ -453,34 +492,44 @@ function select-VM {
             return -1
         }
     }
-    #ACTUAL VM Select
-    $selectVM = $VMList | Out-GridView @ogvParam
-    if($null -eq $selectVM) {
-        write-log "Cancelled."
-        if($isCritical.IsPresent) {
-            exit 0
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($vmList.count) ) { #when single object available, 'count' does not exist
+        write-log "single VM available: $($vmList.Name) found. selecting." -type info
+        if($status.IsPresent) {
+            $powerstate = $VMList.powerstate
+            return (get-AzVM -Name $VMlist.name -ResourceGroupName $VMlist.ResourceGroupName | select-object *,@{N='powerstate';E={$powerstate}})
         } else {
-            return 0
+            return (get-AzVM -Name $VMlist.name -ResourceGroupName $VMlist.ResourceGroupName)
         }
-    }
-
-    foreach($VM in $selectVM) {
-        if($includeBackupInfo.IsPresent -and $selectVM.backup -ne 'no backup') { 
-            write-log "$($VM.name) has backed up enabled." -type warning
+    } else {
+        #ACTUAL VM Select
+        $selectVM = $VMList | Out-GridView @ogvParam
+        if($null -eq $selectVM) {
+            write-log "Cancelled."
             if($isCritical.IsPresent) {
-                exit -2
+                exit 0
             } else {
-                return -2
+                return $null
             }
         }
-        if($status.IsPresent) {
-            $powerstate = $VM.powerstate
-            $retVM = get-AzVM -Name $VM.name -ResourceGroupName $VM.ResourceGroupName | select-object *,@{N='powerstate';E={$powerstate}}
-        } else {
-            $retVM = get-AzVM -Name $VM.name -ResourceGroupName $VM.ResourceGroupName 
+
+        foreach($VM in $selectVM) {
+            if($includeBackupInfo.IsPresent -and $selectVM.backup -ne 'no backup') { 
+                write-log "$($VM.name) has backup enabled." -type warning
+                if($isCritical.IsPresent) {
+                    exit -2
+                } else {
+                    return -2
+                }
+            }
+            if($status.IsPresent) {
+                $powerstate = $VM.powerstate
+                $retVM = get-AzVM -Name $VM.name -ResourceGroupName $VM.ResourceGroupName | select-object *,@{N='powerstate';E={$powerstate}}
+            } else {
+                $retVM = get-AzVM -Name $VM.name -ResourceGroupName $VM.ResourceGroupName 
+            }
+            write-log "$($retVM.name) chosen type of $($retVM.StorageProfile.OsDisk.OsType)." -type info
+            $retVM
         }
-        write-log "$($retVM.name) chosen type of $($retVM.StorageProfile.OsDisk.OsType)." -type info
-        $retVM
     }
 }
 function select-vNet {
@@ -501,8 +550,9 @@ function select-vNet {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210220
+        version 210302
             last changes
+            - 210302 autoSelectSingle
             - 210220 mulichoise, help
     #>
     
@@ -517,14 +567,17 @@ function select-vNet {
         #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
             [switch]$isCritical,
-        #allow multi-choice and return array
+        #automatically select value if there is only single option
         [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption,
+        #allow multi-choice and return array
+        [Parameter(mandatory=$false,position=4)]
             [switch]$multiChoice,
         #resource group object containing vNet
-        [Parameter(parameterSetName='byObject',mandatory=$false,position=4,ValueFromPipeline=$true)]
+        [Parameter(parameterSetName='byObject',mandatory=$false,position=5,ValueFromPipeline=$true)]
             [Microsoft.Azure.Commands.ResourceManager.Cmdlets.SdkModels.PSResourceGroup]$ResourceGroup,
         #resource group name containing vNet
-        [Parameter(parameterSetName='byName',mandatory=$false,position=4)]
+        [Parameter(parameterSetName='byName',mandatory=$false,position=5)]
             [string]$ResourceGroupName
     )
     if($PSCmdlet.ParameterSetName -eq 'byObject') {
@@ -549,26 +602,53 @@ function select-vNet {
         }
         return -1
     }
-    $vnetChoice = $vNetList | Out-GridView @ogvParam
-    if($null -eq $vNetChoice) {
-        write-log "cancelled by the user."
-        if($isCritical.IsPresent) {
-            exit 0
-        }
-        return 0
-    }
-    if($multiChoice.IsPresent) {
-        foreach($vNet in $vnetChoice) {
-            write-log "vNet $($vNet.name) chosen." -type info
-            Get-AzVirtualNetwork -ResourceGroupName $vNet.ResourceGroupName -Name $vNet.Name
-        }
-
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($vNetList.count) ) { #when single object available, 'count' does not exist
+        write-log "single vNet available: $($vNetList.Name) found. selecting." -type info
+        return (Get-AzVirtualNetwork -Name $vNetList.Name -ResourceGroupName $vNetList.resourceGroupName)
     } else {
-        write-log "vNet $($vNetChoice.name) chosen." -type info
-        return (Get-AzVirtualNetwork -ResourceGroupName $vNetChoice.ResourceGroupName -Name $vNetChoice.Name)
+        $vnetChoice = $vNetList | Out-GridView @ogvParam
+        if($null -eq $vNetChoice) {
+            write-log "cancelled by the user."
+            if($isCritical.IsPresent) {
+                exit 0
+            }
+            return $null
+        }
+        if($multiChoice.IsPresent) {
+            foreach($vNet in $vnetChoice) {
+                write-log "vNet $($vNet.name) chosen." -type info
+                Get-AzVirtualNetwork -ResourceGroupName $vNet.ResourceGroupName -Name $vNet.Name
+            }
+
+        } else {
+            write-log "vNet $($vNetChoice.name) chosen." -type info
+            return (Get-AzVirtualNetwork -ResourceGroupName $vNetChoice.ResourceGroupName -Name $vNetChoice.Name)
+        }
     }
 }
 function select-vSubnet {
+    <#
+    .SYNOPSIS
+        acceleration function enabling to visually choose vNet Subnet resources. 
+    .DESCRIPTION
+        #todo
+    .EXAMPLE
+        $vSubnet = select-vNet|select-vSubnet
+        
+        choose Subnet resource via out-gridview
+    .INPUTS
+        None.
+    .OUTPUTS
+        Subnet resource(s)
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210302
+            last changes
+            - 210302 autoSelectSingle,comment-based-help
+    #>
+    [cmdletbinding(DefaultParameterSetName='byObject')]
     param(
          #message displayed on the screen before windows popup
         [Parameter(mandatory=$false,position=0)]
@@ -579,11 +659,14 @@ function select-vSubnet {
         #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
             [switch]$isCritical,
+        #automatically select value if there is only single option
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption,
         #vNet Object containing subnets to choose
-        [Parameter(parameterSetName='byObject',mandatory=$true,position=3,ValueFromPipeline)]
+        [Parameter(parameterSetName='byObject',mandatory=$true,position=4,ValueFromPipeline)]
             [Microsoft.Azure.Commands.Network.Models.PSVirtualNetwork]$vNet,
         #vNet name
-        [Parameter(parameterSetName='byName',mandatory=$true,position=3,ValueFromPipeline)]
+        [Parameter(parameterSetName='byName',mandatory=$true,position=4,ValueFromPipeline)]
             [string]$vNetName
     )
 
@@ -609,19 +692,45 @@ function select-vSubnet {
             return -1
         }
     }
-    $vSubnet = $vSubnetList | Out-GridView -Title $title -OutputMode Single
-    if([string]::isNullOrEmpty($vSubnet) ) {
-        write-host "Cancelled."
-        if($isCritical.IsPresent) {
-            exit 0
-        } else {
-            return 0
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($vSubnetList.count) ) { #when single object available, 'count' does not exist
+        write-log "single vSubnet available: $($vSubnetList.Name) found. selecting." -type info
+        return (Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vNet -Name $vSubnetList.Name)
+    } else {
+        $vSubnet = $vSubnetList | Out-GridView -Title $title -OutputMode Single
+        if([string]::isNullOrEmpty($vSubnet) ) {
+            write-host "Cancelled."
+            if($isCritical.IsPresent) {
+                exit 0
+            } else {
+                return $null
+            }
         }
-    }
-    write-log "vSubnet $($vSubnet.name) chosen." -type info
-    return (Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vNet -Name $vSubnet.name)    
+        write-log "vSubnet $($vSubnet.name) chosen." -type info
+        return (Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vNet -Name $vSubnet.name)
+    }    
 }
 function select-KeyVault {
+    <#
+    .SYNOPSIS
+        acceleration function enabling to visually choose Key Vault resources. 
+    .DESCRIPTION
+        #todo
+    .EXAMPLE
+        $kv = select-KeyVault -autoSelectSingle
+        
+        choose Key Vault resource via out-gridview and if only one available - return unattended.
+    .INPUTS
+        None.
+    .OUTPUTS
+        KeyVault resource(s)
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210302
+            last changes
+            - 210302 autoSelectSingle,comment-based-help
+    #>
     param(
         #message displayed on the screen before windows popup
         [Parameter(mandatory=$false,position=0)]
@@ -631,7 +740,10 @@ function select-KeyVault {
             [string]$title = "choose Key Vault",
         #changes return to terminal - define if cancel/empty is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
-            [switch]$isCritical    
+            [switch]$isCritical,    
+        #automatically select value if there is only single option
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption
     )
 
     write-log $message
@@ -644,20 +756,47 @@ function select-KeyVault {
             return -1
         }
     }    
-    $kv = $KVList | Out-GridView -Title $title -OutputMode Single
-    if($null -eq $kv) {
-        write-log "cancelled."
-        if($isCritical.IsPresent) {
-            exit 0
-        } else {
-            return 0
-        }
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($KVList.count) ) { #when single object available, 'count' does not exist
+        write-log "single KV available: $($KVList.VaultName) found. selecting." -type info
+        return (Get-AzKeyVault -ResourceGroupName $kvList.ResourceGroupName -VaultName $kvList.VaultName )
     } else {
-        write-log "KeyVault $($kv.VaultName) chosen." -type info
-        return (Get-AzKeyVault -ResourceGroupName $kv.ResourceGroupName -VaultName $kv.VaultName)
+        $kv = $KVList | Out-GridView -Title $title -OutputMode Single
+        if($null -eq $kv) {
+            write-log "cancelled."
+            if($isCritical.IsPresent) {
+                exit 0
+            } else {
+                return $null
+            }
+        } else {
+            write-log "KeyVault $($kv.VaultName) chosen." -type info
+            return (Get-AzKeyVault -ResourceGroupName $kv.ResourceGroupName -VaultName $kv.VaultName)
+        }
     }
 }
 function select-encryptionKey {
+    <#
+    .SYNOPSIS
+        acceleration function enabling to visually choose Encryption Key resources. 
+    .DESCRIPTION
+        #todo
+    .EXAMPLE
+        $ek = select-KeyVault -autoSelectSingle|select-encryptionKey -autoSelectSingle
+        
+        choose Key Vault resource via out-gridview and if only one available - return unattended. then pass it to key choice.
+    .INPUTS
+        None.
+    .OUTPUTS
+        Encryption Key resource(s)
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210302
+            last changes
+            - 210302 autoSelectSingle,comment-based-help,valuebypipeline
+    #>
+    [cmdletbinding(DefaultParameterSetName='byObject')]
     param(
         #message shown before window popup
         [Parameter(mandatory=$false,position=0)]
@@ -668,37 +807,70 @@ function select-encryptionKey {
         #changes return to terminal - define if cancel/empty is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
             [switch]$isCritical,
+        #automatically select value if there is only single option
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption,
         #Vault name to choose key from
-        [parameter(mandatory=$true,position=3)]
-            [string]$vaultName
+        [parameter(parameterSetName='byName',mandatory=$true,position=4)]
+            [string]$vaultName,
+        #Vault name to choose key from
+        [parameter(parameterSetName='byObject',mandatory=$true,position=4,ValueFromPipeline)]
+            [Microsoft.Azure.Commands.KeyVault.Models.PSKeyVault]$vault
 
     )
-    
+    if($PSCmdlet.ParameterSetName -eq 'byObject') {
+        $vaultName = $vault.VaultName
+    }
     write-log $message
     $encKeyList = Get-AzKeyVaultKey -VaultName $vaultName | Select-Object name,enabled,Expires
     if($null -eq $encKeyList) {
-        write-log "Cancelled."
+        write-log "no keys in $vaultName"
         if($isCritical.IsPresent) {
-            exit 0
+            exit -1
         } else {
-            return 0
+            return -1
         }
     }    
-    $key = $encKeyList | Out-GridView -Title $title -OutputMode Single
-    if($null -eq $key) {
-        write-log "cancelled."
-        if($isCritical.IsPresent) {
-            exit 0
-        } else {
-            return 0
-        }
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($encKeyList.count) ) { #when single object available, 'count' does not exist
+        write-log "single KV available: $($encKeyList.Name) found. selecting." -type info
+        return (Get-AzKeyVaultKey -VaultName $VaultName -Name $encKeyList.name)
     } else {
-        write-log "key $($key.name) chosen." -type info
-        return (Get-AzKeyVaultKey -VaultName $vaultName -Name $key.name)
+        $key = $encKeyList | Out-GridView -Title $title -OutputMode Single
+        if($null -eq $key) {
+            write-log "cancelled."
+            if($isCritical.IsPresent) {
+                exit 0
+            } else {
+                return $null
+            }
+        } else {
+            write-log "key $($key.name) chosen." -type info
+            return (Get-AzKeyVaultKey -VaultName $vaultName -Name $key.name)
+        }
     }
-
 }
 function select-recoveryVault {
+    <#
+    .SYNOPSIS
+        acceleration function enabling to visually choose Recovery Vault resources. 
+    .DESCRIPTION
+        #todo
+    .EXAMPLE
+        $rv = select-RecoveryVault
+        
+        choose RecoveryVault using out-gridview
+    .INPUTS
+        None.
+    .OUTPUTS
+        Recovery Vault resource(s)
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210302
+            last changes
+            - 210302 autoSelectSingle,comment-based-help
+    #>
     param(
         #message displayed on the screen before windows popup
         [Parameter(mandatory=$false,position=0)]
@@ -708,7 +880,10 @@ function select-recoveryVault {
             [string]$title = 'Select Backup Vault',
         #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
-            [switch]$isCritical
+            [switch]$isCritical,
+        #automatically select value if there is only single option
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption
     )
     
     write-log $message
@@ -721,20 +896,49 @@ function select-recoveryVault {
             return -1
         }
     }
-    $recoveryVault = $RVlist | Out-GridView -Title $title -OutputMode Single
-    if($null -eq $recoveryVault) {
-        write-host "Cancelled."
-        if($isCritical.IsPresent) {
-            exit 0
-        } else {
-            return 0
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($RVList.count) ) { #when single object available, 'count' does not exist
+        write-log "single RV available: $($RVList.Name) found. selecting." -type info
+        return (Get-AzRecoveryServicesVault -name $RVList.name)
+    } else {
+        $recoveryVault = $RVlist | Out-GridView -Title $title -OutputMode Single
+        if($null -eq $recoveryVault) {
+            write-host "Cancelled."
+            if($isCritical.IsPresent) {
+                exit 0
+            } else {
+                return $null
+            }
         }
+        $recoveryVault = Get-AzRecoveryServicesVault -name $recoveryVault.name
+        write-log "Recovery Vault $($recoveryVault.name) chosen." -type info
+        return $recoveryVault
     }
-    $recoveryVault = Get-AzRecoveryServicesVault -name $recoveryVault.name
-    write-log "Recovery Vault $($recoveryVault.name) chosen." -type info
-    return $recoveryVault
 }
 function select-recoveryContainer {
+    <#
+    .SYNOPSIS
+        acceleration function enabling to visually choose Recovery Container resources. 
+    .DESCRIPTION
+        #todo
+    .EXAMPLE
+        $rc = select-RecoveryVault -auto|select-RecoveryContainer -auto
+        
+        choose RecoveryContainer within RecoveryVault using out-gridview, and if sinlge available - unattended
+    .INPUTS
+        None.
+    .OUTPUTS
+        Recovery Container resource(s)
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210302
+            last changes
+            - 210302 autoSelectSingle,comment-based-help
+        
+        TO|DO
+        - currently only AzureVM supported - extend for different types
+    #>
     param(
         #message displayed on the screen before windows popup
         [Parameter(mandatory=$false,position=0)]
@@ -745,11 +949,14 @@ function select-recoveryContainer {
         #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
         [Parameter(mandatory=$false,position=2)]
             [switch]$isCritical,
+        #automatically select value if there is only single option
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption,
         #Vault object
-        [Parameter(parameterSetName='byObject',mandatory=$true,position=3, ValueFromPipeline)]
+        [Parameter(parameterSetName='byObject',mandatory=$true,position=4, ValueFromPipeline)]
             [Microsoft.Azure.Commands.RecoveryServices.ARSVault]$Vault,
         #VaultID
-        [Parameter(parameterSetName='byName',mandatory=$true,position=3)]
+        [Parameter(parameterSetName='byName',mandatory=$true,position=4)]
             [string]$VaultID
     )
 
@@ -767,18 +974,23 @@ function select-recoveryContainer {
             return -1
         }
     }
-    $recoveryContainer = $RClist | Out-GridView -Title $title -OutputMode Single
-    if($null -eq $recoveryContainer) {
-        write-host "Cancelled."
-        if($isCritical.IsPresent) {
-            exit 0
-        } else {
-            return 0
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($RCList.count) ) { #when single object available, 'count' does not exist
+        write-log "single RC available: $($RCList.Name) found. selecting." -type info
+        return (Get-AzRecoveryServicesBackupContainer -VaultId $vaultId -ContainerType AzureVM -FriendlyName $RCList.FriendlyName)
+    } else {
+        $recoveryContainer = $RClist | Out-GridView -Title $title -OutputMode Single
+        if($null -eq $recoveryContainer) {
+            write-host "Cancelled."
+            if($isCritical.IsPresent) {
+                exit 0
+            } else {
+                return $null
+            }
         }
+        $recoveryContainer = Get-AzRecoveryServicesBackupContainer -VaultId $vaultId -ContainerType AzureVM -FriendlyName $recoveryContainer.FriendlyName
+        write-log "RV container $($recoveryContainer.name) chosen." -type info
+        return $recoveryContainer
     }
-    $recoveryContainer = Get-AzRecoveryServicesBackupContainer -VaultId $vaultId -ContainerType AzureVM -FriendlyName $recoveryContainer.FriendlyName
-    write-log "RV container $($recoveryContainer.name) chosen." -type info
-    return $recoveryContainer
 }
 
 Export-ModuleMember -Function * -Alias 'select-NSG'

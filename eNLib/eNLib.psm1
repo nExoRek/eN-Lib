@@ -721,8 +721,9 @@ function get-ExchangeConnectionStatus {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210208
+        version 210302
             last changes
+            - 210302 validation domain added
             - 210208 initialized
     
         #TO|DO
@@ -763,7 +764,7 @@ function get-ExchangeConnectionStatus {
     if($validateDomainName) {
         $connectionDomainName = (Get-AcceptedDomain | Where-Object default).Name
         if($connectionDomainName -ne $validateDomainName) {
-            write-log "conection established to $connectionDomainName but session expected to $validateDomainName. "
+            write-log "conection established to $connectionDomainName but session expected to $validateDomainName. " -type error
             if($isCritical.IsPresent) {
                 exit -1
             } else {
