@@ -9,8 +9,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210219
+    version 210302
     changes
+        - 210302 write-log fix, check-exoconnection ext
+        - 210301 connect-azure fix
         - 210219 import-structuredCSV function added, with alias load-csv, fix to connect-azure
         - 210212 wl fix
         - 210210 write-log and start-logging init fix
@@ -178,12 +180,11 @@ function write-log {
         write-log converts everything to a string, so you can use it for virtually any type of 
         variable. additionaly it adds timestamp, message type header and color (on host).
 
-        information is written to a $logFile - you must initialize the value with 'start-Logging' 
-        or configure it manually.
-
-        in order to use write-log, $logFile variable requires to be set up. this is during initialization
-        by start-logging. by default logs are stored in $PSScriptRoot/Logs directory with generic file
-        name. if you need special location refer to start-logging help how to initialize variable. 
+        in order to use write-log, $logFile variable requires to be set up. you can initialize the 
+        value directly with 'start-Logging', configure $logFile manually or simply run write-log to 
+        have it initialized automatically. by default logs are stored in $PSScriptRoot/Logs directory 
+        with generic file name. if you need special location refer to start-logging help how to
+        initialize variable. 
 
         function may also be used from command line - in this scenario log file will be created in 
         Logs directory under User Documents folder. file with be named 'console-<date>.log'.
@@ -218,8 +219,9 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210212
+        version 210302
         changes:
+            - 210302 do not convert to 'out-string' when it's already a string
             - 210212 imporper name when calling from console thru module
             - 210210 v2. init finally works!
             - 210209 when initialized on console, wl was not creating script log and using console file. 
@@ -246,7 +248,8 @@ function write-log {
             [switch]$skipTimestamp
     )
 
-    $callStack = (Get-PSCallStack |Where-Object ScriptName)[-1]
+    #$callStack = (Get-PSCallStack |Where-Object ScriptName)[-1]
+    $callStack = (Get-PSCallStack)[-2]
     if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #it's run directly from console.
         $scriptBaseName = 'console'
         $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
@@ -270,7 +273,9 @@ function write-log {
 
     #ensure that whatever the type is - array, object.. - it will be output as string, add runtime
     if($null -eq $message) {$message=''}
-    $message=($message|out-String).trim() 
+    if($message.GetType().name -ne 'string') {
+        $message=($message|out-String).trim() 
+    }
 
     try {
         $finalMessageString=@()
@@ -433,7 +438,7 @@ function new-RandomPassword {
             [int][validateSet(1,2,3,4)]$uniqueSets=4
             
     )
-    function generate-Set {
+    function new-CharSet {
         param(
             # set up password length
             [int]$length,
@@ -443,30 +448,30 @@ function new-RandomPassword {
         $safe=0
         while ($safe++ -lt 100) {
             $array=@()
-            1..$length|%{
+            1..$length|ForEach-Object{
                 $array+=(Get-Random -Maximum ($setSize) -Minimum 0)
             }
             if(($array|Sort-Object -Unique|Measure-Object).count -ge $setSize) {
                 return $array
             } else {
-                Write-Verbose "[generate-Set]bad array: $($array -join ',')"
+                Write-Verbose "[new-CharSet]bad array: $($array -join ',')"
             }
         }
         return $null
     }
     #prepare char-sets 
     $smallLetters=$null
-    97..122|%{$smallLetters+=,[char][byte]$_}
+    97..122|ForEach-Object{$smallLetters+=,[char][byte]$_}
     $capitalLetters=$null
-    65..90|%{$capitalLetters+=,[char][byte]$_}
+    65..90|ForEach-Object{$capitalLetters+=,[char][byte]$_}
     $numbers=$null
-    48..57|%{$numbers+=,[char][byte]$_}
+    48..57|ForEach-Object{$numbers+=,[char][byte]$_}
     $specialCharacterL1=$null
-    @(33;35..38;43;45..46;95)|%{$specialCharacterL1+=,[char][byte]$_} # !"#$%&
+    @(33;35..38;43;45..46;95)|ForEach-Object{$specialCharacterL1+=,[char][byte]$_} # !"#$%&
     $specialCharacterL2=$null
-    58..64|%{$specialCharacterL2+=,[char][byte]$_} # :;<=>?@
+    58..64|ForEach-Object{$specialCharacterL2+=,[char][byte]$_} # :;<=>?@
     $specialCharacterL3=$null
-    @(34;39..42;44;47;91..94;96;123..125)|%{$specialCharacterL3+=,[char][byte]$_} # [\]^`  
+    @(34;39..42;44;47;91..94;96;123..125)|ForEach-Object{$specialCharacterL3+=,[char][byte]$_} # [\]^`  
       
     $ascii=@()
     $ascii+=,$smallLetters
@@ -476,10 +481,10 @@ function new-RandomPassword {
     if($specialCharacterRange -ge 3) { $specialCharacterL1+=,$specialCharacterL3 }
     $ascii+=,$specialCharacterL1
     #prepare set of character-sets ensuring that there will be at least one character from at least $uniqueSets different sets
-    $passwordSet = generate-Set -length $length -setSize $uniqueSets 
+    $passwordSet = new-CharSet -length $length -setSize $uniqueSets 
 
     $password=$NULL
-    0..($length-1)|% {
+    0..($length-1)|ForEach-Object {
         $password+=($ascii[$passwordSet[$_]] | Get-Random)
     }
     return $password
@@ -733,7 +738,10 @@ function get-ExchangeConnectionStatus {
             [string]$ExType='EXO',
         #if connection is not established exit with error instead of returning $false.
         [parameter(mandatory=$false,position=1)]
-            [switch]$isCritical
+            [switch]$isCritical,
+        #you can enforce check against particular tenant so script does not run in improper tenant
+        [parameter(mandatory=$false,position=2)]
+            [string]$validateDomainName
             
     )
 
@@ -751,6 +759,17 @@ function get-ExchangeConnectionStatus {
     if($isCritical.IsPresent -and !$exConnection) {
         write-log "connection to $ExType not established. quitting." -type error
         exit -1
+    }
+    if($validateDomainName) {
+        $connectionDomainName = (Get-AcceptedDomain | Where-Object default).Name
+        if($connectionDomainName -ne $validateDomainName) {
+            write-log "conection established to $connectionDomainName but session expected to $validateDomainName. "
+            if($isCritical.IsPresent) {
+                exit -1
+            } else {
+                $exConnection = $false
+            }
+        }
     }
     return $exConnection
 }
@@ -778,8 +797,10 @@ function connect-Azure {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210220
+        version 210302
             last changes
+            - 210302 fix to expired token - PSMessageDetail is not populated on many OSes. why? 
+            - 210301 proper detection of expired tokens
             - 210220 proper handiling of consonle call - return instead of exit
             - 210219 extended handling of context expiration
             - 210208 initialized
@@ -795,30 +816,35 @@ function connect-Azure {
         Clear-AzContext -Force
     }
     if([string]::IsNullOrEmpty( $AzSourceContext ) ) {
-            write-log "you need to be connected before running this script. use connect-AzAccount first." -type warning
-            $AzSourceContext = Connect-AzAccount -ErrorAction SilentlyContinue
-            if([string]::isNullOrEmpty($AzSourceContext) ) {
-                if( (Get-PSCallStack).count -gt 2 ) { #run from script
-                    write-log "cancelled"
-                    exit 0
-                } else { #run from console  
-                    write-log "cancelled"
-                    return $null
-                }          
-            }
-            $AzSourceContext = Get-AzContext
-    } else {
-        try{
-            $azTenant=Get-AzTenant -ErrorAction stop
-        } catch {
-            write-log $_.exception -type error
-            write-log "trying to fix" -type info
-            Clear-AzContext -Force
-            write-log "re-run the script."
+        write-log "you need to be connected before running this script. use connect-AzAccount first." -type warning
+        $AzSourceContext = Connect-AzAccount -ErrorAction SilentlyContinue
+        if([string]::isNullOrEmpty($AzSourceContext) ) {
             if( (Get-PSCallStack).count -gt 2 ) { #run from script
-                exit -1
+                write-log "cancelled"
+                exit 0
             } else { #run from console  
+                write-log "cancelled"
                 return $null
+            }          
+        }
+        $AzSourceContext = Get-AzContext
+    } else { #token exist, check if it is still working
+        try{
+            #if access token has been revoked, Az commands return warning "Unable to acquire token for tenant"
+            Get-AzSubscription -WarningAction stop|Out-Null
+        } catch {
+            if($_.Exception -match 'Unable to acquire token for tenant') {
+                write-log "token expired, clearing cache" -type info
+                Clear-AzContext -Force
+                write-log "re-run the script."
+                if( (Get-PSCallStack).count -gt 2 ) { #run from script
+                    exit -1
+                } else { #run from console  
+                    return $null
+                }
+            } else {
+               write-log $_.exception
+               return -3
             }
         }
     }
@@ -832,4 +858,3 @@ function connect-Azure {
 }
 
 Export-ModuleMember -Function * -Variable 'logFile' -Alias 'load-CSV'
-

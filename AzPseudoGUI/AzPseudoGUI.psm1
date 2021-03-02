@@ -13,14 +13,16 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210215
+    version 210301
         last changes
+        - 210301 storageAccount choice fixed
         - 210215 seelct-vnet and select-subnet fixes, select-recoveryContainer
         - 210208 select-recoveryVault, descriptions, fixes...
         - 210202 initialized alpha
     #TO|DO
     - -autoSelectSingleValue to all functions
     - allow multiple selection for some of the resources
+    - option to repeat-until for resource choices (-repeatUntilCancel)
 #>
 Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 
@@ -167,6 +169,91 @@ function select-ResourceGroup {
         return (Get-AzResourceGroup -Name $ResourceGroup.ResourceGroupName)
     }
 }
+function select-NetworkSecurityGroup { 
+    <#
+    .SYNOPSIS
+        pseudo-GUI for Network Security Group selection
+    .DESCRIPTION
+        #todo
+    .EXAMPLE
+        #todo
+    .INPUTS
+        None.
+    .OUTPUTS
+        Network Security Group object
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210301
+            last changes
+            - 210301 initialized
+    #>
+    [CmdletBinding(DefaultParameterSetName='byObject')]
+    param(
+        #message displayed on the screen before windows popup
+        [Parameter(mandatory=$false,position=0)]
+            [string]$message = "select *Network Security Group*..." ,
+        #short title message shown on GridView title bar
+        [Parameter(mandatory=$false,position=1)]
+            [string]$title = "select Network Security Group",
+        #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
+        [Parameter(mandatory=$false,position=2)]
+            [switch]$isCritical,
+        #allow multiple choice
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$multiChoice,
+        #Resource Group object
+        [Parameter(parameterSetName='byObject',mandatory=$false,position=4,ValueFromPipeline=$true)]
+            [Microsoft.Azure.Commands.ResourceManager.Cmdlets.SdkModels.PSResourceGroup]$ResourceGroup,
+        #Parameter help description
+        [Parameter(parameterSetName='byName',mandatory=$false,position=4)]
+            [string]$ResourceGroupName
+    )
+    
+    write-log $message
+    $ogvParam = @{
+        title = $title
+        OutputMode = 'Single'
+    }
+    if($multiChoice.IsPresent) {
+        $ogvParam.OutputMode = 'Multiple'    
+    } 
+    if($PSCmdlet.ParameterSetName -eq 'byObject') {
+        $ResourceGroupName = $ResourceGroup.ResourceGroupName
+    }
+    $NSGParam=@{}
+    if(![string]::isNullOrEmpty($ResourceGroupName) ) {
+        $NSGParam.add('ResourceGroupName',$ResourceGroupName)
+    } 
+    $NSGList = Get-AzNetworkSecurityGroup @NSGParam | select-object name, ResourceGroupName, location, Tags
+    if($null -eq $NSGList) {
+        write-log "No Network Security groups in this subscription." -type warning
+        if($isCritical.IsPresent) {
+            exit -1
+        }
+        return -1
+    }
+    $NSG = $NSGList | Out-GridView @ogvParam
+    if ([string]::isNullOrEmpty($NSG)) {
+        Write-log 'Cancelled by user'
+        if($isCritical.IsPresent) {
+            exit 0
+        }
+        return 0
+    }
+    if($multiChoice.IsPresent) {
+        foreach($nsgitem in $NSG) {
+            write-log "NSG $($nsgitem.name) chosen." -type info
+            Get-AzNetworkSecurityGroup -Name $nsgitem.name -ResourceGroupName $nsgitem.resourceGroupName
+        }
+
+    } else {
+        Write-log "NSG $($NSG.ResourceGroupName) chosen. " -type info
+        return (Get-AzNetworkSecurityGroup -Name $nsg.name -ResourceGroupName $nsg.resourceGroupName)
+    }
+}
+Set-Alias -Name 'select-NSG' -Value 'select-networkSecurityGroup'
 function select-StorageAccount {
     <#
     .SYNOPSIS
@@ -189,26 +276,26 @@ function select-StorageAccount {
             last changes
             - 210220 multichoice, descritpion
     #>
-    
+    [cmdletbinding(DefaultParameterSetName='byObject')]
     param(
-    #message displayed on the screen before windows popup
-    [Parameter(mandatory=$false,position=0)]
-        [string]$message = 'select *Storage Account*...',
-    #short title message shown on GridView title bar
-    [Parameter(mandatory=$false,position=1)]
-        [string]$title = 'select Storage Account',
-    #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
-    [Parameter(mandatory=$false,position=2)]
-        [switch]$isCritical,
-    #allow multiple choice
-    [Parameter(mandatory=$false,position=3)]
-        [switch]$multiChoice,
-    #Resource Group object
-    [Parameter(parameterSetName='byObject',mandatory=$true,position=4,ValueFromPipeline=$true)]
-        [Microsoft.Azure.Commands.ResourceManager.Cmdlets.SdkModels.PSResourceGroup]$ResourceGroup,
-    #Parameter help description
-    [Parameter(parameterSetName='byName',mandatory=$true,position=4)]
-        [string]$ResourceGroupName
+        #message displayed on the screen before windows popup
+        [Parameter(mandatory=$false,position=0)]
+            [string]$message = 'select *Storage Account*...',
+        #short title message shown on GridView title bar
+        [Parameter(mandatory=$false,position=1)]
+            [string]$title = 'select Storage Account',
+        #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
+        [Parameter(mandatory=$false,position=2)]
+            [switch]$isCritical,
+        #allow multiple choice
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$multiChoice,
+        #Resource Group object
+        [Parameter(parameterSetName='byObject',mandatory=$false,position=4,ValueFromPipeline=$true)]
+            [Microsoft.Azure.Commands.ResourceManager.Cmdlets.SdkModels.PSResourceGroup]$ResourceGroup,
+        #Parameter help description
+        [Parameter(parameterSetName='byName',mandatory=$false,position=4)]
+            [string]$ResourceGroupName
     )
     
     $ogvParam = @{
@@ -221,10 +308,17 @@ function select-StorageAccount {
     if($PSCmdlet.ParameterSetName -eq 'byObject') {
         $ResourceGroupName = $ResourceGroup.ResourceGroupName
     }
+    #get-azStorageAccount do not allow to set RG as $null, so must be done with IF
+    if([string]::isNullOrEmpty($ResourceGroupName) ) {
+        $saList = Get-AzStorageAccount |
+            #? {$_.Sku.Name -match "^standard"} |
+            select-object StorageAccountName,ResourceGroupName,PrimaryLocation,@{N='SkuName';E={$_.sku.name}}
+    } else {
+        $saList = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName|
+            #? {$_.Sku.Name -match "^standard"} |
+            select-object StorageAccountName,ResourceGroupName,PrimaryLocation,@{N='SkuName';E={$_.sku.name}}
+    }
     write-log $message
-    $saList = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName |
-        ? {$_.Sku.Name -match "^standard"} |
-        select-object StorageAccountName,ResourceGroupName,PrimaryLocation,@{N='SkuName';E={$_.sku.name}}
     if([string]::isNullOrEmpty($saList) ) {
         write-host "there are no storage accounts in this Resource Group."
         if($isCritical.IsPresent) {
@@ -244,13 +338,13 @@ function select-StorageAccount {
     }
     if($multiChoice.IsPresent) {
         foreach($SA in $storageAccount) {
-            write-log "SA $($SA.name) chosen." -type info
-            Get-AzStorageAccount -ResourceGroupName $RG.ResourceGroupName -Name $SA.name
+            write-log "SA $($SA.StorageAccountName) chosen." -type info
+            Get-AzStorageAccount -ResourceGroupName $SA.ResourceGroupName -Name $SA.StorageAccountName
         }
 
     } else {
-        write-log "SA $($storageAccount.name) chosen." -type info
-        return (Get-AzStorageAccount -ResourceGroupName $storageAccount.resourceGroupName -Name $storageAccount.name)
+        write-log "SA $($storageAccount.StorageAccountName) chosen." -type info
+        return (Get-AzStorageAccount -ResourceGroupName $storageAccount.resourceGroupName -Name $storageAccount.StorageAccountName)
     }    
 }
 function select-VM {
@@ -285,7 +379,7 @@ function select-VM {
 
     #>
     
-    [CmdletBinding(DefaultParameterSetName='RGbyObj')]
+    [CmdletBinding(DefaultParameterSetName='byObject')]
     param(
         #message displayed on the screen before windows popup
         [Parameter(mandatory=$false,position=0)]
@@ -300,10 +394,10 @@ function select-VM {
         [Parameter(mandatory=$false,position=3)]
             [switch]$multiChoice,
         #resource group object containing VMs to list
-        [Parameter(ValueFromPipeline=$true,parameterSetName='RGbyObj',mandatory=$false,position=4)]
+        [Parameter(ValueFromPipeline=$true,parameterSetName='byObject',mandatory=$false,position=4)]
             [Microsoft.Azure.Commands.ResourceManager.Cmdlets.SdkModels.PSResourceGroup]$ResourceGroup,  
         #resource group name containing VMs to list
-        [Parameter(ValueFromPipeline=$true,parameterSetName='RGbyName',mandatory=$false,position=4)]
+        [Parameter(ValueFromPipeline=$true,parameterSetName='byName',mandatory=$false,position=4)]
             [string]$ResourceGroupName,  
         #include backup information on the list
         [Parameter(mandatory=$false,position=5)]
@@ -687,4 +781,4 @@ function select-recoveryContainer {
     return $recoveryContainer
 }
 
-Export-ModuleMember -Function *
+Export-ModuleMember -Function * -Alias 'select-NSG'
