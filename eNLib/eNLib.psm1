@@ -698,14 +698,42 @@ function get-valueFromInputBox {
 }
 
 function select-OrganizationalUnit {
+    <#
+    .SYNOPSIS
+        accelerator function allowing to select OU with GUI.
+    .DESCRIPTION
+        function is using winforms treeView to display OU structure. returns DistinguishedName on select.
+    .EXAMPLE
+        $ou = select-OU
+        
+        displays forms treeview enabling to choose OU from the tree.
+    .INPUTS
+        None.
+    .OUTPUTS
+        DistinguishedName
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210308
+            last changes
+            - 210308 initialized
+    
+        #TO|DO
+        - load All Nodes
+        - search 
+    #>
+    
     param(
         #starting OU (tree root)
         [Parameter(mandatory=$false,position=0)]
-            [string]$startingOU=(get-ADRootDSE).defaultNamingContext
+            [string]$startingOU=(get-ADRootDSE).defaultNamingContext,
+        #if critical - will exit instead of returning false
+        [Parameter(mandatory=$true,position=1)]
+            [switch]$isCritical
     )
 
-    Function add-Nodes ( $Node) {#, $OrganizationalUnit ) {
-
+    Function add-Nodes ( $Node) {
         $SubOU = Get-ADOrganizationalUnit -SearchBase $node.tag.distinguishedName -SearchScope OneLevel -filter *
         if($node.tag.unfolded -eq $false) {
             $node.tag.unfolded = $true
@@ -770,13 +798,11 @@ function select-OrganizationalUnit {
     
     $Form.CancelButton = $cancelButton
     $Form.AcceptButton = $okButton
-    
-    
+        
     $tableLayoutPanel.Controls.AddRange(@($okButton,$cancelButton))
     $flowLayoutPanel.Controls.AddRange(@($treeView))
     
     $form.Controls.AddRange(@($flowLayoutPanel,$tableLayoutPanel))
-
 
     $treeview.add_afterSelect{(
         add-Nodes $treeView.SelectedNode #$treeView.SelectedNode.tag
@@ -785,6 +811,10 @@ function select-OrganizationalUnit {
     $result = $Form.ShowDialog()
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         return $treeView.SelectedNode.Tag.distinguishedName
+    } 
+    if($isCritical.IsPresent) {
+        write-log "cancelled."
+        exit 0
     } 
     return $false
     
