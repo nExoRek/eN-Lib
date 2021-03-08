@@ -4,14 +4,14 @@
 .DESCRIPTION
     most commonly required functions such as better logging support for scripts, forking
     information to screen and file, enchanced GUI controls such as input box, most common
-    connection accelerators.
+    connection accelerators and CSV manipulation.
 .LINK
     https://w-files.pl
 .NOTES
     nExoR ::))o-
     version 210308
     changes
-        - 210308 select-OU
+        - 210308 select-OU, convert-XLS2CSV, convert-CSV2XLS
         - 210302 write-log fix, check-exoconnection ext
         - 210301 connect-azure fix
         - 210219 import-structuredCSV function added, with alias load-csv, fix to connect-azure
