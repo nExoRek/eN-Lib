@@ -22,8 +22,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 201121
+    version 210308
         last changes
+        - 210308 file open full path
         - 201121 output folder changed, descirption, do not export hidden by default, saveAs CSVUTF8
         - 201101 initialized
 #>
@@ -63,11 +64,11 @@ begin {
     }
     $Excel.Visible = $false
     $Excel.DisplayAlerts = $false
-    $workBookFile = $Excel.Workbooks.Open($fileName)
+    $workBookFile = $Excel.Workbooks.Open($file)
 
     #excel file save statics
     $fileType=62 #CSVUTF8 https://docs.microsoft.com/en-us/office/vba/api/excel.xlfileformat
-    $addToMRU=$false #https://docs.microsoft.com/en-us/office/vba/api/excel.worksheet.saveas
+#    $addToMRU=$false #https://docs.microsoft.com/en-us/office/vba/api/excel.worksheet.saveas
     $localLanguage=$true
 }
 process {

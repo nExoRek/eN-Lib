@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.9.22'
+ModuleVersion = '0.9.23'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -70,7 +70,8 @@ PowerShellVersion = '5.0'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = 'start-Logging', 'write-Log', 'import-structuredCSV', 'new-randomPassword', 'get-answerBox', 'get-valueFromInputBox', 'select-organizationalUnit', 
+FunctionsToExport = 'start-Logging', 'write-Log', 'import-structuredCSV', 'convertTo-CSVFromXLS', 'convertTo-XLSFromCSV', 'new-randomPassword', 
+    'get-answerBox', 'get-valueFromInputBox', 'select-organizationalUnit', 
     'get-ExchangeConnectionStatus', 'connect-Azure'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
@@ -80,7 +81,7 @@ CmdletsToExport = @()
 VariablesToExport = @('logFile')
 
 # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
-AliasesToExport = @('load-CSV','select-OU')
+AliasesToExport = @('load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS')
 
 # DSC resources to export from this module
 # DscResourcesToExport = @()
