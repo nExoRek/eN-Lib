@@ -478,6 +478,7 @@ function convertTo-CSVFromXLS {
     $fileType=62 #CSVUTF8 https://docs.microsoft.com/en-us/office/vba/api/excel.xlfileformat
     $localLanguage=$true
     write-log "converting $($XLSFile.Name) tables to CSV files..." -type info
+    $CSVFileList=@()
 
     foreach($worksheet in $workBookFile.Worksheets) {
         if($worksheet.Visible -eq $false -and -not $includeHiddenWorksheets.IsPresent) {
@@ -497,12 +498,14 @@ function convertTo-CSVFromXLS {
                 write-log "$($table.name) saved as $exportFileName"
                 $tempWS.delete()
                 Remove-Variable -Name tempWS
+                $CSVFileList += get-Item $exportFileName
             }
         } else {
             Write-log "$($worksheet.name) does not contain tables. exporting whole sheet..." -type info
             $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9\-_]', '') + '_sheet.csv'
             $worksheet.SaveAs($exportFileName, $fileType,$null,$null,$null,$null,$sddToMRU,$null,$null,$localLanguage)
             write-log "worksheet $($worksheet.name) saved as $exportFileName"
+            $CSVFileList += get-Item $exportFileName
         }
     }
 
@@ -515,6 +518,7 @@ function convertTo-CSVFromXLS {
     #https://social.technet.microsoft.com/Forums/lync/en-US/81dcbbd7-f6cc-47ec-8537-db23e5ae5e2f/excel-releasecomobject-doesnt-work?forum=ITCG
     while( [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Excel) ){}
     Write-log "done and cleared." -type ok
+    return $CSVFileList
 }
 Set-Alias -Name convert-XLS2CSV -Value convertTo-CSVFromXLS
 function convertTo-XLSFromCSV {
@@ -528,7 +532,7 @@ function convertTo-XLSFromCSV {
         
         Converts test.csv to test.xlsx 
     .INPUTS
-        CSV file.
+        CSV file or file name
     .OUTPUTS
         XLSX file.
     .LINK
@@ -631,6 +635,7 @@ function convertTo-XLSFromCSV {
 
     write-log "convertion done, saved as $XLSfileName"
     Write-log "done and cleared." -type ok
+    return (Get-Item $XLSfileName)
 }
 Set-Alias -Name convert-CSV2XLS -Value convertTo-XLSFromCSV
 function new-RandomPassword {
