@@ -535,8 +535,9 @@ function convertTo-XLSFromCSV {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 201123
+        version 210308
             last changes
+            - 210308 module function
             - 201123 initialized
     #>
     [CmdletBinding()]

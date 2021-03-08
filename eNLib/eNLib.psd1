@@ -30,8 +30,9 @@ CompanyName = 'LogicUnion'
 Copyright = '(MIT) 2021 nExoR ::))o-'
 
 # Description of the functionality provided by this module
-Description = "write-log function forking information to the screen and to the file, import-structuredCSV function, password generator, `
-input message GUI, connection checkers and couple other usefull functions helping to write scripts easier and faster."
+Description = "write-log function forking information to the screen and to the file, CSV manipulation functions allowing to convert to and from XLS and `
+load CSV with header check, password generator, input message GUI, connection checkers and couple other usefull functions accelerating scripting and `
+helping working with commandline."
 
 # Minimum version of the Windows PowerShell engine required by this module
 PowerShellVersion = '5.0'
