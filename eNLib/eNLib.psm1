@@ -729,7 +729,7 @@ function select-OrganizationalUnit {
         [Parameter(mandatory=$false,position=0)]
             [string]$startingOU=(get-ADRootDSE).defaultNamingContext,
         #if critical - will exit instead of returning false
-        [Parameter(mandatory=$true,position=1)]
+        [Parameter(mandatory=$false,position=1)]
             [switch]$isCritical
     )
 
