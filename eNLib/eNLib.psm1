@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210302
+    version 210308
     changes
+        - 210308 select-OU
         - 210302 write-log fix, check-exoconnection ext
         - 210301 connect-azure fix
         - 210219 import-structuredCSV function added, with alias load-csv, fix to connect-azure
@@ -491,7 +492,7 @@ function new-RandomPassword {
 }
 
 #################################################### PowerShell GUI
-function get-AnswerBox {
+function get-answerBox {
     <#
     .SYNOPSIS
         win32 forms message box to get YES/NO input from user
@@ -696,6 +697,100 @@ function get-valueFromInputBox {
     }   
 }
 
+function select-OrganizationalUnit {
+    param(
+        #starting OU (tree root)
+        [Parameter(mandatory=$false,position=0)]
+            [string]$startingOU=(get-ADRootDSE).defaultNamingContext
+    )
+
+    Function add-Nodes ( $Node) {#, $OrganizationalUnit ) {
+
+        $SubOU = Get-ADOrganizationalUnit -SearchBase $node.tag.distinguishedName -SearchScope OneLevel -filter *
+        if($node.tag.unfolded -eq $false) {
+            $node.tag.unfolded = $true
+            foreach ( $ou in $SubOU ) {
+                $NodeSub = $Node.Nodes.Add($ou.Name)
+                $NodeSub.tag = [psobject]@{
+                    distinguishedName = $ou.DistinguishedName
+                    unfolded = $false
+                }
+                $nodeSub.tag.unfolded = $false
+            }
+        }
+    }
+
+    Add-Type -AssemblyName System.Drawing
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+    $form = New-Object System.Windows.Forms.Form
+    $Form.Text = "Select OU under $startingOU"
+    $Form.Size = New-Object System.Drawing.Size(300,500)
+    $Form.AutoSize = $false
+    $Form.StartPosition = 'CenterScreen'
+    $Form.FormBorderStyle = 'Fixed3D'
+    $Form.Icon = [System.Drawing.SystemIcons]::Question
+    $Form.Topmost = $true
+    $Form.MaximizeBox = $false
+    $form.dock = "fill"
+    
+    $flowLayoutPanel = New-Object System.Windows.Forms.Panel
+    $flowLayoutPanel.dock = 'Fill'
+    $flowLayoutPanel.padding = 3
+    $flowLayoutPanel.autosize = $true
+    
+    $treeView = New-Object System.Windows.Forms.TreeView
+    $treeView.Dock = 'Fill'
+    $treeView.CheckBoxes = $false
+    $treeview.Tag = [psobject]@{
+                distinguishedName = $startingOU
+                unfolded = $false
+            }
+        
+    add-Nodes $treeView #$startingOU
+    
+    $okButton = New-Object System.Windows.Forms.Button
+    $okButton.Size = New-Object System.Drawing.Size(75,23)
+    $okButton.Anchor = 'left'
+    $okButton.Text = "OK"
+    $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Size = New-Object System.Drawing.Size(75,23)
+    $cancelButton.anchor = 'right'
+    $cancelButton.Text = "Cancel"
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    
+    $tableLayoutPanel = New-Object System.Windows.Forms.tableLayoutPanel
+    $tableLayoutPanel.size = New-Object System.Drawing.Size(290,30)
+    $tableLayoutPanel.ColumnCount = 2
+    $tableLayoutPanel.RowCount = 1
+    $tableLayoutPanel.Height = 30
+    $tableLayoutPanel.Dock = "bottom"
+    
+    $Form.CancelButton = $cancelButton
+    $Form.AcceptButton = $okButton
+    
+    
+    $tableLayoutPanel.Controls.AddRange(@($okButton,$cancelButton))
+    $flowLayoutPanel.Controls.AddRange(@($treeView))
+    
+    $form.Controls.AddRange(@($flowLayoutPanel,$tableLayoutPanel))
+
+
+    $treeview.add_afterSelect{(
+        add-Nodes $treeView.SelectedNode #$treeView.SelectedNode.tag
+    )}
+    
+    $result = $Form.ShowDialog()
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        return $treeView.SelectedNode.Tag.distinguishedName
+    } 
+    return $false
+    
+}
+set-alias -Name select-OU -Value select-OrganizationalUnit
+
 #################################################### connection checkers
 function get-ExchangeConnectionStatus {
     <#
@@ -858,4 +953,4 @@ function connect-Azure {
     Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 }
 
-Export-ModuleMember -Function * -Variable 'logFile' -Alias 'load-CSV'
+Export-ModuleMember -Function * -Variable 'logFile' -Alias 'load-CSV','select-OU'
