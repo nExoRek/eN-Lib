@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210308
+    version 210309
     changes
+        - 210309 proper pipelining for CSV convertion
         - 210308 select-OU, convert-XLS2CSV, convert-CSV2XLS
         - 210302 write-log fix, check-exoconnection ext
         - 210301 connect-azure fix
@@ -425,8 +426,9 @@ function convertTo-CSVFromXLS {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210308
+        version 210309
             last changes
+            - 210309 proper pipeline
             - 210308 module function
             - 201121 output folder changed, descirption, do not export hidden by default, saveAs CSVUTF8
             - 201101 initialized
@@ -444,81 +446,84 @@ function convertTo-CSVFromXLS {
             [switch]$includeHiddenWorksheets
     )
 
-    #region initial_checks
-    if($PSCmdlet.ParameterSetName -eq 'byName') {
-        if(-not (test-path $FileName)) {
-            write-log "$fileName not found. exitting" -type error
-            return -1
-    #        throw "file not found"
+    begin {
+        try{
+            $Excel = New-Object -ComObject Excel.Application
+        } catch {
+            write-log "not able to initialize Excel lib. requires Excel to run" -type error
+            return -3
         }
-        $XLSFile=get-childItem $fileName
+        $Excel.Visible = $false
+        $Excel.DisplayAlerts = $false
     }
-    if($XLSFile.Extension -notmatch '\.xls') {
-        write-log "$($XLSFile.Name) doesn't look like excel file. exitting" -type error
-        return -2
-#        throw "wrong file type"
-    }
-    try{
-        $Excel = New-Object -ComObject Excel.Application
-    } catch {
-        write-log "not able to initialize Excel lib. requires Excel to run" -type error
-        return -3
-    }
-    #endregion initial_checks
-    #$outputFolder=$PSScriptRoot + '\' + $file.BaseName #decided that output is better to have in original file location rather then script root
-    $outputFolder=$XLSFile.DirectoryName+'\'+$XLSFile.BaseName+'.exported'
-    if( -not (test-path($outputFolder)) ) {
-        new-Item -ItemType Directory $outputFolder
-    }
-    $Excel.Visible = $false
-    $Excel.DisplayAlerts = $false
-    $workBookFile = $Excel.Workbooks.Open($XLSFile)
 
-    #excel file save statics
-    $fileType=62 #CSVUTF8 https://docs.microsoft.com/en-us/office/vba/api/excel.xlfileformat
-    $localLanguage=$true
-    write-log "converting $($XLSFile.Name) tables to CSV files..." -type info
-    $CSVFileList=@()
-
-    foreach($worksheet in $workBookFile.Worksheets) {
-        if($worksheet.Visible -eq $false -and -not $includeHiddenWorksheets.IsPresent) {
-            write-log "worksheet $($worksheet.name) found but it is hidden. use -includeHiddenWorksheets to export" -type info
-            continue
+    process {
+        if($PSCmdlet.ParameterSetName -eq 'byName') {
+            if(-not (test-path $FileName)) {
+                write-log "$fileName not found. exitting" -type error
+                return -1
+            }
+            $XLSFile=get-childItem $fileName
         }
-        Write-log "found worksheet: $($worksheet.name)" -type info
-        $tableList=$worksheet.listObjects|Where-Object SourceType -eq 1
-        if($tableList) {
-            foreach($table in $tableList ) {
-                Write-log "found table $($table.name) on $($worksheet.name)" -type info
-                $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^\w\d\-_\.]', '') + '_' + ($table.name -replace '[^\w\d]', '') + '.csv'
-                $tempWS=$workBookFile.Worksheets.add()
-                $table.range.copy()|out-null
-                $tempWS.paste($tempWS.range("A1"))
-                $tempWS.SaveAs($exportFileName, $fileType,$null,$null,$null,$null,$sddToMRU,$null,$null,$localLanguage)
-                write-log "$($table.name) saved as $exportFileName"
-                $tempWS.delete()
-                Remove-Variable -Name tempWS
+        if($XLSFile.Extension -notmatch '\.xls') {
+            write-log "$($XLSFile.Name) doesn't look like excel file. exitting" -type error
+            return -2
+        }
+        $outputFolder=$XLSFile.DirectoryName+'\'+$XLSFile.BaseName+'.exported'
+        if( -not (test-path($outputFolder)) ) {
+            new-Item -ItemType Directory $outputFolder
+        }
+        $workBookFile = $Excel.Workbooks.Open($XLSFile)
+
+        #excel file save statics
+        $fileType=62 #CSVUTF8 https://docs.microsoft.com/en-us/office/vba/api/excel.xlfileformat
+        $localLanguage=$true
+        write-log "converting $($XLSFile.Name) tables to CSV files..." -type info
+        $CSVFileList=@()
+
+        foreach($worksheet in $workBookFile.Worksheets) {
+            if($worksheet.Visible -eq $false -and -not $includeHiddenWorksheets.IsPresent) {
+                write-log "worksheet $($worksheet.name) found but it is hidden. use -includeHiddenWorksheets to export" -type info
+                continue
+            }
+            Write-log "found worksheet: $($worksheet.name)" -type info
+            $tableList=$worksheet.listObjects|Where-Object SourceType -eq 1
+            if($tableList) {
+                foreach($table in $tableList ) {
+                    Write-log "found table $($table.name) on $($worksheet.name)" -type info
+                    $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^\w\d\-_\.]', '') + '_' + ($table.name -replace '[^\w\d]', '') + '.csv'
+                    $tempWS=$workBookFile.Worksheets.add()
+                    $table.range.copy()|out-null
+                    $tempWS.paste($tempWS.range("A1"))
+                    $tempWS.SaveAs($exportFileName, $fileType,$null,$null,$null,$null,$sddToMRU,$null,$null,$localLanguage)
+                    write-log "$($table.name) saved as $exportFileName"
+                    $tempWS.delete()
+                    Remove-Variable -Name tempWS
+                    $CSVFileList += get-Item $exportFileName
+                }
+            } else {
+                Write-log "$($worksheet.name) does not contain tables. exporting whole sheet..." -type info
+                $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9\-_]', '') + '_sheet.csv'
+                $worksheet.SaveAs($exportFileName, $fileType,$null,$null,$null,$null,$sddToMRU,$null,$null,$localLanguage)
+                write-log "worksheet $($worksheet.name) saved as $exportFileName"
                 $CSVFileList += get-Item $exportFileName
             }
-        } else {
-            Write-log "$($worksheet.name) does not contain tables. exporting whole sheet..." -type info
-            $exportFileName=$outputFolder +'\'+($worksheet.name -replace '[^a-zA-Z0-9\-_]', '') + '_sheet.csv'
-            $worksheet.SaveAs($exportFileName, $fileType,$null,$null,$null,$null,$sddToMRU,$null,$null,$localLanguage)
-            write-log "worksheet $($worksheet.name) saved as $exportFileName"
-            $CSVFileList += get-Item $exportFileName
         }
+        $Excel.Workbooks.Close()
     }
 
-    $Excel.Quit()
-    #any method of closing Excel file is not working 1oo% there are scenarios where excel process stays in memory.
-    #Remove-Variable -name workBookFile
-    #Remove-Variable -Name excel
-    #[gc]::collect()
-    #[gc]::WaitForPendingFinalizers()
-    #https://social.technet.microsoft.com/Forums/lync/en-US/81dcbbd7-f6cc-47ec-8537-db23e5ae5e2f/excel-releasecomobject-doesnt-work?forum=ITCG
-    while( [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Excel) ){}
-    Write-log "done and cleared." -type ok
-    return $CSVFileList
+    end {
+        $Excel.Quit()
+        #any method of closing Excel file is not working 1oo% there are scenarios where excel process stays in memory.
+        #Remove-Variable -name workBookFile
+        #Remove-Variable -Name excel
+        #[gc]::collect()
+        #[gc]::WaitForPendingFinalizers()
+        #https://social.technet.microsoft.com/Forums/lync/en-US/81dcbbd7-f6cc-47ec-8537-db23e5ae5e2f/excel-releasecomobject-doesnt-work?forum=ITCG
+        while( [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Excel) ){}
+        Write-log "done and cleared." -type ok
+        return $CSVFileList
+    }
 }
 Set-Alias -Name convert-XLS2CSV -Value convertTo-CSVFromXLS
 function convertTo-XLSFromCSV {
@@ -531,6 +536,10 @@ function convertTo-XLSFromCSV {
         convert-CSV2XLSX c:\temp\test.csv -delimiter ','
         
         Converts test.csv to test.xlsx 
+    .EXAMPLE
+        ls *.csv | convertTo-XLSFromCSV
+
+        converts all csv files in current directory into separate xls files.
     .INPUTS
         CSV file or file name
     .OUTPUTS
@@ -539,8 +548,9 @@ function convertTo-XLSFromCSV {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210308
+        version 210309
             last changes
+            - 210309 proper pipelining
             - 210308 module function
             - 201123 initialized
     #>
@@ -560,82 +570,88 @@ function convertTo-XLSFromCSV {
         [Parameter(mandatory=$false,position=2)]
             [alias('nr')]
             [int]$tableStyleNumber=21,
-        #Excel output file name 
-        [Parameter(mandatory=$false,position=3)]
-            [string]$XLSfileName,
         #CSV delimiter character
         [Parameter(mandatory=$false,position=4)]
             [string][validateSet(',',';')]$delimiter=';'
     )
 
-    if($PSCmdlet.ParameterSetName -eq 'byName') {
-        if(-not (test-path $CSVfileName) ) {
-            write-host -ForegroundColor Red "file $CSVfileName is not accessible"
-            exit -1
+    begin {
+        try{
+            $Excel = New-Object -ComObject Excel.Application
+        } catch {
+            write-host -ForegroundColor Red "not able to initialize Excel lib. requires Excel to run"
+            write-host -ForegroundColor red $_.Exeption
+            exit -3
         }
-        $CSVFile=get-childItem $CSVfileName
-    } 
-
-    try{
-        $Excel = New-Object -ComObject Excel.Application
-    } catch {
-        write-host -ForegroundColor Red "not able to initialize Excel lib. requires Excel to run"
-        write-host -ForegroundColor red $_.Exeption
-        exit -3
+        $Excel.Visible = $false
+        $Excel.DisplayAlerts = $false
+        $XLSfileList = @()
     }
 
-    if( [string]::IsNullOrEmpty($XLSfileName) ) {
+    process {
+        if($PSCmdlet.ParameterSetName -eq 'byName') {
+            if(-not (test-path $CSVfileName) ) {
+                write-host -ForegroundColor Red "file $CSVfileName is not accessible"
+                exit -1
+            }
+            $CSVFile=get-childItem $CSVfileName
+        } 
+
+        write-host -ForegroundColor Magenta ">>$($CSVfile.BaseName)<<"
         $XLSfileName=$CSVFile.DirectoryName+'\'+$CSVFile.BaseName+'.xlsx'
+        write-log "creating $XLSfileName excel file..." -type info
+        $workbook = $excel.Workbooks.Add(1)
+        $worksheet = $workbook.worksheets.Item(1)
+        ### Build the QueryTables.Add command and reformat the data
+        $TxtConnector = ("TEXT;" + $CSVFile.FullName)
+        $Connector = $worksheet.QueryTables.add($TxtConnector,$worksheet.Range("A1"))
+        $query = $worksheet.QueryTables.item($Connector.name)
+        $query.TextFileOtherDelimiter = $delimiter
+        $query.TextFileParseType  = 1
+        $query.TextFileColumnDataTypes = ,1 * $worksheet.Cells.Columns.Count
+        $query.AdjustColumnWidth = 1
+        $query.TextFilePlatform = 65001
+        ### Execute & delete the import query
+        $query.Refresh() |out-null
+        $range=$query.ResultRange
+        $query.Delete()
+
+        $Table = $worksheet.ListObjects.Add(
+            [Microsoft.Office.Interop.Excel.XlListObjectSourceType]::xlSrcRange,
+            $Range, 
+            "importedCSV",
+            [Microsoft.Office.Interop.Excel.XlYesNoGuess]::xlYes
+            )
+        <#
+        TableStyle
+        Light
+        Medium
+        Dark
+            1,8,15 black
+            2,9,16 navy blue
+            3,1o,17 orange
+            4,11,18 gray
+            5,12,19 yellow
+            6,13,2o blue
+            7,14,21 green
+            
+        #>
+        $tableStyle=[string]"$tableStyleIntensity$tableStyleNumber"
+        $Table.TableStyle = "TableStyle$tableStyle" #green with with gray shadowing
+
+        $worksheet.SaveAs($XLSfileName, 51,$null,$null,$null,$null,$null,$null,$null,'True') #|out-null
+        $Excel.Workbooks.Close()
+        $workbook = $null
+        write-log "convertion done, saved as $XLSfileName"
+        $XLSfileList += (Get-Item $XLSfileName)
     }
-    write-log 'creating excel file...' -type info
-    $Excel.Visible = $false
-    $Excel.DisplayAlerts = $false
-    $workbook = $excel.Workbooks.Add(1)
-    $worksheet = $workbook.worksheets.Item(1)
-    ### Build the QueryTables.Add command and reformat the data
-    $TxtConnector = ("TEXT;" + $CSVFile.FullName)
-    $Connector = $worksheet.QueryTables.add($TxtConnector,$worksheet.Range("A1"))
-    $query = $worksheet.QueryTables.item($Connector.name)
-    $query.TextFileOtherDelimiter = $delimiter
-    $query.TextFileParseType  = 1
-    $query.TextFileColumnDataTypes = ,1 * $worksheet.Cells.Columns.Count
-    $query.AdjustColumnWidth = 1
-    $query.TextFilePlatform = 65001
-    ### Execute & delete the import query
-    $query.Refresh() |out-null
-    $range=$query.ResultRange
-    $query.Delete()
+    end {
+        $Excel.Quit()
+        while( [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Excel) ){}
 
-    $Table = $worksheet.ListObjects.Add(
-        [Microsoft.Office.Interop.Excel.XlListObjectSourceType]::xlSrcRange,
-        $Range, 
-        "importedCSV",
-        [Microsoft.Office.Interop.Excel.XlYesNoGuess]::xlYes
-        )
-    <#
-    TableStyle
-    Light
-    Medium
-    Dark
-        1,8,15 black
-        2,9,16 navy blue
-        3,1o,17 orange
-        4,11,18 gray
-        5,12,19 yellow
-        6,13,2o blue
-        7,14,21 green
-        
-    #>
-    $tableStyle=[string]"$tableStyleIntensity$tableStyleNumber"
-    $Table.TableStyle = "TableStyle$tableStyle" #green with with gray shadowing
-
-    $worksheet.SaveAs($XLSfileName, 51,$null,$null,$null,$null,$null,$null,$null,'True') #|out-null
-    $Excel.Quit()
-    while( [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Excel) ){}
-
-    write-log "convertion done, saved as $XLSfileName"
-    Write-log "done and cleared." -type ok
-    return (Get-Item $XLSfileName)
+        Write-log "done and cleared." -type ok
+        return $XLSfileList
+    }
 }
 Set-Alias -Name convert-CSV2XLS -Value convertTo-XLSFromCSV
 function new-RandomPassword {
