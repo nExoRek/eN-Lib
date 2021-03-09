@@ -11,7 +11,7 @@
     nExoR ::))o-
     version 210309
     changes
-        - 210309 proper pipelining for CSV convertion
+        - 210309 proper pipelining for CSV convertion, get-AzureADConnectionStatus
         - 210308 select-OU, convert-XLS2CSV, convert-CSV2XLS
         - 210302 write-log fix, check-exoconnection ext
         - 210301 connect-azure fix
@@ -410,20 +410,25 @@ function convertTo-CSVFromXLS {
         if file contain information out of table objects - they will be exported as a whole worksheet.
         files will be named after the sheet name + table/worksheet name and placed in seperate directory.
 
-        using such exports a lot? why not create a desktop shortcut to just drag'n'drop xlsx files into?
-        create a shortcut and type: 
-        C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -noprofile -file "<path to script>\convert-XLSX2CSV.ps1"
-        enjoy quick xlsx->convert with one mouse move (=
+        separate script with ability to drang'n'drop may be downloaded from
+        https://github.com/nExoRek/eN-Lib/blob/master/convert-XLSX2CSV.ps1
     .EXAMPLE
         convert-XLS2CSV -fileName .\myFile.xlsx
 
         extracts tables/worksheets to CSV files under folder named after file
+    .EXAMPLE
+        ls *.xlsx | convertTo-CSVFromXLS
+
+        converts all xlsx file in current directory to series of CSVs. 
     .INPUTS
         XLSX file.
     .OUTPUTS
         Series of CSV files representing tables and/or worksheets (if lack of tables).
     .LINK
         https://w-files.pl
+    .LINK
+        https://github.com/nExoRek/eN-Lib/blob/master/convert-XLSX2CSV.ps1
+        drag'n'drop version - separate file.
     .NOTES
         nExoR ::))o-
         version 210309
@@ -1155,7 +1160,26 @@ function get-ExchangeConnectionStatus {
     }
     return $exConnection
 }
+function get-AzureADConnectionStatus {
+    param(
+        #defines if connection is critical (will exit). by default script will return $null or defalt azure domain name.
+        [parameter(mandatory=$false,position=0)]
+            [switch]$isCritical        
+    )
 
+    $testAAD=$null
+    try {
+        $testAAD=( Get-AzureADDomain |Where-Object isDefault ).name
+    } catch {
+        if($isCritical) {
+            write-Log "connection to AAD not established. please use connect-AzureAD first. quitting" -type error
+            exit -1            
+        } else {
+            write-Log "connection to AAD not established." -type warning
+        }
+    }
+    return $testAAD
+}
 function connect-Azure {
     <#
     .SYNOPSIS
