@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.0'
+ModuleVersion = '1.1.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -71,8 +71,8 @@ PowerShellVersion = '5.0'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = 'start-Logging', 'write-Log', 'import-structuredCSV', 'convertTo-CSVFromXLS', 'convertTo-XLSFromCSV', 'new-randomPassword', 
-    'get-answerBox', 'get-valueFromInputBox', 'select-organizationalUnit', 
+FunctionsToExport = 'start-Logging', 'write-Log', 'import-structuredCSV', 'convert-XLStoCSV', 'convert-CSVtoXLS', 'new-randomPassword', 
+    'get-answerBox', 'get-valueFromInputBox', 'select-organizationalUnit', 'import-XLS',
     'get-ExchangeConnectionStatus', 'get-AzureADConnectionStatus', 'connect-Azure'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.

@@ -9,8 +9,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210309
+    version 210317
     changes
+        - 210317 upgrade to CSVtoXLS, get-ValueFromInput, delimiter detection
+        - 210315 many changes to CSV functions, experimental import-XLS
         - 210309 proper pipelining for CSV convertion, get-AzureADConnectionStatus
         - 210308 select-OU, convert-XLS2CSV, convert-CSV2XLS
         - 210302 write-log fix, check-exoconnection ext
@@ -314,13 +316,42 @@ function write-log {
         $_.exception
     }      
 }
+function get-CSVDelimiter {
+    param(
+        [string]$inputCSV
+    )
+    #header check - at least 2 lines required
+    $FirstLines = Get-Content $inputCSV -Head 3
+    if($FirstLines[0] -match '^#') { #comments and #TYPE defs from export - skip
+        $FirstLines=$FirstLines[1..2]
+    }
+    if($FirstLines.count -lt 2) {
+        write-log "$inputCSV is not proper stuctured CSV - at least 2 lines expected (header and data)." -type error
+        return $null
+    }
+
+    #this is very simple delimiter check based on number of columns detected with , and ;
+    $FirstLines=$FirstLines -replace '''.*?''|".*?"','ANTI-DELIMITER' #change all quoted strings to simple string to avoid quoted delimiter characters
+    $delimiter=',' #set default
+    $semi0=$FirstLines[0].split(';').Length -1 
+    $semi1=$FirstLines[1].split(';').Length -1
+    $colon0=$FirstLines[0].split(',').Length -1
+    $colon1=$FirstLines[1].split(',').Length -1
+    if( (($semi0 -eq $semi1) -and ($colon0 -ne $colon1)) -or (($semi0 -eq $semi1) -and ($semi0 -gt $colon0))){
+        $delimiter=';'
+    } 
+    write-log "$delimiter detected as delimiter." -type info
+    return $delimiter
+}
 function import-structuredCSV {
     <#
     .SYNOPSIS
-        loads CSV file with header check.
+        loads CSV file with header check and auto delimiter detection 
     .DESCRIPTION
         support function to gather data from CSV file with ability to ensure it is correct CSV file by
-        enumerating header.
+        enumerating header. if you operate on data you need to ensure that it is CORRECT file, and not some
+        random CSV. extremally usuful in the projects when you use xls/csv as data providers and need to ensure
+        that you stick to the standard column names.
         with non-critical header function allows to add missing columns.
     .EXAMPLE
         $inputCSV = "c:\temp\mydata.csv"
@@ -331,40 +362,66 @@ function import-structuredCSV {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210219
+        version 210317
             last changes
+            - 210317 delimiter detection as function
+            - 210315 finbished auto, non-terminating from console, header not mandatory
+            - 210311 auto delimiter detection, min 2lines
             - 210219 initialized
     
         #TO|DO
-        - automatic delimiter detection
         - add nonCritical header + crit header handling
+        - silent mode
     #>
-
     param(
         #path to CSV file containing data
         [parameter(mandatory=$true,position=0)]
             [string]$inputCSV,
         #expected header
-        [parameter(mandatory=$true,position=1)]
+        [parameter(mandatory=$false,position=1)]
             [string[]]$header,
         #this flag causes exit on load if any column is missing. 
         [parameter(mandatory=$false,position=2)]
             [switch]$headerIsCritical,
-        #CSV delimiter if different then regional settings
+        #CSV delimiter if different then regional settings. auto - tries to detect between comma and semicolon. uses comma if failed.
         [parameter(mandatory=$false,position=3)]
-            [string]$delimiter=','
+            [string]$delimiter='auto'
     )
+
+    $exit=$true #should process exit or return? return when run from console, exit when from script.
+    if( (Get-PSCallStack).count -le 2 ) { #run from console
+        $exit=$false
+    }          
 
     if(-not (test-path $inputCSV) ) {
         write-log "$inputCSV not found." -type error
-        exit -1
+        if($exit) {
+            exit -1
+        } else {
+            return -1
+        }
+    }
+
+    if($delimiter='auto') {
+        $delimiter=get-CSVDelimiter -inputCSV $inputCSV
+        if($null -eq $delimiter) {
+            if($exit) {
+                exit -1
+            } else {
+                return -1
+            }
+        }
     }
 
     try {
         $CSVData=import-csv -path "$inputCSV" -delimiter $delimiter -Encoding UTF8
     } catch {
-        Write-log "not able to open $inputCSV. quitting." -type error 
-        exit -2
+        Write-log "not able to import $inputCSV. $($_.exception)" -type error 
+        if($exit) {
+            exit -2
+        } else {
+            return -2
+        }
     }
 
     $csvHeader=$CSVData|get-Member -MemberType NoteProperty|select-object -ExpandProperty Name
@@ -378,7 +435,11 @@ function import-structuredCSV {
     if($hmiss) {
         if($headerIsCritical) {
             Write-log "Wrong CSV header. check delimiter used. quitting." -type error
-            exit -2
+            if($exit) {
+                exit -3
+            } else {
+                return -3
+            }
         }
         $ans=Read-Host -Prompt "some columns are missing. type 'add' to add them, 'c' to continue or anything else to cancel"
         switch($ans) {
@@ -393,7 +454,11 @@ function import-structuredCSV {
             }
             default {
                 write-log "cancelled. exitting." -type info
-                exit -7
+                if($exit) {
+                    exit 0
+                } else {
+                    return 0
+                }
             }
         }
     }
@@ -401,7 +466,7 @@ function import-structuredCSV {
 }
 set-alias -Name load-CSV -Value import-structuredCSV
 
-function convertTo-CSVFromXLS {
+function convert-XLStoCSV {
     <#
     .SYNOPSIS
         export all tables in XLSX files to CSV files. enumerates all sheets, and each table goes to another file.
@@ -431,32 +496,47 @@ function convertTo-CSVFromXLS {
         drag'n'drop version - separate file.
     .NOTES
         nExoR ::))o-
-        version 210309
+        version 210317
             last changes
+            - 210317 firstWorksheet, suppress directory creation info
+            - 210315 error detection during creation
             - 210309 proper pipeline
             - 210308 module function
             - 201121 output folder changed, descirption, do not export hidden by default, saveAs CSVUTF8
             - 201101 initialized
+        TO|DO 
+        - explore silent mode
     #>
     [cmdletbinding()]
     param(
         # XLSX file name to be converted to CSV files
         [Parameter(ParameterSetName='byName',mandatory=$true,position=0,ValueFromPipeline)]
-            [string]$fileName,
+            [string]$XLSfileName,
         # XLSX file object to be converted to CSV files
         [Parameter(ParameterSetName='byObject',mandatory=$true,position=0,ValueFromPipeline)]
             [System.IO.FileInfo]$XLSFile,
-        #include hidden worksheets? 
+        #export only first worksheet, not all
         [Parameter(mandatory=$false,position=1)]
+            [switch]$firstWorksheetOnly,
+        #include hidden worksheets? 
+        [Parameter(mandatory=$false,position=2)]
             [switch]$includeHiddenWorksheets
     )
 
     begin {
+        $exit=$true #should process exit or return? return when run from console, exit when from script.
+        if( (Get-PSCallStack).count -le 2 ) { #run from console
+            $exit=$false
+        }          
         try{
             $Excel = New-Object -ComObject Excel.Application
         } catch {
             write-log "not able to initialize Excel lib. requires Excel to run" -type error
-            return -3
+            if($exit) {
+                exit -1
+            } else {
+                return -1
+            }
         }
         $Excel.Visible = $false
         $Excel.DisplayAlerts = $false
@@ -464,19 +544,27 @@ function convertTo-CSVFromXLS {
 
     process {
         if($PSCmdlet.ParameterSetName -eq 'byName') {
-            if(-not (test-path $FileName)) {
-                write-log "$fileName not found. exitting" -type error
-                return -1
+            if(-not (test-path $XLSFileName)) {
+                write-log "$XLSfileName not found. exitting" -type error
+                if($exit) {
+                    exit -2
+                } else {
+                    return -2
+                }
             }
-            $XLSFile=get-childItem $fileName
+            $XLSFile=get-Item $XLSfileName
         }
         if($XLSFile.Extension -notmatch '\.xls') {
             write-log "$($XLSFile.Name) doesn't look like excel file. exitting" -type error
-            return -2
+            if($exit) {
+                exit -3
+            } else {
+                return -3
+            }
         }
         $outputFolder=$XLSFile.DirectoryName+'\'+$XLSFile.BaseName+'.exported'
         if( -not (test-path($outputFolder)) ) {
-            new-Item -ItemType Directory $outputFolder
+            new-Item -ItemType Directory $outputFolder|Out-Null
         }
         $workBookFile = $Excel.Workbooks.Open($XLSFile)
 
@@ -513,6 +601,9 @@ function convertTo-CSVFromXLS {
                 write-log "worksheet $($worksheet.name) saved as $exportFileName"
                 $CSVFileList += get-Item $exportFileName
             }
+            if($firstWorksheetOnly) {
+                break
+            }
         }
         $Excel.Workbooks.Close()
     }
@@ -530,8 +621,8 @@ function convertTo-CSVFromXLS {
         return $CSVFileList
     }
 }
-Set-Alias -Name convert-XLS2CSV -Value convertTo-CSVFromXLS
-function convertTo-XLSFromCSV {
+Set-Alias -Name convert-XLS2CSV -Value convert-XLStoCSV
+function convert-CSVtoXLS {
     <#
     .SYNOPSIS
         Converts CSV file into XLS with table.
@@ -542,9 +633,13 @@ function convertTo-XLSFromCSV {
         
         Converts test.csv to test.xlsx 
     .EXAMPLE
-        ls *.csv | convertTo-XLSFromCSV
+        ls *.csv | convert-CSV2XLS -outputFileName myfile.xlsx
 
-        converts all csv files in current directory into separate xls files.
+        converts all csv files in current directory into sinlge xls file with multiple worksheets.
+    .EXAMPLE
+        start (convert-CSVtoXLS myfile.csv)
+
+        convrts file and opens it in Excel
     .INPUTS
         CSV file or file name
     .OUTPUTS
@@ -553,11 +648,15 @@ function convertTo-XLSFromCSV {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210309
+        version 210317
             last changes
+            - 210317 processing multiple CSV will create single XLS, delimiter autodetection, output file name
             - 210309 proper pipelining
             - 210308 module function
             - 201123 initialized
+        
+        TO|DO
+        - add silent mode 
     #>
     [CmdletBinding()]
     param (
@@ -567,98 +666,194 @@ function convertTo-XLSFromCSV {
         #CSV file object to convert
         [Parameter(ParameterSetName='byObject',mandatory=$true,position=0,ValueFromPipeline)]
             [System.IO.FileInfo]$CSVfile,
-        #style intensity
+        #output XLSX file name
         [Parameter(mandatory=$false,position=1)]
+            [alias('outputFileName')]
+            [string]$XLSfileName=$null,
+        #style intensity
+        [Parameter(mandatory=$false,position=2)]
             [alias('intensity')]
             [string][validateSet('Light','Medium','Dark')]$tableStyleIntensity='Medium',
         #style number
-        [Parameter(mandatory=$false,position=2)]
+        [Parameter(mandatory=$false,position=3)]
             [alias('nr')]
             [int]$tableStyleNumber=21,
         #CSV delimiter character
         [Parameter(mandatory=$false,position=4)]
-            [string][validateSet(',',';')]$delimiter=';'
+            [string]$delimiter='auto'
     )
 
     begin {
+        $exit=$true #should process exit or return? return when run from console, exit when from script.
+        if( (Get-PSCallStack).count -le 2 ) { #run from console
+            $exit=$false
+        }          
+    
         try{
             $Excel = New-Object -ComObject Excel.Application
         } catch {
             write-host -ForegroundColor Red "not able to initialize Excel lib. requires Excel to run"
             write-host -ForegroundColor red $_.Exeption
-            exit -3
+            if($exit) {
+                exit -1
+            } else {
+                return -1
+            }
         }
         $Excel.Visible = $false
         $Excel.DisplayAlerts = $false
+        $workbook = $excel.Workbooks.Add(1)
         $XLSfileList = @()
+        $counter=0
+        if($delimiter -eq 'auto') {
+            $autoDelimiter=$true
+        }
+        if(![string]::isNullOrEmpty($XLSfileName) ){
+            $parent = Split-Path $XLSfileName -Parent
+            if([string]::isNullOrEmpty($parent)) {
+                $XLSfileName = ($pwd).path +'\'+$XLSfileName
+            } else {
+                $XLSFileName = (Resolve-Path $parent).Path + '\' + (Split-Path $XLSfileName -Leaf)
+            }
+            if($XLSFileName -notmatch "\.xls[x]?") {
+                $XLSfileName+=".xlsx"
+            }
+            write-log "creating $XLSfileName excel file..." -type info
+        }
     }
 
     process {
+        #$ErrorActionPreference="SilentlyContinue"
         if($PSCmdlet.ParameterSetName -eq 'byName') {
             if(-not (test-path $CSVfileName) ) {
                 write-host -ForegroundColor Red "file $CSVfileName is not accessible"
-                exit -1
+                if($exit) {
+                    exit -2
+                } else {
+                    return -2
+                }
             }
             $CSVFile=get-childItem $CSVfileName
         } 
+        #convert output file name to full path
+        if([string]::isNullOrEmpty($XLSfileName)) {
+            $XLSfileName= ($pwd).path + '\' + $CSVFile.BaseName + '.xlsx'
+            write-log "creating $XLSfileName excel file..." -type info
+        } 
 
-        write-host -ForegroundColor Magenta ">>$($CSVfile.BaseName)<<"
-        $XLSfileName=$CSVFile.DirectoryName+'\'+$CSVFile.BaseName+'.xlsx'
-        write-log "creating $XLSfileName excel file..." -type info
-        $workbook = $excel.Workbooks.Add(1)
-        $worksheet = $workbook.worksheets.Item(1)
-        ### Build the QueryTables.Add command and reformat the data
-        $TxtConnector = ("TEXT;" + $CSVFile.FullName)
-        $Connector = $worksheet.QueryTables.add($TxtConnector,$worksheet.Range("A1"))
-        $query = $worksheet.QueryTables.item($Connector.name)
-        $query.TextFileOtherDelimiter = $delimiter
-        $query.TextFileParseType  = 1
-        $query.TextFileColumnDataTypes = ,1 * $worksheet.Cells.Columns.Count
-        $query.AdjustColumnWidth = 1
-        $query.TextFilePlatform = 65001
-        ### Execute & delete the import query
-        $query.Refresh() |out-null
-        $range=$query.ResultRange
-        $query.Delete()
+        try {
+            write-log "adding $($CSVfile.Name) data as worksheet..." -type info
+            if($autoDelimiter) {
+                $delimiter = get-CSVDelimiter -inputCSV $CSVfile.FullName
+                if([string]::isNullOrEmpty($delimiter) ) {  
+                    $delimiter=','
+                    #return -1
+                }
+            }
+            if($counter++ -gt 0) {
+                $worksheet = $workbook.worksheets.add([System.Reflection.Missing]::Value,$workbook.Worksheets.Item($workbook.Worksheets.count))
+            }
+            $worksheet = $workbook.worksheets.Item($workbook.Worksheets.count)
+            $worksheet.name = $CSVfile.BaseName
+            ### Build the QueryTables.Add command and reformat the data
+            $TxtConnector = ("TEXT;" + $CSVFile.FullName)
+            $Connector = $worksheet.QueryTables.add($TxtConnector,$worksheet.Range("A1"))
+            $query = $worksheet.QueryTables.item($Connector.name)
+            $query.TextFileOtherDelimiter = $delimiter
+            $query.TextFileParseType  = 1
+            $query.TextFileColumnDataTypes = ,1 * $worksheet.Cells.Columns.Count
+            $query.AdjustColumnWidth = 1
+            $query.TextFilePlatform = 65001
+            ### Execute & delete the import query
+            $query.Refresh() | out-null
+            $range=$query.ResultRange
+            $query.Delete()
 
-        $Table = $worksheet.ListObjects.Add(
-            [Microsoft.Office.Interop.Excel.XlListObjectSourceType]::xlSrcRange,
-            $Range, 
-            "importedCSV",
-            [Microsoft.Office.Interop.Excel.XlYesNoGuess]::xlYes
-            )
-        <#
-        TableStyle
-        Light
-        Medium
-        Dark
-            1,8,15 black
-            2,9,16 navy blue
-            3,1o,17 orange
-            4,11,18 gray
-            5,12,19 yellow
-            6,13,2o blue
-            7,14,21 green
-            
-        #>
-        $tableStyle=[string]"$tableStyleIntensity$tableStyleNumber"
-        $Table.TableStyle = "TableStyle$tableStyle" #green with with gray shadowing
+            $Table = $worksheet.ListObjects.Add(
+                [Microsoft.Office.Interop.Excel.XlListObjectSourceType]::xlSrcRange,
+                $Range, 
+                "importedCSV",
+                [Microsoft.Office.Interop.Excel.XlYesNoGuess]::xlYes
+                )
+            <#
+            TableStyle:
+            - Light
+            - Medium
+            - Dark
+            tableStyleNumber:
+            - 1,8,15 black
+            - 2,9,16 navy blue
+            - 3,1o,17 orange
+            - 4,11,18 gray
+            - 5,12,19 yellow
+            - 6,13,2o blue
+            - 7,14,21 green
+            #>
+            $tableStyle=[string]"$tableStyleIntensity$tableStyleNumber"
+            $Table.TableStyle = "TableStyle$tableStyle" #green with with gray shadowing
 
-        $worksheet.SaveAs($XLSfileName, 51,$null,$null,$null,$null,$null,$null,$null,'True') #|out-null
-        $Excel.Workbooks.Close()
-        $workbook = $null
-        write-log "convertion done, saved as $XLSfileName"
-        $XLSfileList += (Get-Item $XLSfileName)
+        } catch {
+            write-log "error converting CSV to XLS: $($_.exception)" -type error
+            return -2         
+        }
     }
     end {
+        $errorSaving=$false
+        try {
+            $worksheet.SaveAs($XLSfileName, 51,$null,$null,$null,$null,$null,$null,$null,'True') #|out-null
+        } catch {
+            write-log "error saving $XLSfileName. $($_.exception)" -type error
+            $errorSaving=$true
+        }
+        $workbook = $null
+        $Excel.Workbooks.Close()
         $Excel.Quit()
         while( [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Excel) ){}
+        if(!$errorSaving) {
+            write-log "convertion done, saved as $XLSfileName"
+            $XLSfileList += (Get-Item $XLSfileName)
+            Write-log "done and cleared." -type ok
+            return $XLSfileList
+        } else {
+            return $null
+        }
 
-        Write-log "done and cleared." -type ok
-        return $XLSfileList
     }
 }
-Set-Alias -Name convert-CSV2XLS -Value convertTo-XLSFromCSV
+Set-Alias -Name convert-CSV2XLS -Value convert-CSVtoXLS
+function import-XLS {
+    <#
+    .SYNOPSIS
+        EXPERIMENTAL - importing XLS as table object, using convert+load
+    .DESCRIPTION
+    .INPUTS
+        XLS file.
+    .OUTPUTS
+        table
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210317
+            last changes
+            - 210317 use of firstWorksheet
+            - 210315 initialized
+    
+        #TO|DO
+    #>
+    
+    param(
+        # XLSX file name to be converted to CSV files
+        [Parameter(ParameterSetName='byName',mandatory=$true,position=0)]
+            [string]$XLSfileName
+    )
+
+    write-log "EXERIMAENTAL FUNCTION" -type warning
+    $tempCSV = convert-XLStoCSV -XLSfileName $XLSfileName -firstWorksheetOnly
+    if( $tempCSV ) {
+        return (import-structuredCSV -inputCSV $tempCSV[0].FullName)
+    }
+}
 function new-RandomPassword {
     <#
     .SYNOPSIS
@@ -864,6 +1059,10 @@ function get-valueFromInputBox {
             "you agreed, let's continue"
         }
         write-host 'code to execute here'
+    .EXAMPLE
+        $computerName = get-valueFromInbox -title 'Provide computer name' -maxChars 15 -allowedCharacters '[a-zA-Z0-9_-]'
+
+        limit input to 15 characters and allow only letters,digits, underscore and minus.
     .INPUTS
         None.
     .OUTPUTS
@@ -872,8 +1071,9 @@ function get-valueFromInputBox {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210209
+        version 210317
         last changes
+            - 210317 allowCharacter 
             - 210209 anchored layout
             - 210113 initialized
         
@@ -891,7 +1091,12 @@ function get-valueFromInputBox {
             [string]$type='Question',
         #maximum number of characters allowed
         [Parameter(mandatory=$false,position=3)]
-            [int]$maxChars = 30
+            [alias('maxChars')]
+            [int]$maxCharacters = 30,
+        #regular expression limiting characters -eg 'only digits'
+        [Parameter(mandatory=$false,position=4)]
+            [alias('regex')]
+            [regex]$allowedCharacters
     )
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
@@ -946,6 +1151,16 @@ function get-valueFromInputBox {
     $promptWindowForm.Controls.AddRange(@($lblPromptInfo, $txtUserInput,$btOK,$btCancel))
     $promptWindowForm.Topmost = $true
     $promptWindowForm.Add_Shown( { $promptWindowForm.Activate();$txtUserInput.Select() })
+
+    $txtUserInput.add_KeyUp({
+        if($allowedCharacters -and $txtUserInput.text) {
+            if($txtUserInput.text[-1] -notmatch $allowedCharacters) {
+                $cursor=$txtUserInput.SelectionStart
+                $txtUserInput.text=$txtUserInput.text -replace ".$"
+                $txtUserInput.Select($cursor-1, 0);
+            }
+        }
+    })
     $result = $promptWindowForm.ShowDialog()
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         $response = $txtUserInput.Text

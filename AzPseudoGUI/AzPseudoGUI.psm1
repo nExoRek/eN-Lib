@@ -13,8 +13,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210302
+    version 210310
         last changes
+        - 210310 vnet fix
         - 210302 functions retun $null on cancel, autoselect, fixes and help 
         - 210301 storageAccount choice fixed, select-networksecuritygroup added, multiselect for some functions
         - 210215 seelct-vnet and select-subnet fixes, select-recoveryContainer
@@ -550,8 +551,9 @@ function select-vNet {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210310
             last changes
+            - 210310 rgname when no net
             - 210302 autoSelectSingle
             - 210220 mulichoise, help
     #>
@@ -596,7 +598,7 @@ function select-vNet {
     } 
     $vNetList = Get-AzVirtualNetwork @azvNet | select-object name,location, ResourceGroupName
     if($null -eq $vNetList) {
-        write-log "there is no VNets in $ResourceGroup"
+        write-log "there is no VNets in $ResourceGroupName"
         if($isCritical.IsPresent) {
             exit -1
         }
@@ -992,5 +994,72 @@ function select-recoveryContainer {
         return $recoveryContainer
     }
 }
+function select-LogAnalyticsWorkspace {
+    <#
+    .SYNOPSIS
+        acceleration function enabling to visually choose Log Analytics resources. 
+    .DESCRIPTION
+        #todo
+    .EXAMPLE
+        #todo
+    .INPUTS
+        None.
+    .OUTPUTS
+        Log Analytics resource(s)
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210310
+            last changes
+            - 210310 init
+        
+        TO|DO
+    #>
+    param(
+        #message displayed on the screen before windows popup
+        [Parameter(mandatory=$false,position=0)]
+            [string]$message = 'Select *Log Analytics Workspace*...',
+        #short title message shown on GridView title bar
+        [Parameter(mandatory=$false,position=1)]
+            [string]$title = 'Log Analytics Workspace',
+        #changes return to terminal - define if cancel/empty RG is critical and will result in Exit
+        [Parameter(mandatory=$false,position=2)]
+            [switch]$isCritical,
+        #automatically select value if there is only single option
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$autoSelectSingleOption
+    )
 
-Export-ModuleMember -Function * -Alias 'select-NSG'
+    write-log $message
+
+    $LAWList = get-azOperationalInsightsWorkspace 
+    if([string]::isNullOrEmpty($LAWList) ) {
+        write-log "no Log Analytincs Workspaces found" -type warning
+        if($isCritical.IsPresent) {
+            exit -1
+        } else {
+            return -1
+        }
+    }
+    if($autoSelectSingleOption.IsPresent -and [string]::isNullOrEmpty($RCList.count) ) { #when single object available, 'count' does not exist
+        write-log "single LAW available: $($LAWList.Name) found. selecting." -type info
+        return $LAWList
+    } else {
+        $LAWorkspace = $LAWList | Select-Object Name,ResourceGroupName,CustomerId | Out-GridView -Title 'select Log Analytics workspace' -OutputMode Single
+        if($null -eq $LAWorkspace) {
+            write-host "Cancelled."
+            if($isCritical.IsPresent) {
+                exit 0
+            } else {
+                return $null
+            }
+        }
+        $LAWorkspace = get-azOperationalInsightsWorkspace -ResourceGroupName $LAWorkspace.ResourceGroupName -Name $LAWorkspace.name
+        write-log "LAW $($LAWorkspace.name) chosen." -type info
+        return $LAWorkspace
+    }
+}
+Set-Alias -Name select-LAWorkspace -Value select-LogAnalyticsWorkspace
+
+Export-ModuleMember -Function * -Alias 'select-NSG','select-LAWorkspace'
