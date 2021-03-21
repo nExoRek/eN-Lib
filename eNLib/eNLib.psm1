@@ -1186,9 +1186,9 @@ function select-OrganizationalUnit {
         
         displays forms treeview enabling to choose OU from the tree.
     .EXAMPLE
-        new-ADComputer -name 'mycomputer' -path (select-OrganizationalUnit -start OU=LUcomps,DC=w-files,DC=pl -enableSearch)
+        new-ADUser -name 'some user' -path (select-OrganizationalUnit -start OU=LU,DC=w-files,DC=pl -loadAll)
 
-        launches search windows with OU structure, starting from 'LUcomps', with search box.
+        allows to select OU starting from OU=LU and preloading entire tree
     .INPUTS
         None.
     .OUTPUTS
@@ -1199,7 +1199,7 @@ function select-OrganizationalUnit {
         nExoR ::))o-
         version 210321
             last changes
-            - 210321 enableSearch
+            - 210321 loadAll
             - 210317 rootNode, disableRoot
             - 210308 initialized
     
@@ -1215,9 +1215,9 @@ function select-OrganizationalUnit {
         #root node can't be selected
         [Parameter(mandatory=$false,position=1)]
             [switch]$disableRoot,
-        #enable text search box - will load entire tree - MAY TAKE LONG TIME - use for subOUs rather then full tree 
+        #enable text search box - will load entire tree which might take time, but will allow to search thru entire tree
         [Parameter(mandatory=$false,position=2)]
-            [switch]$enableSearch,
+            [switch]$loadAll,
         #if critical - will exit instead of returning false
         [Parameter(mandatory=$false,position=3)]
             [switch]$isCritical
@@ -1225,7 +1225,6 @@ function select-OrganizationalUnit {
 
     Function add-Nodes ( $Node) {
         #write-host $costam
-        $nodeList=@()
         $SubOU = Get-ADOrganizationalUnit -SearchBase $node.tag.distinguishedName -SearchScope OneLevel -filter *
         if($node.tag.unfolded -eq $false) {
             $node.tag.unfolded = $true
@@ -1236,34 +1235,25 @@ function select-OrganizationalUnit {
                     unfolded = $false
                     name = $rxOUName.Match($ou.DistinguishedName).groups[1].value
                 }
-                $NodeList += $NodeSub.tag
-                if($enableSearch) { 
+                $script:NodeList += $NodeSub.tag
+                if($loadAll) { 
                     add-Nodes $NodeSub 
                 }
             }
         }
-        return $nodeList
-    }
-
-    function get-Nodes( [System.Windows.Forms.TreeNodeCollection] $nodes) {
-        foreach ($n in $nodes) {
-            $n
-            Get-Nodes($n.Nodes)
-        }
     }
 
     [regex]$rxOUName="^OU=(.*?),"
+    $script:NodeList=@()
 
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $form = New-Object System.Windows.Forms.Form
     $Form.Text = "Select OU under $startingOU"
-    #$Form.Size = New-Object System.Drawing.Size(300,500)
     $form.MinimumSize = New-Object System.Drawing.Size(300,500)
     $Form.AutoSize = $true
     $Form.StartPosition = 'CenterScreen'
-    #$Form.FormBorderStyle = 'Fixed3D'
     $Form.Icon = [System.Drawing.SystemIcons]::Question
     $Form.Topmost = $true
     $Form.MaximizeBox = $false
@@ -1272,7 +1262,6 @@ function select-OrganizationalUnit {
     $treeView = New-Object System.Windows.Forms.TreeView
     $treeView.Dock = 'Fill'
     $treeView.CheckBoxes = $false
-    $treeView.row
     $treeView.Name = 'treeView'
      
     $rootNode = $treeView.Nodes.Add($startingOU)
@@ -1280,12 +1269,15 @@ function select-OrganizationalUnit {
         distinguishedName = $startingOU
         unfolded = $false
     }
-    $nodeList=add-Nodes $rootNode
+    
+    if($loadAll) {
+        write-log "LOADING FULL TREE..." -type warning
+    }
+    add-Nodes $rootNode
 
     $SearchTreeView = New-Object System.Windows.Forms.TreeView
     $SearchTreeView.Dock = 'Fill'
     $SearchTreeView.CheckBoxes = $false
-    $SearchTreeView.row
     $SearchTreeView.name = 'SearchTreeView'
      
     $SearchRootNode = $SearchTreeView.Nodes.Add($startingOU)
@@ -1314,7 +1306,6 @@ function select-OrganizationalUnit {
     $txtSearch.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 8)
     $txtSearch.Location = new-object System.Drawing.Point(3,3)
 
-    $nodes = get-Nodes($treeView.Nodes)
     $txtSearch.add_KeyUp({
         #param($sender,$e)
         if($txtSearch.Text.Length -gt 1 -and ($mainTable.Controls|? name -eq 'treeView')) {
