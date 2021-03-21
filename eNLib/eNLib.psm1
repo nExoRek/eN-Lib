@@ -9,9 +9,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210317
+    version 210321
     changes
-        - 210317 upgrade to CSVtoXLS, get-ValueFromInput, delimiter detection
+        - 210321 select-OU extention
+        - 210317 upgrade to CSVtoXLS, get-ValueFromInput, delimiter detection, select-OU
         - 210315 many changes to CSV functions, experimental import-XLS
         - 210309 proper pipelining for CSV convertion, get-AzureADConnectionStatus
         - 210308 select-OU, convert-XLS2CSV, convert-CSV2XLS
@@ -337,7 +338,10 @@ function get-CSVDelimiter {
     $semi1=$FirstLines[1].split(';').Length -1
     $colon0=$FirstLines[0].split(',').Length -1
     $colon1=$FirstLines[1].split(',').Length -1
-    if( (($semi0 -eq $semi1) -and ($colon0 -ne $colon1)) -or (($semi0 -eq $semi1) -and ($semi0 -gt $colon0))){
+    if( (($semi0 -eq $semi1) -and ($colon0 -ne $colon1)) -or `
+        (($semi0 -eq $semi1) -and ($semi0 -gt $colon0)) -or `
+        ($colon0 -eq 0 -and $semi0 -gt 0)
+        ){
         $delimiter=';'
     } 
     write-log "$delimiter detected as delimiter." -type info
@@ -1181,6 +1185,10 @@ function select-OrganizationalUnit {
         $ou = select-OU
         
         displays forms treeview enabling to choose OU from the tree.
+    .EXAMPLE
+        new-ADComputer -name 'mycomputer' -path (select-OrganizationalUnit -start OU=LUcomps,DC=w-files,DC=pl -enableSearch)
+
+        launches search windows with OU structure, starting from 'LUcomps', with search box.
     .INPUTS
         None.
     .OUTPUTS
@@ -1189,13 +1197,13 @@ function select-OrganizationalUnit {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210308
+        version 210321
             last changes
+            - 210321 enableSearch
+            - 210317 rootNode, disableRoot
             - 210308 initialized
     
         #TO|DO
-        - load All Nodes
-        - search 
         - icons
         - multichoice
     #>
@@ -1204,12 +1212,20 @@ function select-OrganizationalUnit {
         #starting OU (tree root)
         [Parameter(mandatory=$false,position=0)]
             [string]$startingOU=(get-ADRootDSE).defaultNamingContext,
-        #if critical - will exit instead of returning false
+        #root node can't be selected
         [Parameter(mandatory=$false,position=1)]
+            [switch]$disableRoot,
+        #enable text search box - will load entire tree - MAY TAKE LONG TIME - use for subOUs rather then full tree 
+        [Parameter(mandatory=$false,position=2)]
+            [switch]$enableSearch,
+        #if critical - will exit instead of returning false
+        [Parameter(mandatory=$false,position=3)]
             [switch]$isCritical
     )
 
     Function add-Nodes ( $Node) {
+        #write-host $costam
+        $nodeList=@()
         $SubOU = Get-ADOrganizationalUnit -SearchBase $node.tag.distinguishedName -SearchScope OneLevel -filter *
         if($node.tag.unfolded -eq $false) {
             $node.tag.unfolded = $true
@@ -1218,75 +1234,147 @@ function select-OrganizationalUnit {
                 $NodeSub.tag = [psobject]@{
                     distinguishedName = $ou.DistinguishedName
                     unfolded = $false
+                    name = $rxOUName.Match($ou.DistinguishedName).groups[1].value
                 }
-                $nodeSub.tag.unfolded = $false
+                $NodeList += $NodeSub.tag
+                if($enableSearch) { 
+                    add-Nodes $NodeSub 
+                }
             }
         }
+        return $nodeList
     }
+
+    function get-Nodes( [System.Windows.Forms.TreeNodeCollection] $nodes) {
+        foreach ($n in $nodes) {
+            $n
+            Get-Nodes($n.Nodes)
+        }
+    }
+
+    [regex]$rxOUName="^OU=(.*?),"
 
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $form = New-Object System.Windows.Forms.Form
     $Form.Text = "Select OU under $startingOU"
-    $Form.Size = New-Object System.Drawing.Size(300,500)
-    $Form.AutoSize = $false
+    #$Form.Size = New-Object System.Drawing.Size(300,500)
+    $form.MinimumSize = New-Object System.Drawing.Size(300,500)
+    $Form.AutoSize = $true
     $Form.StartPosition = 'CenterScreen'
-    $Form.FormBorderStyle = 'Fixed3D'
+    #$Form.FormBorderStyle = 'Fixed3D'
     $Form.Icon = [System.Drawing.SystemIcons]::Question
     $Form.Topmost = $true
     $Form.MaximizeBox = $false
     $form.dock = "fill"
-    
-    $flowLayoutPanel = New-Object System.Windows.Forms.Panel
-    $flowLayoutPanel.dock = 'Fill'
-    $flowLayoutPanel.padding = 3
-    $flowLayoutPanel.autosize = $true
-    
+   
     $treeView = New-Object System.Windows.Forms.TreeView
     $treeView.Dock = 'Fill'
     $treeView.CheckBoxes = $false
-    $treeview.Tag = [psobject]@{
-                distinguishedName = $startingOU
-                unfolded = $false
-            }
+    $treeView.row
+    $treeView.Name = 'treeView'
+     
+    $rootNode = $treeView.Nodes.Add($startingOU)
+    $rootNode.Tag=[psobject]@{
+        distinguishedName = $startingOU
+        unfolded = $false
+    }
+    $nodeList=add-Nodes $rootNode
+
+    $SearchTreeView = New-Object System.Windows.Forms.TreeView
+    $SearchTreeView.Dock = 'Fill'
+    $SearchTreeView.CheckBoxes = $false
+    $SearchTreeView.row
+    $SearchTreeView.name = 'SearchTreeView'
+     
+    $SearchRootNode = $SearchTreeView.Nodes.Add($startingOU)
+    $SearchRootNode.Tag=$startingOU
         
-    add-Nodes $treeView
     
     $okButton = New-Object System.Windows.Forms.Button
     $okButton.Size = New-Object System.Drawing.Size(75,23)
     $okButton.Anchor = 'left'
     $okButton.Text = "OK"
     $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $Form.AcceptButton = $okButton
     
     $cancelButton = New-Object System.Windows.Forms.Button
     $cancelButton.Size = New-Object System.Drawing.Size(75,23)
     $cancelButton.anchor = 'right'
     $cancelButton.Text = "Cancel"
     $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    
-    $tableLayoutPanel = New-Object System.Windows.Forms.tableLayoutPanel
-    $tableLayoutPanel.size = New-Object System.Drawing.Size(290,30)
-    $tableLayoutPanel.ColumnCount = 2
-    $tableLayoutPanel.RowCount = 1
-    $tableLayoutPanel.Height = 30
-    $tableLayoutPanel.Dock = "bottom"
-    
     $Form.CancelButton = $cancelButton
-    $Form.AcceptButton = $okButton
-        
-    $tableLayoutPanel.Controls.AddRange(@($okButton,$cancelButton))
-    $flowLayoutPanel.Controls.AddRange(@($treeView))
     
-    $form.Controls.AddRange(@($flowLayoutPanel,$tableLayoutPanel))
+    $txtSearch = New-Object system.Windows.Forms.TextBox
+    $txtSearch.multiline = $false
+    $txtSearch.ReadOnly = $false
+    $txtSearch.MinimumSize = new-object System.Drawing.Size(300,20)
+    $txtSearch.Height = 20
+    $txtSearch.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 8)
+    $txtSearch.Location = new-object System.Drawing.Point(3,3)
 
-    $treeview.add_afterSelect{(
-        add-Nodes $treeView.SelectedNode #$treeView.SelectedNode.tag
-    )}
+    $nodes = get-Nodes($treeView.Nodes)
+    $txtSearch.add_KeyUp({
+        #param($sender,$e)
+        if($txtSearch.Text.Length -gt 1 -and ($mainTable.Controls|? name -eq 'treeView')) {
+            $mainTable.Controls.Remove($treeView)
+            $mainTable.controls.add($searchTreeView,1,0)
+            $mainTable.SetColumnSpan($searchTreeView,2)
+            $form.Refresh()
+        } 
+        if($txtSearch.Text.Length -le 1) {
+            $mainTable.Controls.Remove($searchTreeView)
+            $mainTable.Controls.Add($treeView,1,0)
+            $form.Refresh()
+        }
+        if($txtSearch.Text.Length -gt 1) {
+            $searchTreeView.Nodes.Clear()
+            foreach($n in $NodeList) {
+                if($n.name -match $txtSearch.Text) {
+                    $searchTreeView.Nodes.Add($n.distinguishedName)
+                }
+            }
+        }
+    })
+
+    $mainTable = New-Object System.Windows.Forms.TableLayoutPanel
+    $mainTable.AutoSize = $true
+    $mainTable.ColumnCount = 2
+    $mainTable.RowCount = 3
+    $mainTable.Dock = "fill"
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent,100)) )|out-null
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
+    
+    $mainTable.controls.Add($txtSearch,0,0)
+    $mainTable.SetColumnSpan($txtSearch,2)
+    $mainTable.Controls.Add($treeView,1,0)
+    $mainTable.SetColumnSpan($treeView,2)
+    $mainTable.Controls.add($okButton,2,0)
+    $mainTable.Controls.add($cancelButton,2,1)
+
+    
+    $form.Controls.Add($mainTable)
+
+    $treeview.add_afterSelect({
+        add-Nodes $treeView.SelectedNode 
+        if($treeView.SelectedNode.text -eq $startingOU -and $disableRoot) {
+            $okButton.Enabled = $false
+        } else {
+            $okButton.Enabled = $true
+        }
+    })
     
     $result = $Form.ShowDialog()
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-        return $treeView.SelectedNode.Tag.distinguishedName
+        $currentView=($mainTable.controls|? name -match 'treeView')
+        if($currentView.name -eq 'treeView') {
+            return $currentView.SelectedNode.tag.distinguishedName
+        } else {
+            return $currentView.SelectedNode.text
+        }
+
     } 
     if($isCritical.IsPresent) {
         write-log "cancelled."
