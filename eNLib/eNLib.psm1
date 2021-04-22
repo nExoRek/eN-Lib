@@ -9,8 +9,13 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210321
+    version 210422
     changes
+        - 210422 again fixes to exit
+        - 210421 write-log $message fix
+        - 210408 fixes to import-* function exit
+        - 210402 write-log 3rd output init, get-valueFromInput fix
+        - 210329 write-log init fix
         - 210321 select-OU extention
         - 210317 upgrade to CSVtoXLS, get-ValueFromInput, delimiter detection, select-OU
         - 210315 many changes to CSV functions, experimental import-XLS
@@ -81,8 +86,9 @@ function start-Logging {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210210
+        version 210408
         changes:
+            - 210408 breaks
             - 210210 removing recurrency to write-log (loop elimination)
             - 210205 fixes to logfilename initialization
             - 210203 added 'logFolder' and proper log initilization when called indirectly
@@ -145,14 +151,14 @@ function start-Logging {
                 $logFile = Split-Path $logFileName -Leaf
                 if( test-path $logFile -PathType Container ) {
                     write-host "$logFileName seems to be an existing folder. use 'logFolder' parameter or change log name. quitting." -ForegroundColor Red
-                    exit -1
+                    break
                 }
                 $global:logFile = "$logFolder\$logFile"
             }
         }
         default {
             write-host -ForegroundColor Magenta 'very strange error'
-            exit -666
+            break
         }
     }
 
@@ -162,7 +168,7 @@ function start-Logging {
             write-host "$LogFolder created."
         } catch {
             write-error $_.exception
-            exit -2
+            break
         }
     }
     "*logging initiated $(get-date) in $($global:logFile)"|Out-File $global:logFile -Append
@@ -178,12 +184,16 @@ function start-Logging {
 function write-log {
     <#
     .SYNOPSIS
-        replacement for write-host, forking information to a log file and screen.
+        replacement for tee-object and write-host, forking information to a log file and screen
+        (and possibly to third object), with flexible log initialization and colouring.
     .DESCRIPTION
-        automates forking of output on two different endpoints - on the host, using write-host
-        and to the file, appening its content.
+        function has been developed with a paradigm 'always verbose' - if you need to see script
+        run, and same time have it in a log file. it automates forking of output on two different 
+        endpoints - on the host, using write-host and to the file, appening its content, similarly 
+        to tee-object, but adds more options like message tag (error, info, warning) with cloured 
+        output and timestamps.
         write-log converts everything to a string, so you can use it for virtually any type of 
-        variable. additionaly it adds timestamp, message type header and color (on host).
+        variable. 
 
         in order to use write-log, $logFile variable requires to be set up. you can initialize the 
         value directly with 'start-Logging', configure $logFile manually or simply run write-log to 
@@ -194,28 +204,42 @@ function write-log {
         function may also be used from command line - in this scenario log file will be created in 
         Logs directory under User Documents folder. file with be named 'console-<date>.log'.
 
+        THIRD OBJECT
+
+          third object was introduced to help developing GUI apps and ability to show log on Forms
+        elements, but may be used for regular strings as well and may be easily extended on other types.
+        referenced objects must be provided as '([ref]$OBJECTNAME)' - with parenthesis and [ref]. 
+        as example, lets assume you have a Froms Label to show progress:
+
+              $LabelStatus = New-Object System.Windows.Forms.Label
+
+        you can then use write log to fork on screen, file and show it on the label:
+        write-log "something happens" -type info -thirdOutput $labelStatus
+
     .EXAMPLE
         write-log "all is fine"
 
-        output 'all is fine' on the screen and to the log file.
+        output '<timestamp> all is fine' on the screen and to the log file.
     .EXAMPLE
-        write-log all is fine
+        write-log all is fine -skip
 
         outputs 
-            all 
-            is 
-            fine
+            all is fine
         on the screen and to the log file - all unnamed parameters are displayed
     .EXAMPLE
-        write-log -message "trees are green" -type ok
+        write-log -message "trees`nare`ngreen" -type ok
 
-        shows 'trees are green' in Green colour, and send text to a log file.
+        shows:
+        '<timestamp> OK: trees
+        are
+        green'
+        in Green colour, and send text to a log file.
     .EXAMPLE
         $someObject=get-process
-        write-log -message $someObject -type info -noTimestamp -silent
+        write-log -message $someObject -type info -skipTimeStamp -silent
 
         outputs processes object to the log file as -silent disables screen output. it will lack
-        timestamp in a message header but will contain '[INFO]' block.
+        timestamp in a message header but will contain 'INFO:' block.
     .INPUTS
         None.
     .OUTPUTS
@@ -224,8 +248,11 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210421
         changes:
+            - 210421 interpreting $message elements fix
+            - 210402 3rd output init
+            - 210329 write-log init fix
             - 210302 do not convert to 'out-string' when it's already a string
             - 210212 imporper name when calling from console thru module
             - 210210 v2. init finally works!
@@ -250,11 +277,17 @@ function write-log {
         #do not output to a screen - logfile only
             [switch]$silent,
         # do not show timestamp with the message
-            [switch]$skipTimestamp
+            [switch]$skipTimestamp,
+        #experimantal - 3rd output object so you can add virtually anything that accepts text to be set to. 
+            [ref][alias('thirdOutput')]$externallyReferencedObject
     )
 
-    #$callStack = (Get-PSCallStack |Where-Object ScriptName)[-1]
-    $callStack = (Get-PSCallStack)[-2]
+#region INIT_LOG_FILE_NAME
+    #$fullCallStack = Get-PSCallStack #DEBUG
+    #$fullCallStack
+    #in some rare cases - eg. launching app from VSC host - 'scriptblock' part is not present
+    #$callStack = (Get-PSCallStack)[-2]
+    $callStack = (Get-PSCallStack |Where-Object ScriptName)[-1]
     if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #it's run directly from console.
         $scriptBaseName = 'console'
         $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
@@ -275,13 +308,50 @@ function write-log {
         $logFileName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         start-Logging -logFileName $logFileName
     }
+#endregion INIT_LOG_FILE_NAME
 
     #ensure that whatever the type is - array, object.. - it will be output as string, add runtime
-    if($null -eq $message) {$message=''}
-    if($message.GetType().name -ne 'string') {
-        $message=($message|out-String).trim() 
+    if($null -eq $message) {
+        $message=''
+    } else {
+        #ValueFromRemainingArguments changes how variable is presented. running "write-log 'output text'" will pass 'output text' as a "List`1" object
+        #as that's how 'valueFromRemainingArguments' is bulding variable and ruturns an array. but if passed directly with "write-log -message 'output text'" 
+        #retruns true type of the passed variable - in this case [string]. 
+        switch( $message.GetType().name )  {
+            'List`1' { 
+                for($count=0;$count -lt $message.count;$count++) {
+                    if($message[$count].GetType().name -ne 'string') {
+                        $message[$count]=($message[$count]|out-String).trim()+"`n" 
+                    } else {
+                        $message[$count]+=' '
+                    }
+                }
+                $message=$message -join ''
+            }
+            'String' {
+                #do nothing - string is fine.
+            }
+            'Default' {
+                ($message|out-String).trim()+"`n" 
+            }
+        }
     }
+#region 3rdOUTPUT
+    if($externallyReferencedObject) {
+        if($externallyReferencedObject.Value.GetType().FullName -match 'System.Windows.Forms') {
+            if($externallyReferencedObject.Value.multiline) {
+                $externallyReferencedObject.Value.Text += "$message`n`r"
+            } else {
+                $externallyReferencedObject.Value.Text = $message
+            }
+            $externallyReferencedObject.Value.refresh()
+        } else {
+            $externallyReferencedObject.Value = $message
+        }
+    }
+#endregion 3rdOUTPUT
 
+#region FILE_OUTPUT
     try {
         $finalMessageString=@()
         if(-not $skipTimestamp) {
@@ -315,7 +385,9 @@ function write-log {
     } catch {
         Write-Error 'not able to write to log. suggest to cancel the script run.'
         $_.exception
-    }      
+    }    
+#endregion FILE_OUTPUT
+
 }
 function get-CSVDelimiter {
     param(
@@ -341,10 +413,10 @@ function get-CSVDelimiter {
     if( (($semi0 -eq $semi1) -and ($colon0 -ne $colon1)) -or `
         (($semi0 -eq $semi1) -and ($semi0 -gt $colon0)) -or `
         ($colon0 -eq 0 -and $semi0 -gt 0)
-        ){
+      ){
         $delimiter=';'
     } 
-    write-log "$delimiter detected as delimiter." -type info
+    write-log "'$delimiter' detected as delimiter." -type info
     return $delimiter
 }
 function import-structuredCSV {
@@ -366,8 +438,9 @@ function import-structuredCSV {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210317
+        version 210421
             last changes
+            - 210421 exit/return/break tuning
             - 210317 delimiter detection as function
             - 210315 finbished auto, non-terminating from console, header not mandatory
             - 210311 auto delimiter detection, min 2lines
@@ -392,28 +465,15 @@ function import-structuredCSV {
             [string]$delimiter='auto'
     )
 
-    $exit=$true #should process exit or return? return when run from console, exit when from script.
-    if( (Get-PSCallStack).count -le 2 ) { #run from console
-        $exit=$false
-    }          
-
     if(-not (test-path $inputCSV) ) {
         write-log "$inputCSV not found." -type error
-        if($exit) {
-            exit -1
-        } else {
-            return -1
-        }
+        return
     }
 
     if($delimiter='auto') {
         $delimiter=get-CSVDelimiter -inputCSV $inputCSV
         if($null -eq $delimiter) {
-            if($exit) {
-                exit -1
-            } else {
-                return -1
-            }
+            return
         }
     }
 
@@ -421,11 +481,7 @@ function import-structuredCSV {
         $CSVData=import-csv -path "$inputCSV" -delimiter $delimiter -Encoding UTF8
     } catch {
         Write-log "not able to import $inputCSV. $($_.exception)" -type error 
-        if($exit) {
-            exit -2
-        } else {
-            return -2
-        }
+        return
     }
 
     $csvHeader=$CSVData|get-Member -MemberType NoteProperty|select-object -ExpandProperty Name
@@ -439,11 +495,7 @@ function import-structuredCSV {
     if($hmiss) {
         if($headerIsCritical) {
             Write-log "Wrong CSV header. check delimiter used. quitting." -type error
-            if($exit) {
-                exit -3
-            } else {
-                return -3
-            }
+            return
         }
         $ans=Read-Host -Prompt "some columns are missing. type 'add' to add them, 'c' to continue or anything else to cancel"
         switch($ans) {
@@ -458,11 +510,7 @@ function import-structuredCSV {
             }
             default {
                 write-log "cancelled. exitting." -type info
-                if($exit) {
-                    exit 0
-                } else {
-                    return 0
-                }
+                return
             }
         }
     }
@@ -500,8 +548,10 @@ function convert-XLStoCSV {
         drag'n'drop version - separate file.
     .NOTES
         nExoR ::))o-
-        version 210317
+        version 210422
             last changes
+            - 210422 ...again fixes to exit/break/return
+            - 210408 proper 'run from console' detection and exit
             - 210317 firstWorksheet, suppress directory creation info
             - 210315 error detection during creation
             - 210309 proper pipeline
@@ -528,19 +578,11 @@ function convert-XLStoCSV {
     )
 
     begin {
-        $exit=$true #should process exit or return? return when run from console, exit when from script.
-        if( (Get-PSCallStack).count -le 2 ) { #run from console
-            $exit=$false
-        }          
         try{
             $Excel = New-Object -ComObject Excel.Application
         } catch {
-            write-log "not able to initialize Excel lib. requires Excel to run" -type error
-            if($exit) {
-                exit -1
-            } else {
-                return -1
-            }
+            write-log "not able to initialize Excel lib. requires Excel to run.`n$($_.exception)" -type error
+            break
         }
         $Excel.Visible = $false
         $Excel.DisplayAlerts = $false
@@ -550,21 +592,13 @@ function convert-XLStoCSV {
         if($PSCmdlet.ParameterSetName -eq 'byName') {
             if(-not (test-path $XLSFileName)) {
                 write-log "$XLSfileName not found. exitting" -type error
-                if($exit) {
-                    exit -2
-                } else {
-                    return -2
-                }
+                return
             }
             $XLSFile=get-Item $XLSfileName
         }
         if($XLSFile.Extension -notmatch '\.xls') {
             write-log "$($XLSFile.Name) doesn't look like excel file. exitting" -type error
-            if($exit) {
-                exit -3
-            } else {
-                return -3
-            }
+            return
         }
         $outputFolder=$XLSFile.DirectoryName+'\'+$XLSFile.BaseName+'.exported'
         if( -not (test-path($outputFolder)) ) {
@@ -652,8 +686,11 @@ function convert-CSVtoXLS {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210317
+        version 21042
             last changes
+            - 210422 ...again fixes to exit/break/return
+            - 210408 breaks
+            - 210402 proper 'run from console' detection and exit
             - 210317 processing multiple CSV will create single XLS, delimiter autodetection, output file name
             - 210309 proper pipelining
             - 210308 module function
@@ -688,21 +725,11 @@ function convert-CSVtoXLS {
     )
 
     begin {
-        $exit=$true #should process exit or return? return when run from console, exit when from script.
-        if( (Get-PSCallStack).count -le 2 ) { #run from console
-            $exit=$false
-        }          
-    
         try{
             $Excel = New-Object -ComObject Excel.Application
         } catch {
-            write-host -ForegroundColor Red "not able to initialize Excel lib. requires Excel to run"
-            write-host -ForegroundColor red $_.Exeption
-            if($exit) {
-                exit -1
-            } else {
-                return -1
-            }
+            write-log "not able to initialize Excel lib. requires Excel to run.`n$($_.Exeption)" -type error
+            break
         }
         $Excel.Visible = $false
         $Excel.DisplayAlerts = $false
@@ -731,11 +758,7 @@ function convert-CSVtoXLS {
         if($PSCmdlet.ParameterSetName -eq 'byName') {
             if(-not (test-path $CSVfileName) ) {
                 write-host -ForegroundColor Red "file $CSVfileName is not accessible"
-                if($exit) {
-                    exit -2
-                } else {
-                    return -2
-                }
+                return
             }
             $CSVFile=get-childItem $CSVfileName
         } 
@@ -751,7 +774,6 @@ function convert-CSVtoXLS {
                 $delimiter = get-CSVDelimiter -inputCSV $CSVfile.FullName
                 if([string]::isNullOrEmpty($delimiter) ) {  
                     $delimiter=','
-                    #return -1
                 }
             }
             if($counter++ -gt 0) {
@@ -1058,7 +1080,7 @@ function get-valueFromInputBox {
         }
         if($response -ne 'YES') {
             'not correct. quitting'
-            exit -1
+            exit
         } else {
             "you agreed, let's continue"
         }
@@ -1075,8 +1097,9 @@ function get-valueFromInputBox {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210317
+        version 210402
         last changes
+            - 210402 allowcharacter check worked for last character only.
             - 210317 allowCharacter 
             - 210209 anchored layout
             - 210113 initialized
@@ -1158,9 +1181,13 @@ function get-valueFromInputBox {
 
     $txtUserInput.add_KeyUp({
         if($allowedCharacters -and $txtUserInput.text) {
-            if($txtUserInput.text[-1] -notmatch $allowedCharacters) {
-                $cursor=$txtUserInput.SelectionStart
-                $txtUserInput.text=$txtUserInput.text -replace ".$"
+            $cursor=$txtUserInput.SelectionStart
+            if($txtUserInput.text[$cursor-1] -notmatch $allowedCharacters) {
+                $tempText=''
+                for($len=0;$len -lt $txtUserInput.text.Length;$len++) {
+                    if($len -ne $cursor-1) { $tempText+=$txtUserInput.text[$len] }
+                }
+                $txtUserInput.Text=$tempText
                 $txtUserInput.Select($cursor-1, 0);
             }
         }
@@ -1308,7 +1335,7 @@ function select-OrganizationalUnit {
 
     $txtSearch.add_KeyUp({
         #param($sender,$e)
-        if($txtSearch.Text.Length -gt 1 -and ($mainTable.Controls|? name -eq 'treeView')) {
+        if($txtSearch.Text.Length -gt 1 -and ($mainTable.Controls|Where-Object name -eq 'treeView')) {
             $mainTable.Controls.Remove($treeView)
             $mainTable.controls.add($searchTreeView,1,0)
             $mainTable.SetColumnSpan($searchTreeView,2)
@@ -1369,7 +1396,7 @@ function select-OrganizationalUnit {
     } 
     if($isCritical.IsPresent) {
         write-log "cancelled."
-        exit 0
+        break
     } 
     return $false
     
@@ -1439,14 +1466,14 @@ function get-ExchangeConnectionStatus {
     }
     if($isCritical.IsPresent -and !$exConnection) {
         write-log "connection to $ExType not established. quitting." -type error
-        exit -1
+        exit
     }
     if($validateDomainName) {
         $connectionDomainName = (Get-AcceptedDomain | Where-Object default).Name
         if($connectionDomainName -ne $validateDomainName) {
             write-log "conection established to $connectionDomainName but session expected to $validateDomainName. " -type error
             if($isCritical.IsPresent) {
-                exit -1
+                exit
             } else {
                 $exConnection = $false
             }
@@ -1467,7 +1494,7 @@ function get-AzureADConnectionStatus {
     } catch {
         if($isCritical) {
             write-Log "connection to AAD not established. please use connect-AzureAD first. quitting" -type error
-            exit -1            
+            exit         
         } else {
             write-Log "connection to AAD not established." -type warning
         }
@@ -1521,7 +1548,7 @@ function connect-Azure {
         if([string]::isNullOrEmpty($AzSourceContext) ) {
             if( (Get-PSCallStack).count -gt 2 ) { #run from script
                 write-log "cancelled"
-                exit 0
+                exit
             } else { #run from console  
                 write-log "cancelled"
                 return $null
@@ -1538,7 +1565,7 @@ function connect-Azure {
                 Clear-AzContext -Force
                 write-log "re-run the script."
                 if( (Get-PSCallStack).count -gt 2 ) { #run from script
-                    exit -1
+                    exit
                 } else { #run from console  
                     return $null
                 }
@@ -1557,4 +1584,53 @@ function connect-Azure {
     Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 }
 
+function bpe {
+    [CmdletBinding()]
+    param (
+        #Parameter description
+        [Parameter(ValueFromPipeline=$true,mandatory=$false,position=0)]
+            [int]$ParameterName,
+        #Parameter help description
+        [Parameter(mandatory=$false,position=1)]
+            [switch]$a
+    )
+    begin {
+        $TEST='script'
+        function clean-up {
+            param( [int]$x )
+            write-host "clean up"
+            break
+            write-host 'just checking'
+        }
+
+        if ($ParameterName -eq 10 -or $a) {
+            #return "begin"
+            #break
+            #continue
+            clean-up
+        }
+
+        write-host 'start'
+
+    }
+
+    process {
+        if($ParameterName -eq 20) {
+            clean-up
+            #return 'process'
+        }
+
+        write-host "processing $ParameterName"
+    }
+
+    end {
+        if($ParameterName -eq 30) {
+            return 'end'
+        }
+
+        Write-Host 'finish'
+    }
+}
+
 Export-ModuleMember -Function * -Variable 'logFile' -Alias 'load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS'
+

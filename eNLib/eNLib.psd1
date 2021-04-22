@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.1.3'
+ModuleVersion = '1.1.6'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -30,9 +30,7 @@ CompanyName = 'LogicUnion'
 Copyright = '(MIT) 2021 nExoR ::))o-'
 
 # Description of the functionality provided by this module
-Description = "write-log function forking information to the screen and to the file, CSV manipulation functions allowing to convert to and from XLS and `
-load CSV with header check, password generator, input message GUI, connection checkers and couple other usefull functions accelerating scripting and `
-helping working with commandline."
+Description = "powerfull write-log function forking information to the screen and to the file with timestamp and screen colouring and more, CSV manipulation functions allowing to convert to and from XLS and load CSV with header check, password generator, input message GUI, connection checkers and couple other usefull functions accelerating scripting and helping in everyday work with commandline."
 
 # Minimum version of the Windows PowerShell engine required by this module
 PowerShellVersion = '5.0'
@@ -73,7 +71,7 @@ PowerShellVersion = '5.0'
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
 FunctionsToExport = 'start-Logging', 'write-Log', 'import-structuredCSV', 'convert-XLStoCSV', 'convert-CSVtoXLS', 'new-randomPassword', 
     'get-answerBox', 'get-valueFromInputBox', 'select-organizationalUnit', 'import-XLS',
-    'get-ExchangeConnectionStatus', 'get-AzureADConnectionStatus', 'connect-Azure'
+    'get-ExchangeConnectionStatus', 'get-AzureADConnectionStatus', 'connect-Azure', 'bpe'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
