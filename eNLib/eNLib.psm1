@@ -248,8 +248,9 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210421
+        version 210425
         changes:
+            - 210425 quick fix 
             - 210421 interpreting $message elements fix
             - 210402 3rd output init
             - 210329 write-log init fix
@@ -311,7 +312,7 @@ function write-log {
 #endregion INIT_LOG_FILE_NAME
 
     #ensure that whatever the type is - array, object.. - it will be output as string, add runtime
-    if($null -eq $message) {
+    if([string]::isNullOrEmpty($message)) {
         $message=''
     } else {
         #ValueFromRemainingArguments changes how variable is presented. running "write-log 'output text'" will pass 'output text' as a "List`1" object
