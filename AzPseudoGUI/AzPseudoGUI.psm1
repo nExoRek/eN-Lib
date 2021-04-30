@@ -13,8 +13,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210310
+    version 210430
         last changes
+        - 210430 naming normalization
         - 210310 vnet fix
         - 210302 functions retun $null on cancel, autoselect, fixes and help 
         - 210301 storageAccount choice fixed, select-networksecuritygroup added, multiselect for some functions
@@ -384,7 +385,7 @@ function select-StorageAccount {
         }    
     }
 }
-function select-VM {
+function select-VirtualMachine {
     <#
     .SYNOPSIS
         select VM on subscription or RG level.
@@ -533,7 +534,8 @@ function select-VM {
         }
     }
 }
-function select-vNet {
+Set-Alias -Name select-VirtualMachine -Value select-VM
+function select-VirtualNetwork {
     <#
     .SYNOPSIS
         acceleration function enabling to visually choose AzVNet resources. 
@@ -628,7 +630,8 @@ function select-vNet {
         }
     }
 }
-function select-vSubnet {
+Set-Alias -Name select-vNet -Value select-VirtualNetwork
+function select-Subnet {
     <#
     .SYNOPSIS
         acceleration function enabling to visually choose vNet Subnet resources. 
@@ -711,6 +714,7 @@ function select-vSubnet {
         return (Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vNet -Name $vSubnet.name)
     }    
 }
+Set-Alias -Name select-Subnet -Value select-vSubnet
 function select-KeyVault {
     <#
     .SYNOPSIS
