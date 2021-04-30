@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210422
+    version 210430
     changes
+        - 210430 covert-CSV2XLS #typedef
         - 210422 again fixes to exit
         - 210421 write-log $message fix
         - 210408 fixes to import-* function exit
@@ -248,9 +249,8 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210425
+        version 210421
         changes:
-            - 210425 quick fix 
             - 210421 interpreting $message elements fix
             - 210402 3rd output init
             - 210329 write-log init fix
@@ -670,7 +670,7 @@ function convert-CSVtoXLS {
     .EXAMPLE
         convert-CSV2XLSX c:\temp\test.csv -delimiter ','
         
-        Converts test.csv to test.xlsx 
+        Converts test.csv to test.xlsx enforcing comma as delimiter in CSV interpretation
     .EXAMPLE
         ls *.csv | convert-CSV2XLS -outputFileName myfile.xlsx
 
@@ -687,8 +687,9 @@ function convert-CSVtoXLS {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 21042
+        version 210430
             last changes
+            - 210430 #typedef skip
             - 210422 ...again fixes to exit/break/return
             - 210408 breaks
             - 210402 proper 'run from console' detection and exit
@@ -761,8 +762,17 @@ function convert-CSVtoXLS {
                 write-host -ForegroundColor Red "file $CSVfileName is not accessible"
                 return
             }
-            $CSVFile=get-childItem $CSVfileName
+            #typedef skip from PSobjects
+            $TYPEline = $false
+            if((Get-Content $CSVfileName -Head 1) -match "^#") {
+                $TYPEline = $true
+                Get-Content $CSVfileName|select-object -Skip 1|Out-File "$CSVfileName-tmp" -Encoding utf8
+                $CSVFile=get-childItem "$CSVfileName-tmp"
+            } else {
+                $CSVFile=get-childItem $CSVfileName
+            }
         } 
+
         #convert output file name to full path
         if([string]::isNullOrEmpty($XLSfileName)) {
             $XLSfileName= ($pwd).path + '\' + $CSVFile.BaseName + '.xlsx'
@@ -823,7 +833,11 @@ function convert-CSVtoXLS {
             write-log "error converting CSV to XLS: $($_.exception)" -type error
             return -2         
         }
+        if($TYPEline) {
+            remove-item "$CSVfileName-tmp"
+        }
     }
+
     end {
         $errorSaving=$false
         try {
@@ -1583,54 +1597,6 @@ function connect-Azure {
     write-host "  connected as: " -noNewLine 
     write-host -foreground Yellow "$($AzSourceContext.account.id)"
     Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
-}
-
-function bpe {
-    [CmdletBinding()]
-    param (
-        #Parameter description
-        [Parameter(ValueFromPipeline=$true,mandatory=$false,position=0)]
-            [int]$ParameterName,
-        #Parameter help description
-        [Parameter(mandatory=$false,position=1)]
-            [switch]$a
-    )
-    begin {
-        $TEST='script'
-        function clean-up {
-            param( [int]$x )
-            write-host "clean up"
-            break
-            write-host 'just checking'
-        }
-
-        if ($ParameterName -eq 10 -or $a) {
-            #return "begin"
-            #break
-            #continue
-            clean-up
-        }
-
-        write-host 'start'
-
-    }
-
-    process {
-        if($ParameterName -eq 20) {
-            clean-up
-            #return 'process'
-        }
-
-        write-host "processing $ParameterName"
-    }
-
-    end {
-        if($ParameterName -eq 30) {
-            return 'end'
-        }
-
-        Write-Host 'finish'
-    }
 }
 
 Export-ModuleMember -Function * -Variable 'logFile' -Alias 'load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS'
