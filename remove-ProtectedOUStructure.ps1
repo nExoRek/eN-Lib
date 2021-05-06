@@ -57,7 +57,7 @@ function remove-OU {
     write-host -BackgroundColor Black -ForegroundColor Red $OUDistinguishedName -NoNewline
     write-host -ForegroundColor yellow " AND ALL SUBOUs."
     Write-Host -ForegroundColor yellow "type [capital] Y to continue"
-    $key = [console]::ReadKey()
+    $key = [console]::ReadKey($true)
     if ($key.keyChar -cne 'Y') {
         write-host "`nCancelled by user choice. Skipping." -ForegroundColor Yellow
         return -1
