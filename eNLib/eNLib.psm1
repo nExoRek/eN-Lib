@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210430
+    version 210507
     changes
+        - 210507 write-log null detection fix
         - 210430 covert-CSV2XLS #typedef
         - 210422 again fixes to exit
         - 210421 write-log $message fix
@@ -249,8 +250,9 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210421
+        version 210507
         changes:
+            - 210407 rare issue with message type check
             - 210421 interpreting $message elements fix
             - 210402 3rd output init
             - 210329 write-log init fix
@@ -312,7 +314,7 @@ function write-log {
 #endregion INIT_LOG_FILE_NAME
 
     #ensure that whatever the type is - array, object.. - it will be output as string, add runtime
-    if([string]::isNullOrEmpty($message)) {
+    if($null -eq $message) {
         $message=''
     } else {
         #ValueFromRemainingArguments changes how variable is presented. running "write-log 'output text'" will pass 'output text' as a "List`1" object
