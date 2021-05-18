@@ -11,7 +11,7 @@
     nExoR ::))o-
     version 210507
     changes
-        - 210507 write-log null detection fix
+        - 210507 write-log null detection fix [1.1.8], get-valueFromInputBox
         - 210430 covert-CSV2XLS #typedef
         - 210422 again fixes to exit
         - 210421 write-log $message fix
@@ -1116,6 +1116,7 @@ function get-valueFromInputBox {
         nExoR ::))o-
         version 210402
         last changes
+            - 210507 maxChars fix
             - 210402 allowcharacter check worked for last character only.
             - 210317 allowCharacter 
             - 210209 anchored layout
@@ -1171,7 +1172,7 @@ function get-valueFromInputBox {
     $txtUserInput.MinimumSize = New-Object System.Drawing.Size(230,25)
     $txtUserInput.autosize = $true
     $txtUserInput.Anchor = "none" #effectively - center
-    $txtUserInput.MaxLength = $maxChars
+    $txtUserInput.MaxLength = $maxCharacters
     $txtUserInput.location = New-Object System.Drawing.Point(0, 35)
 
     $btOK = New-Object System.Windows.Forms.Button

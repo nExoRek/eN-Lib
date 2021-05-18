@@ -17,11 +17,6 @@
     'ProtectedFromAccidentalDeletion' flag will be removed from this OU and all sub OUs and then 
     delte entire tree recursively
 .EXAMPLE
-    .\remove-ProtectedOUStructure.ps1 myBestOU -removeAllFound
-    
-    will search for 'myBestOU' in the domain. if name is not unique, will enumerate thru all found objects allowing
-    to choose if to delete it one by one.
-.EXAMPLE
     .\remove-ProtectedOUStructure.ps1 'OU=myBestOU,DC=w-files,DC=pl'
     
     'ProtectedFromAccidentalDeletion' flag will be removed from this OU and all sub OUs and then 

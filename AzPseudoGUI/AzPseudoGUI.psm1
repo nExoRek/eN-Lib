@@ -13,8 +13,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210430
+    version 210518
         last changes
+        - 210518 default sorting
         - 210430 naming normalization
         - 210310 vnet fix
         - 210302 functions retun $null on cancel, autoselect, fixes and help 
@@ -45,8 +46,9 @@ function select-Subscription {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210302 autoselectsingle
             - 210220 fixes to exit logic
             - 210127 initialized
@@ -79,7 +81,7 @@ function select-Subscription {
             $sourceSubscription = $subscriptionList
         } else {
             write-log $message
-            $sourceSubscription = $subscriptionList | out-GridView -title $title -OutputMode Single
+            $sourceSubscription = $subscriptionList | sort-object name | out-GridView -title $title -OutputMode Single
             if($null -eq $sourceSubscription) {
                 write-log "operation cancelled by the user."
                 if($isCritical.IsPresent) {
@@ -125,8 +127,9 @@ function select-ResourceGroup {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210302 autoselectsingle
             - 210220 multichoice
             - 210127 initialized
@@ -169,7 +172,7 @@ function select-ResourceGroup {
         write-log "single RG available: $($RGList.ResourceGroupName) found. selecting." -type info
         return (Get-AzResourceGroup -Name $RGList.ResourceGroupName)
     } else {
-        $ResourceGroup = $RGList | Out-GridView @ogvParam
+        $ResourceGroup = $RGList | sort-object ResourceGroupName | Out-GridView @ogvParam
         if ([string]::isNullOrEmpty($ResourceGroup)) {
             Write-log 'Cancelled by user'
             if($isCritical.IsPresent) {
@@ -205,8 +208,9 @@ function select-NetworkSecurityGroup {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210301
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210301 initialized
     #>
     [CmdletBinding(DefaultParameterSetName='byObject')]
@@ -261,7 +265,7 @@ function select-NetworkSecurityGroup {
         write-log "single NSG available: $($NSGList.Name) found. selecting." -type info
         return (Get-AzNetworkSecurityGroup -Name $NSGList.Name -ResourceGroupName $nsgList.resourceGroupName)
     } else {
-        $NSG = $NSGList | Out-GridView @ogvParam
+        $NSG = $NSGList | sort-object name | Out-GridView @ogvParam
         if ([string]::isNullOrEmpty($NSG)) {
             Write-log 'Cancelled by user'
             if($isCritical.IsPresent) {
@@ -300,8 +304,9 @@ function select-StorageAccount {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210302 autoSelectSingle
             - 210220 multichoice, descritpion
     #>
@@ -363,7 +368,7 @@ function select-StorageAccount {
         write-log "single SA available: $($saList.StorageAccountName) found. selecting." -type info
         return (Get-AzStorageAccount -Name $saList.StorageAccountName -ResourceGroupName $saList.resourceGroupName)
     } else {
-        $storageAccount = $saList | Out-GridView @ogvParam
+        $storageAccount = $saList | Sort-Object StorageAccountName | Out-GridView @ogvParam
         if([string]::isNullOrEmpty($storageAccount) ) {
             write-host "Cancelled."
             if($isCritical.IsPresent) {
@@ -408,8 +413,9 @@ function select-VirtualMachine {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210302 autoSelectSingle, backup status fix
             - 210220 multichoice, backup info
             - 210209 initialized
@@ -504,7 +510,7 @@ function select-VirtualMachine {
         }
     } else {
         #ACTUAL VM Select
-        $selectVM = $VMList | Out-GridView @ogvParam
+        $selectVM = $VMList | sort-object name | Out-GridView @ogvParam
         if($null -eq $selectVM) {
             write-log "Cancelled."
             if($isCritical.IsPresent) {
@@ -534,7 +540,7 @@ function select-VirtualMachine {
         }
     }
 }
-Set-Alias -Name select-VirtualMachine -Value select-VM
+Set-Alias -Name 'select-VM' -Value 'select-VirtualMachine'
 function select-VirtualNetwork {
     <#
     .SYNOPSIS
@@ -553,8 +559,9 @@ function select-VirtualNetwork {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210310
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210310 rgname when no net
             - 210302 autoSelectSingle
             - 210220 mulichoise, help
@@ -610,7 +617,7 @@ function select-VirtualNetwork {
         write-log "single vNet available: $($vNetList.Name) found. selecting." -type info
         return (Get-AzVirtualNetwork -Name $vNetList.Name -ResourceGroupName $vNetList.resourceGroupName)
     } else {
-        $vnetChoice = $vNetList | Out-GridView @ogvParam
+        $vnetChoice = $vNetList | sort-object name | Out-GridView @ogvParam
         if($null -eq $vNetChoice) {
             write-log "cancelled by the user."
             if($isCritical.IsPresent) {
@@ -630,7 +637,7 @@ function select-VirtualNetwork {
         }
     }
 }
-Set-Alias -Name select-vNet -Value select-VirtualNetwork
+Set-Alias -Name 'select-vNet' -Value 'select-VirtualNetwork'
 function select-Subnet {
     <#
     .SYNOPSIS
@@ -649,8 +656,9 @@ function select-Subnet {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210302 autoSelectSingle,comment-based-help
     #>
     [cmdletbinding(DefaultParameterSetName='byObject')]
@@ -701,7 +709,7 @@ function select-Subnet {
         write-log "single vSubnet available: $($vSubnetList.Name) found. selecting." -type info
         return (Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vNet -Name $vSubnetList.Name)
     } else {
-        $vSubnet = $vSubnetList | Out-GridView -Title $title -OutputMode Single
+        $vSubnet = $vSubnetList | sort-object name | Out-GridView -Title $title -OutputMode Single
         if([string]::isNullOrEmpty($vSubnet) ) {
             write-host "Cancelled."
             if($isCritical.IsPresent) {
@@ -714,7 +722,7 @@ function select-Subnet {
         return (Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vNet -Name $vSubnet.name)
     }    
 }
-Set-Alias -Name select-Subnet -Value select-vSubnet
+Set-Alias -Name 'select-vSubnet' -Value 'select-Subnet'
 function select-KeyVault {
     <#
     .SYNOPSIS
@@ -733,8 +741,9 @@ function select-KeyVault {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210302 autoSelectSingle,comment-based-help
     #>
     param(
@@ -766,7 +775,7 @@ function select-KeyVault {
         write-log "single KV available: $($KVList.VaultName) found. selecting." -type info
         return (Get-AzKeyVault -ResourceGroupName $kvList.ResourceGroupName -VaultName $kvList.VaultName )
     } else {
-        $kv = $KVList | Out-GridView -Title $title -OutputMode Single
+        $kv = $KVList | Sort-Object VaultName | Out-GridView -Title $title -OutputMode Single
         if($null -eq $kv) {
             write-log "cancelled."
             if($isCritical.IsPresent) {
@@ -798,8 +807,9 @@ function select-encryptionKey {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210302 autoSelectSingle,comment-based-help,valuebypipeline
     #>
     [cmdletbinding(DefaultParameterSetName='byObject')]
@@ -817,12 +827,11 @@ function select-encryptionKey {
         [Parameter(mandatory=$false,position=3)]
             [switch]$autoSelectSingleOption,
         #Vault name to choose key from
-        [parameter(parameterSetName='byName',mandatory=$true,position=4)]
-            [string]$vaultName,
-        #Vault name to choose key from
         [parameter(parameterSetName='byObject',mandatory=$true,position=4,ValueFromPipeline)]
-            [Microsoft.Azure.Commands.KeyVault.Models.PSKeyVault]$vault
-
+            [Microsoft.Azure.Commands.KeyVault.Models.PSKeyVault]$vault,
+        #Vault name to choose key from
+        [parameter(parameterSetName='byName',mandatory=$true,position=4)]
+            [string]$vaultName
     )
     if($PSCmdlet.ParameterSetName -eq 'byObject') {
         $vaultName = $vault.VaultName
@@ -841,7 +850,7 @@ function select-encryptionKey {
         write-log "single KV available: $($encKeyList.Name) found. selecting." -type info
         return (Get-AzKeyVaultKey -VaultName $VaultName -Name $encKeyList.name)
     } else {
-        $key = $encKeyList | Out-GridView -Title $title -OutputMode Single
+        $key = $encKeyList | sort-object name | Out-GridView -Title $title -OutputMode Single
         if($null -eq $key) {
             write-log "cancelled."
             if($isCritical.IsPresent) {
@@ -873,8 +882,9 @@ function select-recoveryVault {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210302 autoSelectSingle,comment-based-help
     #>
     param(
@@ -906,7 +916,7 @@ function select-recoveryVault {
         write-log "single RV available: $($RVList.Name) found. selecting." -type info
         return (Get-AzRecoveryServicesVault -name $RVList.name)
     } else {
-        $recoveryVault = $RVlist | Out-GridView -Title $title -OutputMode Single
+        $recoveryVault = $RVlist | sort-object name | Out-GridView -Title $title -OutputMode Single
         if($null -eq $recoveryVault) {
             write-host "Cancelled."
             if($isCritical.IsPresent) {
@@ -938,8 +948,9 @@ function select-recoveryContainer {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 210518
             last changes
+            - 210518 default sort by name, container type choice
             - 210302 autoSelectSingle,comment-based-help
         
         TO|DO
@@ -963,15 +974,17 @@ function select-recoveryContainer {
             [Microsoft.Azure.Commands.RecoveryServices.ARSVault]$Vault,
         #VaultID
         [Parameter(parameterSetName='byName',mandatory=$true,position=4)]
-            [string]$VaultID
+            [string]$VaultID,
+        #backup container type
+        [Parameter(mandatory=$false,position=5)]
+        [string][validateSet('AzureVM','Windows','AzureStorage','AzureVMAppContainer')]$containerType='AzureVM'
     )
 
     write-log $message
     if($PSCmdlet.ParameterSetName -eq 'byObject') {
         $vaultId = $vault.ID
     }
-
-    $RCList = Get-AzRecoveryServicesBackupContainer -VaultId $vaultId -ContainerType AzureVM | Select-Object FriendlyName,ResourceGroupName, Status
+    $RCList = Get-AzRecoveryServicesBackupContainer -VaultId $vaultId -ContainerType $containerType | Select-Object FriendlyName,ResourceGroupName, Status, containerType
     if([string]::isNullOrEmpty($RCList) ) {
         write-log "no Recovery Containers found in this vault" -type warning
         if($isCritical.IsPresent) {
@@ -984,7 +997,7 @@ function select-recoveryContainer {
         write-log "single RC available: $($RCList.Name) found. selecting." -type info
         return (Get-AzRecoveryServicesBackupContainer -VaultId $vaultId -ContainerType AzureVM -FriendlyName $RCList.FriendlyName)
     } else {
-        $recoveryContainer = $RClist | Out-GridView -Title $title -OutputMode Single
+        $recoveryContainer = $RClist | sort-object FriendlyName | Out-GridView -Title $title -OutputMode Single
         if($null -eq $recoveryContainer) {
             write-host "Cancelled."
             if($isCritical.IsPresent) {
@@ -1014,8 +1027,9 @@ function select-LogAnalyticsWorkspace {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210310
+        version 210518
             last changes
+            - 210518 default sort by name
             - 210310 init
         
         TO|DO
@@ -1050,7 +1064,7 @@ function select-LogAnalyticsWorkspace {
         write-log "single LAW available: $($LAWList.Name) found. selecting." -type info
         return $LAWList
     } else {
-        $LAWorkspace = $LAWList | Select-Object Name,ResourceGroupName,CustomerId | Out-GridView -Title 'select Log Analytics workspace' -OutputMode Single
+        $LAWorkspace = $LAWList | Select-Object Name,ResourceGroupName,CustomerId | sort-object name | Out-GridView -Title 'select Log Analytics workspace' -OutputMode Single
         if($null -eq $LAWorkspace) {
             write-host "Cancelled."
             if($isCritical.IsPresent) {
@@ -1064,6 +1078,6 @@ function select-LogAnalyticsWorkspace {
         return $LAWorkspace
     }
 }
-Set-Alias -Name select-LAWorkspace -Value select-LogAnalyticsWorkspace
+Set-Alias -Name 'select-LAWorkspace' -Value 'select-LogAnalyticsWorkspace'
 
-Export-ModuleMember -Function * -Alias 'select-NSG','select-LAWorkspace'
+Export-ModuleMember -Function * -Alias 'select-NSG','select-LAWorkspace','select-VM','select-vNet','select-vSubnet'
