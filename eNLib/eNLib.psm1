@@ -1220,12 +1220,445 @@ function get-valueFromInputBox {
     }   
 }
 
+#icon extractor 
+Add-Type -TypeDefinition @"
+using System;
+using System.Drawing;
+using System.Runtime.InteropServices;
+
+namespace System
+{
+	public class IconExtractor
+	{
+
+	 public static Icon Extract(string file, int number, bool largeIcon)
+	 {
+	  IntPtr large;
+	  IntPtr small;
+	  ExtractIconEx(file, number, out large, out small, 1);
+	  try {
+	    return Icon.FromHandle(largeIcon ? large : small);
+	  } catch {
+	    return null;
+	  }
+	 }
+	 [DllImport("Shell32.dll", EntryPoint = "ExtractIconExW", CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+	 private static extern int ExtractIconEx(string sFile, int iIndex, out IntPtr piLargeVersion, out IntPtr piSmallVersion, int amountIcons);
+	}
+}
+"@ -ReferencedAssemblies System.Drawing
+
+function get-Icon {
+    param( 
+        [int]$iconNumber,
+        [string]$fileContaining = 'Shell32.dll'
+    ) 
+
+    return [System.IconExtractor]::Extract($fileContaining, $iconNumber, $true)
+}
+function select-Directory {
+    <#
+    .SYNOPSIS
+        accelerator function allowing to select system directory with GUI.
+    .DESCRIPTION
+        function is using winforms treeView to display directory structure. returns folder path on select
+        or folder object if 'object' parameter used.
+        WARNING! text search looks up only for loaded branches. use 'loadAll' to be able to seach entire branch.
+        best is to combine with 'startingDirectory' for performance reasons - loading whole disk structure may take
+        a long, long time.         
+    .EXAMPLE
+        cd (select-Directory)
+        
+        displays forms treeview enabling to choose directory using GUI and changes location
+    .INPUTS
+        None.
+    .OUTPUTS
+        directory name/object
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210521
+            last changes
+            - 210521 optimization, tuning
+
+            - 210519 initialized
+    
+        #TO|DO
+        - multichoice
+    #>
+    [cmdletbinding()]
+    param(
+        #starting folder (tree root)
+        [Parameter(mandatory=$false,position=0)]
+            [string]$startingDirectory='\',
+        #show hidden folders
+        [Parameter(mandatory=$false,position=1)]
+            [switch]$hidden,
+        #include files
+        [Parameter(mandatory=$false,position=2)]
+            [switch]$files,
+        #return directory path as string instead of 'folder object'
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$object,
+        #enable text search box - will load entire tree which might take time, but will allow to search thru entire tree. best used with -startingDirectory for subfolders
+        [Parameter(mandatory=$false,position=4)]
+            [switch]$loadAll
+    )
+
+    Function add-Nodes {
+        param(
+            $node,
+            [int]$localDepth=0
+        )
+        write-verbose "check $($node.tag.name)"
+        if($node.tag.unfolded -eq $false -and $node.tag.type -eq 'DirectoryInfo') {
+            write-verbose "addingNode $($node.tag.name)"
+            $listParams = @{
+                ErrorAction = 'SilentlyContinue'
+                Path = $node.tag.FullName
+            }
+            if(!$files.IsPresent) {
+                $listParams.Add('Directory',$true)
+            }
+            if($hidden.IsPresent) {
+                $listParams.Add("Force",$true)
+            }
+            $SubDirList = Get-ChildItem @listParams
+            $lblLoading.Text = "Loading $($node.tag.name) ($($SubDirList.count) subs)..."
+            $loading.refresh()
+            $node.tag.unfolded = $true
+            foreach ( $dir in $SubDirList ) {
+                $NodeSub = $Node.Nodes.Add($dir.Name)
+                $NodeSub.tag = [psobject]@{
+                    fullName = $dir.FullName
+                    unfolded = $false
+                    name = $dir.name
+                    type = $dir.gettype().name
+                }
+                $script:NodeList += $NodeSub.tag
+            }
+            if($localDepth -gt 0) { 
+                foreach($SubNode in $node.Nodes) {
+                    add-Nodes -node $SubNode -localDepth ($localDepth - 1)
+                }
+            }
+        } else {
+        }
+    }
+
+    #region LOADINGFORM
+    $loading = New-Object system.Windows.Forms.Form
+    $loading.ClientSize = New-Object System.Drawing.Point(250, 30)
+    $loading.StartPosition = 'CenterScreen'
+    $loading.TopMost = $true
+    $loading.Font = New-Object System.Drawing.Font("Microsoft Sans Serif", 10)
+    $loading.ControlBox = $false
+    $loading.FormBorderStyle = 'FixedSingle'
+    $loading.padding = 0
+
+    $lblLoading = New-Object System.Windows.Forms.Label 
+    $lblLoading.Location = New-Object System.Drawing.Size(10,10) 
+    $lblLoading.Size = New-Object System.Drawing.Size(250,30)
+    $loading.Controls.Add($lblLoading)
+
+    $loading.add_Shown({
+        [System.windows.Forms.Application]::UseWaitCursor = $true
+        [System.windows.Forms.Application]::DoEvents()        
+    })
+    $loading.add_Deactivate({
+        [System.windows.Forms.Application]::UseWaitCursor = $false
+        [System.windows.Forms.Application]::DoEvents()        
+    })
+    #endregion LOADINGFORM
+
+    #region FORM
+    Add-Type -AssemblyName System.Drawing
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+    $formFolders = New-Object System.Windows.Forms.Form
+    $formFolders.Text = "select Directory under $startingDirectory"
+    $formFolders.MinimumSize = New-Object System.Drawing.Size(300,500)
+    $formFolders.AutoSize = $true
+    $formFolders.StartPosition = 'CenterScreen'
+    $formFolders.Icon = [System.Drawing.SystemIcons]::Question
+    $formFolders.Topmost = $true
+    $formFolders.MaximizeBox = $false
+    $formFolders.dock = "fill"
+
+    #region shortcut_buttons
+    $gbShortcuts = new-object system.windows.forms.groupBox
+    $gbShortcuts.Text = 'Shortcuts'
+    $gbShortcuts.Anchor = 'left,right'
+    $gbShortcuts.autosize = $true
+    $gbShortcuts.Padding = 0
+
+    $pbxDocument = New-Object System.windows.forms.pictureBox
+    $pbxDocument.Location = New-Object System.Drawing.Point(10,13) 
+    $pbxDocument.Size = New-Object System.Drawing.Size(25,25)
+    $pbxDocument.SizeMode = 'StretchImage'
+    $pbxDocument.Image = get-Icon -iconNumber 1
+
+    $pbxDocument.add_Click({
+        $result.value = ([Environment]::GetFolderPath("MyDocuments")) 
+        $formFolders.Close()
+    })
+
+    $pbxDownloads = New-Object System.Windows.Forms.pictureBox
+    $pbxDownloads.Location = New-Object System.Drawing.Point(65,13) 
+    $pbxDownloads.Size = New-Object System.Drawing.Size(25,25)
+    $pbxDownloads.SizeMode = 'StretchImage'
+    $pbxDownloads.Image = get-Icon -iconNumber 122
+
+    $pbxDownloads.add_Click({
+        $result.value = ((New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path)
+        $formFolders.Close()
+    })
+    
+    $pbxDesktop = New-Object System.Windows.Forms.pictureBox
+    $pbxDesktop.Location = New-Object System.Drawing.Point(120,13) 
+    $pbxDesktop.Size = New-Object System.Drawing.Size(25,25)
+    $pbxDesktop.SizeMode = 'StretchImage'
+    $pbxDesktop.Image = get-Icon -iconNumber 34
+
+    $pbxDesktop.add_Click({
+        $result.value = ([Environment]::GetFolderPath("Desktop"))
+        $formFolders.Close()
+    })
+
+    $pbxTemp = New-Object System.Windows.Forms.pictureBox
+    $pbxTemp.Location = New-Object System.Drawing.Point(175,13) 
+    $pbxTemp.Size = New-Object System.Drawing.Size(25,25)
+    $pbxTemp.SizeMode = 'StretchImage'
+    $pbxTemp.Image = get-Icon -iconNumber 35
+
+    $pbxTemp.add_Click({
+        $result.value = ($env:temp) 
+        $formFolders.Close()
+    })
+   
+    $gbShortcuts.controls.addRange(@($pbxDocument, $pbxDownloads, $pbxDesktop, $pbxTemp))
+    #endregion shortcut_buttons
+   
+    #regular Tree View component - after loading
+    $treeView = New-Object System.Windows.Forms.TreeView
+    $treeView.Dock = 'Fill'
+    $treeView.CheckBoxes = $false
+    $treeView.Name = 'treeView'
+    $treeView.TabIndex = 1
+
+    #'shadow' Tree View component used during text search 
+    $SearchTreeView = New-Object System.Windows.Forms.TreeView
+    $SearchTreeView.Dock = 'Fill'
+    $SearchTreeView.CheckBoxes = $false
+    $SearchTreeView.name = 'SearchTreeView'
+     
+    #region OKCANCEL
+    $okButton = New-Object System.Windows.Forms.Button
+    $okButton.Size = New-Object System.Drawing.Size(75,23)
+    $okButton.Anchor = 'left'
+    $okButton.Text = "OK"
+    $okButton.Enabled = $false
+    $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $okButton.TabIndex = 3
+    $formFolders.AcceptButton = $okButton
+
+    $okButton.add_Click({
+        $currentView=($mainTable.controls|Where-Object name -match 'treeView')
+        if($currentView.name -eq 'treeView') {
+                $result.value = $currentView.SelectedNode.tag.FullName
+        } else {
+                $result.value = $currentView.SelectedNode.text
+        }
+        $formFolders.close()
+    })
+    
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Size = New-Object System.Drawing.Size(75,23)
+    $cancelButton.anchor = 'right'
+    $cancelButton.Text = "Cancel"
+    $cancelButton.TabIndex = 4
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $formFolders.CancelButton = $cancelButton
+    #endregion OKCANCEL
+    
+    $txtSearch = New-Object system.Windows.Forms.TextBox
+    $txtSearch.multiline = $false
+    $txtSearch.ReadOnly = $false
+    $txtSearch.MinimumSize = new-object System.Drawing.Size(300,20)
+    $txtSearch.Height = 20
+    $txtSearch.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 8)
+    $txtSearch.Location = new-object System.Drawing.Point(3,3)
+    $txtSearch.TabIndex = 2
+
+    $mainTable = New-Object System.Windows.Forms.TableLayoutPanel
+    $mainTable.AutoSize = $true
+    $mainTable.ColumnCount = 2
+    $mainTable.RowCount = 4
+    $mainTable.Dock = "fill"
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,50)) )|out-null
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent,100)) )|out-null
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
+    
+    $mainTable.Controls.add($gbShortcuts,0,0)
+    $mainTable.SetColumnSpan($gbShortcuts,2)
+    $mainTable.controls.Add($txtSearch,1,0)
+    $mainTable.SetColumnSpan($txtSearch,2)
+    $mainTable.Controls.Add($treeView,2,0)
+    $mainTable.SetColumnSpan($treeView,2)
+    $mainTable.Controls.add($okButton,3,0)
+    $mainTable.Controls.add($cancelButton,3,1)
+    
+    $formFolders.Controls.Add($mainTable)
+
+    $searchTimer = new-object System.Windows.Forms.Timer
+    $searchTimer.Interval = 1000
+    #endregion FORM
+
+    #region FORM_FUNCTIONS
+    $formFolders.add_Load({
+        $toolTip = new-object System.Windows.Forms.ToolTip
+        $toolTip.SetToolTip($pbxDocument,'My Documents')
+        $toolTip.SetToolTip($pbxDownloads,'Downloads')
+        $toolTip.SetToolTip($pbxDesktop,'Desktop')
+        $toolTip.SetToolTip($pbxTemp,'Temp')   
+        if(!$loadAll.IsPresent) {
+            $toolTip.SetToolTip($txtSearch,'directories are not fully loaded - results will be limited. check "loadAll" flag usage.')
+        }
+        $formFolders.refresh()
+    })
+    $formFolders.add_Shown({
+        $initialDirectory = Get-Item $startingDirectory -force
+        $rootNode = $treeView.Nodes.Add($initialDirectory.FullName)
+        $rootNode.Tag=[psobject]@{
+            fullName = $initialDirectory.FullName
+            unfolded = $false
+            name = $initialDirectory.Name
+            type = $initialDirectory.gettype().name
+        }
+        
+        $DEPTH = 0
+        if($loadAll) {
+            $DEPTH = 1000
+            write-log "LOADING FULL TREE (will take time)..." -type warning
+        }
+        add-Nodes $rootNode -localDepth $DEPTH
+        $treeView.refresh()
+        $formFolders.refresh()
+        $treeView.nodes[0].Expand()
+    })
+    $formFolders.add_Closing({
+        $loading.dispose()
+    })
+
+    $txtSearch.add_gotFocus({
+        $okButton.Enabled = $false
+    })
+
+    $txtSearch.add_KeyUp({
+        #param($sender,$e)
+        $searchTimer.start()
+    })
+    $searchTimer.add_Tick({
+        if($txtSearch.Text.Length -gt 1 -and ($mainTable.Controls|Where-Object name -eq 'treeView')) {
+            $mainTable.Controls.Remove($treeView)
+            $mainTable.controls.add($searchTreeView,2,0)
+            $mainTable.SetColumnSpan($searchTreeView,2)
+            $formFolders.Refresh()
+        } 
+        if($txtSearch.Text.Length -le 1) {
+            $mainTable.Controls.Remove($searchTreeView)
+            $mainTable.Controls.Add($treeView,2,0)
+            $formFolders.Refresh()
+        }
+        if($txtSearch.Text.Length -gt 1) {
+            $searchTreeView.Nodes.Clear()
+            foreach($n in $NodeList) {
+                if($n.name -match $txtSearch.Text) {
+                    $searchTreeView.Nodes.Add($n.FullName)
+                }
+            }
+        }
+        $searchTimer.stop()
+    })
+
+    $treeview.add_beforeExpand({
+        param($sender, $e)
+        write-verbose "beforeExand: $($e.node.tag.name)"
+        $treeView.SelectedNode = $e.node
+    })
+    $treeview.add_afterSelect({
+        param($sender, $e)
+        write-verbose "afterSelect: $($e.node.tag.name)"
+        $okButton.Enabled = $true
+        #$e.node.Expand()
+        $loading.Show()
+        foreach($subNode in $e.node.Nodes) {
+            add-Nodes -node $subNode
+        }
+        $loading.Hide()
+        [System.windows.Forms.Application]::UseWaitCursor = $false
+        [System.windows.Forms.Application]::DoEvents()        
+    })
+    $SearchTreeView.add_afterSelect({
+        $okButton.Enabled = $true
+    })
+    #endregion FORM_FUNCTIONS
+
+    $script:NodeList=@()
+    $result = @{ Value='' }
+   
+    $result = $formFolders.ShowDialog() 
+
+    if($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        if($object.IsPresent) {
+            return (Get-Item $result.value -force)
+        } else {
+            return $result.value
+        }
+    }
+}
+function select-File {
+    <#
+    .SYNOPSIS
+        wrapper function for select-directory with 'files' flag
+    .NOTES
+        nExoR ::))o-
+        version 210520
+            last changes
+            - 210520 initialized
+    
+        #TO|DO
+    #>
+    
+    param(
+        #starting folder (tree root)
+        [Parameter(mandatory=$false,position=0)]
+            [string]$startingDirectory='\',
+        #show hidden folders
+        [Parameter(mandatory=$false,position=1)]
+            [switch]$hidden,
+        #return directory path as string instead of 'folder object'
+        [Parameter(mandatory=$false,position=2)]
+            [switch]$object,
+        #enable text search box - will load entire tree which might take time, but will allow to search thru entire tree. best used with -startingDirectory for subfolders
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$loadAll
+    )
+
+    select-Directory -files @PSBoundParameters 
+}
 function select-OrganizationalUnit {
     <#
     .SYNOPSIS
         accelerator function allowing to select OU with GUI.
     .DESCRIPTION
-        function is using winforms treeView to display OU structure. returns DistinguishedName on select.
+        function is using winforms treeView to display OU structure. returns DistinguishedName on select
+        or OU object if 'object' parameter used.
+        WARNING! text search looks up only for loaded branches. use 'loadAll' to be able to seach entire branch.
+        best is to combine with 'startingOU' for performance reasons - loading whole AD structure may take a long
+        time. 
     .EXAMPLE
         $ou = select-OU
         
@@ -1234,6 +1667,11 @@ function select-OrganizationalUnit {
         new-ADUser -name 'some user' -path (select-OrganizationalUnit -start OU=LU,DC=w-files,DC=pl -loadAll)
 
         allows to select OU starting from OU=LU and preloading entire tree
+    .EXAMPLE 
+        $ou = select-OU -object
+        $ou.ObjectGUID
+
+        returns full OU object instead of distinguishedName only. 
     .INPUTS
         None.
     .OUTPUTS
@@ -1242,14 +1680,15 @@ function select-OrganizationalUnit {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210321
+        version 210520
             last changes
+            - 210520 icons, load improvements, behaviour fixes
+            - 210511 return object
             - 210321 loadAll
             - 210317 rootNode, disableRoot
             - 210308 initialized
     
         #TO|DO
-        - icons
         - multichoice
     #>
     
@@ -1260,18 +1699,25 @@ function select-OrganizationalUnit {
         #root node can't be selected
         [Parameter(mandatory=$false,position=1)]
             [switch]$disableRoot,
-        #enable text search box - will load entire tree which might take time, but will allow to search thru entire tree
+        #return OU object instead of string name
         [Parameter(mandatory=$false,position=2)]
+            [switch]$object,
+        #enable text search box - will load entire tree which might take time, but will allow to search thru entire tree
+        [Parameter(mandatory=$false,position=3)]
             [switch]$loadAll,
         #if critical - will exit instead of returning false
-        [Parameter(mandatory=$false,position=3)]
+        [Parameter(mandatory=$false,position=4)]
             [switch]$isCritical
     )
 
-    Function add-Nodes ( $Node) {
+    Function add-Nodes {
+        param(
+            $node,
+            [int]$localDepth=0
+        )
         #write-host $costam
-        $SubOU = Get-ADOrganizationalUnit -SearchBase $node.tag.distinguishedName -SearchScope OneLevel -filter *
         if($node.tag.unfolded -eq $false) {
+            $SubOU = Get-ADOrganizationalUnit -SearchBase $node.tag.distinguishedName -SearchScope OneLevel -filter *
             $node.tag.unfolded = $true
             foreach ( $ou in $SubOU ) {
                 $NodeSub = $Node.Nodes.Add($ou.Name)
@@ -1281,9 +1727,13 @@ function select-OrganizationalUnit {
                     name = $rxOUName.Match($ou.DistinguishedName).groups[1].value
                 }
                 $script:NodeList += $NodeSub.tag
-                if($loadAll) { 
-                    add-Nodes $NodeSub 
+                if($localDepth -gt 0) { 
+                    add-Nodes -node $NodeSub -localDepth ($localDepth - 1)
                 }
+            }
+        } else {
+            foreach($SubNode in $node.Nodes) {
+                add-Nodes -node $SubNode 
             }
         }
     }
@@ -1291,6 +1741,7 @@ function select-OrganizationalUnit {
     [regex]$rxOUName="^OU=(.*?),"
     $script:NodeList=@()
 
+    #region FORM
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -1308,6 +1759,13 @@ function select-OrganizationalUnit {
     $treeView.Dock = 'Fill'
     $treeView.CheckBoxes = $false
     $treeView.Name = 'treeView'
+
+    $treeViewImageList = new-object System.Windows.Forms.ImageList
+    $treeViewImageList.Images.Add( (get-Icon -iconNumber 11 -fileContaining 'mshtml.dll') )
+    $treeViewImageList.Images.Add( (get-Icon -iconNumber 10 -fileContaining 'mshtml.dll') )
+    $treeView.ImageList = $treeViewImageList
+    $treeView.ImageIndex = 0
+    $treeView.SelectedImageIndex = 1
      
     $rootNode = $treeView.Nodes.Add($startingOU)
     $rootNode.Tag=[psobject]@{
@@ -1315,24 +1773,16 @@ function select-OrganizationalUnit {
         unfolded = $false
     }
     
-    if($loadAll) {
-        write-log "LOADING FULL TREE..." -type warning
-    }
-    add-Nodes $rootNode
-
     $SearchTreeView = New-Object System.Windows.Forms.TreeView
     $SearchTreeView.Dock = 'Fill'
     $SearchTreeView.CheckBoxes = $false
     $SearchTreeView.name = 'SearchTreeView'
      
-    $SearchRootNode = $SearchTreeView.Nodes.Add($startingOU)
-    $SearchRootNode.Tag=$startingOU
-        
-    
     $okButton = New-Object System.Windows.Forms.Button
     $okButton.Size = New-Object System.Drawing.Size(75,23)
     $okButton.Anchor = 'left'
     $okButton.Text = "OK"
+    $okButton.Enabled = $false
     $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
     $Form.AcceptButton = $okButton
     
@@ -1351,6 +1801,26 @@ function select-OrganizationalUnit {
     $txtSearch.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 8)
     $txtSearch.Location = new-object System.Drawing.Point(3,3)
 
+    $mainTable = New-Object System.Windows.Forms.TableLayoutPanel
+    $mainTable.AutoSize = $true
+    $mainTable.ColumnCount = 2
+    $mainTable.RowCount = 3
+    $mainTable.Dock = "fill"
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent,100)) )|out-null
+    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
+    
+    $mainTable.controls.Add($txtSearch,0,0)
+    $mainTable.SetColumnSpan($txtSearch,2)
+    $mainTable.Controls.Add($treeView,1,0)
+    $mainTable.SetColumnSpan($treeView,2)
+    $mainTable.Controls.add($okButton,2,0)
+    $mainTable.Controls.add($cancelButton,2,1)
+    
+    $form.Controls.Add($mainTable)
+    #endregion FORM
+
+    #region FORM_FUNCTIONS
     $txtSearch.add_KeyUp({
         #param($sender,$e)
         if($txtSearch.Text.Length -gt 1 -and ($mainTable.Controls|Where-Object name -eq 'treeView')) {
@@ -1373,42 +1843,62 @@ function select-OrganizationalUnit {
             }
         }
     })
-
-    $mainTable = New-Object System.Windows.Forms.TableLayoutPanel
-    $mainTable.AutoSize = $true
-    $mainTable.ColumnCount = 2
-    $mainTable.RowCount = 3
-    $mainTable.Dock = "fill"
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent,100)) )|out-null
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
-    
-    $mainTable.controls.Add($txtSearch,0,0)
-    $mainTable.SetColumnSpan($txtSearch,2)
-    $mainTable.Controls.Add($treeView,1,0)
-    $mainTable.SetColumnSpan($treeView,2)
-    $mainTable.Controls.add($okButton,2,0)
-    $mainTable.Controls.add($cancelButton,2,1)
-
-    
-    $form.Controls.Add($mainTable)
+    $txtSearch.add_gotFocus({
+        $okButton.Enabled = $false
+    })    
 
     $treeview.add_afterSelect({
-        add-Nodes $treeView.SelectedNode 
-        if($treeView.SelectedNode.text -eq $startingOU -and $disableRoot) {
-            $okButton.Enabled = $false
-        } else {
+        param($sender,$e)
+        if(!$script:COLLAPSING) {
             $okButton.Enabled = $true
+            $e.node.Expand()
+            add-Nodes $treeView.SelectedNode 
+            if($treeView.SelectedNode.text -eq $startingOU -and $disableRoot) {
+                $okButton.Enabled = $false
+            } else {
+                $okButton.Enabled = $true
+            }
+        } else {
+            $script:COLLAPSING = $false
         }
     })
-    
+    $treeView.add_BeforeCollapse({
+        $script:COLLAPSING = $true
+    })
+    $treeview.add_beforeExpand({
+        param($sender, $e)
+        $treeView.SelectedNode = $e.node
+    })
+
+    $SearchTreeView.add_afterSelect({
+        $okButton.Enabled = $true
+    })    
+    #endregion FORM_FUNCTIONS
+
+    $COLLAPSING = $false
+    $DEPTH = 1
+    if($loadAll) {
+        $DEPTH = 1000
+        write-log "LOADING FULL TREE..." -type warning
+    }
+    add-Nodes $rootNode -localDepth $DEPTH
+    $treeView.nodes[0].Expand()
+
     $result = $Form.ShowDialog()
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         $currentView=($mainTable.controls|? name -match 'treeView')
         if($currentView.name -eq 'treeView') {
-            return $currentView.SelectedNode.tag.distinguishedName
+            if($object.IsPresent) {
+                return (Get-ADOrganizationalUnit $currentView.SelectedNode.tag.distinguishedName -properties *)
+            } else {
+                return $currentView.SelectedNode.tag.distinguishedName
+            }
         } else {
-            return $currentView.SelectedNode.text
+            if($object.IsPresent) {
+                return (Get-ADOrganizationalUnit $currentView.SelectedNode.text -properties *)
+            } else {
+                return $currentView.SelectedNode.text
+            }
         }
 
     } 
