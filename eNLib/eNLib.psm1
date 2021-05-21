@@ -1347,6 +1347,10 @@ function select-Directory {
         }
     }
 
+    Add-Type -AssemblyName System.Drawing
+    Add-Type -AssemblyName System.Windows.Forms
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+
     #region LOADINGFORM
     $loading = New-Object system.Windows.Forms.Form
     $loading.ClientSize = New-Object System.Drawing.Point(250, 30)
@@ -1373,9 +1377,6 @@ function select-Directory {
     #endregion LOADINGFORM
 
     #region FORM
-    Add-Type -AssemblyName System.Drawing
-    Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.Application]::EnableVisualStyles()
     $formFolders = New-Object System.Windows.Forms.Form
     $formFolders.Text = "select Directory under $startingDirectory"
     $formFolders.MinimumSize = New-Object System.Drawing.Size(300,500)
@@ -1600,6 +1601,7 @@ function select-Directory {
         $loading.Hide()
         [System.windows.Forms.Application]::UseWaitCursor = $false
         [System.windows.Forms.Application]::DoEvents()        
+        $formFolders.Focus()
     })
     $SearchTreeView.add_afterSelect({
         $okButton.Enabled = $true
@@ -1609,9 +1611,8 @@ function select-Directory {
     $script:NodeList=@()
     $result = @{ Value='' }
    
-    $result = $formFolders.ShowDialog() 
-
-    if($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    $ret = $formFolders.ShowDialog() 
+    if($ret -eq [System.Windows.Forms.DialogResult]::OK) {
         if($object.IsPresent) {
             return (Get-Item $result.value -force)
         } else {
