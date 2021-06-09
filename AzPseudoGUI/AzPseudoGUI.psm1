@@ -413,8 +413,9 @@ function select-VirtualMachine {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210518
+        version 210602
             last changes
+            - 210602 fix to backup detection
             - 210518 default sort by name
             - 210302 autoSelectSingle, backup status fix
             - 210220 multichoice, backup info
@@ -521,7 +522,7 @@ function select-VirtualMachine {
         }
 
         foreach($VM in $selectVM) {
-            if($includeBackupInfo.IsPresent -and $selectVM.backup -ne 'no backup') { 
+            if($includeBackupInfo.IsPresent -and $VM.backupVault -ne 'no backup') { 
                 write-log "$($VM.name) has backup enabled." -type warning
                 if($isCritical.IsPresent) {
                     exit -2

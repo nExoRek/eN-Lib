@@ -9,8 +9,11 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210507
+    version 210609
     changes
+        - 210609 set-QuickEditMode function [1.3.0]
+        - 210524 fix to select-Directory
+        - 210520 fixes to select-OU, new select-Directory,select-File [1.2.0]
         - 210507 write-log null detection fix [1.1.8], get-valueFromInputBox
         - 210430 covert-CSV2XLS #typedef
         - 210422 again fixes to exit
@@ -237,6 +240,12 @@ function write-log {
         green'
         in Green colour, and send text to a log file.
     .EXAMPLE
+        start-Logging -logFileName ("{0}{1}{2}{3}{4}{5}" -f $PSScriptRoot,'\Logs\_',$env:USERNAME,'myScript-',$(Get-Date -Format yyMMddHHmm),'.log')
+        write-log -message $someObject -type info 
+
+        if you need to create a logfile with some custom name or location - just use 'start-Logging' function which initializes 
+        logfile with required values. 
+    .EXAMPLE
         $someObject=get-process
         write-log -message $someObject -type info -skipTimeStamp -silent
 
@@ -250,9 +259,10 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210507
+        version 210526
         changes:
-            - 210407 rare issue with message type check
+            - 210526 ...saga with catching $null continues
+            - 210507 rare issue with message type check
             - 210421 interpreting $message elements fix
             - 210402 3rd output init
             - 210329 write-log init fix
@@ -320,23 +330,28 @@ function write-log {
         #ValueFromRemainingArguments changes how variable is presented. running "write-log 'output text'" will pass 'output text' as a "List`1" object
         #as that's how 'valueFromRemainingArguments' is bulding variable and ruturns an array. but if passed directly with "write-log -message 'output text'" 
         #retruns true type of the passed variable - in this case [string]. 
-        switch( $message.GetType().name )  {
-            'List`1' { 
-                for($count=0;$count -lt $message.count;$count++) {
-                    if($message[$count].GetType().name -ne 'string') {
-                        $message[$count]=($message[$count]|out-String).trim()+"`n" 
-                    } else {
-                        $message[$count]+=' '
+        try {
+            switch( $message.GetType().name )  {
+                'List`1' { 
+                    for($count=0;$count -lt $message.count;$count++) {
+                        if($message[$count].GetType().name -ne 'string') {
+                            $message[$count]=($message[$count]|out-String).trim()+"`n" 
+                        } else {
+                            $message[$count]+=' '
+                        }
                     }
+                    $message=$message -join ''
                 }
-                $message=$message -join ''
+                'String' {
+                    #do nothing - string is fine.
+                }
+                'Default' {
+                    ($message|out-String).trim()+"`n" 
+                }
             }
-            'String' {
-                #do nothing - string is fine.
-            }
-            'Default' {
-                ($message|out-String).trim()+"`n" 
-            }
+        } catch {
+            #there simply is no way to catch all nulls - any type of comparison generates exceptions. 
+            $message=''
         }
     }
 #region 3rdOUTPUT
@@ -988,6 +1003,86 @@ function new-RandomPassword {
     return $password
 }
 
+$QuickEditModeCodeSnippet = @" 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Runtime.InteropServices;
+
+public static class DisableConsoleQuickEdit {
+    const uint ENABLE_QUICK_EDIT = 0x0040;
+    // STD_INPUT_HANDLE (DWORD): -10 is the standard input device.
+    const int STD_INPUT_HANDLE = -10;
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr GetStdHandle(int nStdHandle);
+    [DllImport("kernel32.dll")]
+    static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+    [DllImport("kernel32.dll")]
+    static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+    public static bool SetQuickEdit(bool SetEnabled) {
+        IntPtr consoleHandle = GetStdHandle(STD_INPUT_HANDLE);
+        // get current console mode
+        uint consoleMode;
+        if (!GetConsoleMode(consoleHandle, out consoleMode)) {
+            // ERROR: Unable to get console mode.
+            return false;
+        }
+        // Clear the quick edit bit in the mode flags
+        if (SetEnabled) {
+            consoleMode &= ~ENABLE_QUICK_EDIT;
+        } else {
+            consoleMode |= ENABLE_QUICK_EDIT;
+        }
+        // set the new mode
+        if (!SetConsoleMode(consoleHandle, consoleMode)) {
+            // ERROR: Unable to set console mode
+            return false;
+        }
+        return true;
+    }
+}
+"@
+
+$QuickEditMode = add-type -TypeDefinition $QuickEditModeCodeSnippet -Language CSharp
+function Set-QuickEditMode {
+    <#
+    .SYNOPSIS
+        function allowing to disable/enable Quick Edit Mode for current PS host session.
+    .DESCRIPTION
+        accidental mouse-press on PS screen will lead to script pause. this is real problem - especially if
+        you're providing scripts to unaware users. this simple function taken from CodeOverflow allows
+        to control Quick Edit Mode setting for current PS host. this will allow to disable this 
+        feature before running the script.
+    .EXAMPLE
+        PS C:\> set-QuickEditMode -DisableQuickEdit
+        disables Quick Edit mode for current PS Session
+    .EXAMPLE
+        PS C:\> set-QuickEditMode 
+        enables Quick Edit mode for current PS Session
+    .LINK
+        source code taken from:
+        https://stackoverflow.com/questions/30872345/script-commands-to-disable-quick-edit-mode/42792718
+    .NOTES
+        nExoR ::))o-
+        version 210609
+            last changes
+            - 210609 initialized
+    #>
+    param(
+        [Parameter(Mandatory=$false)]
+            [switch]$DisableQuickEdit
+    )
+
+    if( [DisableConsoleQuickEdit]::SetQuickEdit($DisableQuickEdit) ) {
+        Write-Log "QuickEdit settings has been updated." -type info 
+    } else {
+        Write-Log "Something went wrong." -type info
+    }
+}
+
 #################################################### PowerShell GUI
 function get-answerBox {
     <#
@@ -1278,10 +1373,10 @@ function select-Directory {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210521
+        version 210524
             last changes
+            - 210524 fix to shortcut folders
             - 210521 optimization, tuning
-
             - 210519 initialized
     
         #TO|DO
@@ -1402,6 +1497,7 @@ function select-Directory {
 
     $pbxDocument.add_Click({
         $result.value = ([Environment]::GetFolderPath("MyDocuments")) 
+        $formFolders.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $formFolders.Close()
     })
 
@@ -1413,6 +1509,7 @@ function select-Directory {
 
     $pbxDownloads.add_Click({
         $result.value = ((New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path)
+        $formFolders.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $formFolders.Close()
     })
     
@@ -1424,6 +1521,7 @@ function select-Directory {
 
     $pbxDesktop.add_Click({
         $result.value = ([Environment]::GetFolderPath("Desktop"))
+        $formFolders.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $formFolders.Close()
     })
 
@@ -1435,6 +1533,7 @@ function select-Directory {
 
     $pbxTemp.add_Click({
         $result.value = ($env:temp) 
+        $formFolders.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $formFolders.Close()
     })
    
