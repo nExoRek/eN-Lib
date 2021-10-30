@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210609
+    version 210810
     changes
+        - 210810 select-OrganizationalUnit replaced with select-ADObject and proxy function for backward compatibility [1.3.1]
         - 210609 set-QuickEditMode function [1.3.0]
         - 210524 fix to select-Directory
         - 210520 fixes to select-OU, new select-Directory,select-File [1.2.0]
@@ -1749,7 +1750,7 @@ function select-File {
 
     select-Directory -files @PSBoundParameters 
 }
-function select-OrganizationalUnit {
+function select-ADObject {
     <#
     .SYNOPSIS
         accelerator function allowing to select OU with GUI.
@@ -1805,40 +1806,92 @@ function select-OrganizationalUnit {
         #enable text search box - will load entire tree which might take time, but will allow to search thru entire tree
         [Parameter(mandatory=$false,position=3)]
             [switch]$loadAll,
-        #if critical - will exit instead of returning false
+        # do not load leaf objects - only OU structure
         [Parameter(mandatory=$false,position=4)]
+            [validateSet('computer','user','group','organizationalUnit')]
+            [string]$filterObject,
+        #if critical - will exit instead of returning false
+        [Parameter(mandatory=$false,position=5)]
             [switch]$isCritical
     )
 
     Function add-Nodes {
         param(
             $node,
-            [int]$localDepth=0
+            [int]$localDepth=0,
+            [ValidateSet('computer','group','user','organizationalUnit')]
+                [string[]]$filterObject
         )
-        #write-host $costam
-        if($node.tag.unfolded -eq $false) {
-            $SubOU = Get-ADOrganizationalUnit -SearchBase $node.tag.distinguishedName -SearchScope OneLevel -filter *
+        if([string]::IsNullOrEmpty($filterObject)) {
+            $Filter = "*"
+        } elseif($filterObject -eq 'organizationalUnit') {
+            $Filter="objectClass -eq 'organizationalUnit' -or objectClass -eq 'container'"
+        } else {
+            $Filter="objectClass -eq '$filterObject' -or objectClass -eq 'organizationalUnit' -or objectClass -eq 'container'"
+        } 
+        if($node.tag.unfolded -eq $false ) {
+            try {
+                $OUobjects = get-ADObject -Filter $Filter -SearchBase $node.tag.distinguishedName -SearchScope OneLevel|Sort-Object @{E={$_.ObjectClass};Ascending=$false},name
+            } catch {
+                write-log "error getting objects using provided values. $($_.exception)" -type error
+                break
+            }
             $node.tag.unfolded = $true
-            foreach ( $ou in $SubOU ) {
-                $NodeSub = $Node.Nodes.Add($ou.Name)
+            foreach($obj in $OUobjects) {
+                if([string]::isNullOrEmpty($obj.name)) { continue }
+                try {
+                    $NodeSub = $Node.Nodes.Add($obj.Name)
+                } CATCH {
+                    write-host 'err' -ForegroundColor red
+                    $obj
+                }
                 $NodeSub.tag = [psobject]@{
-                    distinguishedName = $ou.DistinguishedName
+                    distinguishedName = $obj.DistinguishedName
                     unfolded = $false
-                    name = $rxOUName.Match($ou.DistinguishedName).groups[1].value
+                    name = $rxADObjName.Match($obj.DistinguishedName).groups[1].value
+                    type = $obj.objectClass
+                }
+
+                switch($Obj.objectClass) {
+                    'computer' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 2 }
+                    'group' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 3 }
+                    'user' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 4 }
+                    'contact' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 5 }
+                    {($_ -eq 'organizationalUnit') -or ($_ -eq 'container')} { 
+                        $NodeSub.ImageIndex = 0
+                        $nodeSub.SelectedImageIndex = 1 
+                    }
+                    default { 
+                        #write-log "unknown AD object type: $($obj.objectClass)"
+                        $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 6
+                    }
                 }
                 $script:NodeList += $NodeSub.tag
                 if($localDepth -gt 0) { 
-                    add-Nodes -node $NodeSub -localDepth ($localDepth - 1)
+                    $addNodes=@{
+                        node = $NodeSub
+                        localDepth = $localDepth - 1
+                    }
+                    if($filterObject) {
+                        $addNodes.add('filterObject',$filterObject)
+                    }
+                    add-Nodes @addNodes
                 }
             }
         } else {
             foreach($SubNode in $node.Nodes) {
-                add-Nodes -node $SubNode 
+                $addNodes=@{
+                    node = $NodeSub
+                }
+                if($filterObject) {
+                    $addNodes.add('filterObject',$filterObject)
+                }
+                add-Nodes @addNodes
             }
         }
     }
 
-    [regex]$rxOUName="^OU=(.*?),"
+    [regex]$rxADObjName="^(?:OU|CN)=(.*?),"
     $script:NodeList=@()
 
     #region FORM
@@ -1846,7 +1899,7 @@ function select-OrganizationalUnit {
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $form = New-Object System.Windows.Forms.Form
-    $Form.Text = "Select OU under $startingOU"
+    $Form.Text = "Select AD object under $startingOU"
     $form.MinimumSize = New-Object System.Drawing.Size(300,500)
     $Form.AutoSize = $true
     $Form.StartPosition = 'CenterScreen'
@@ -1861,8 +1914,13 @@ function select-OrganizationalUnit {
     $treeView.Name = 'treeView'
 
     $treeViewImageList = new-object System.Windows.Forms.ImageList
-    $treeViewImageList.Images.Add( (get-Icon -iconNumber 11 -fileContaining 'mshtml.dll') )
-    $treeViewImageList.Images.Add( (get-Icon -iconNumber 10 -fileContaining 'mshtml.dll') )
+    $treeViewImageList.Images.Add( (get-Icon -iconNumber 4 -fileContaining 'imageres.dll') ) #0 folder
+    $treeViewImageList.Images.Add( (get-Icon -iconNumber 6 -fileContaining 'imageres.dll') ) #1 opened folder
+    $treeViewImageList.Images.Add( (get-Icon -iconNumber 104 -fileContaining 'imageres.dll') ) #2 computer
+    $treeViewImageList.Images.Add( (get-Icon -iconNumber 74 -fileContaining 'imageres.dll') ) #3 group
+    $treeViewImageList.Images.Add( (get-Icon -iconNumber 208 -fileContaining 'imageres.dll') ) #4 user
+    $treeViewImageList.Images.Add( (get-Icon -iconNumber 124 -fileContaining 'imageres.dll') ) #5 contact
+    $treeViewImageList.Images.Add( (get-Icon -iconNumber 63 -fileContaining 'imageres.dll') ) #6 other
     $treeView.ImageList = $treeViewImageList
     $treeView.ImageIndex = 0
     $treeView.SelectedImageIndex = 1
@@ -1952,7 +2010,13 @@ function select-OrganizationalUnit {
         if(!$script:COLLAPSING) {
             $okButton.Enabled = $true
             $e.node.Expand()
-            add-Nodes $treeView.SelectedNode 
+            $addNodes=@{
+                node = $treeView.SelectedNode
+            }
+            if($filterObject) {
+                $addNodes.add('filterObject',$filterObject)
+            }
+            add-Nodes @addNodes
             if($treeView.SelectedNode.text -eq $startingOU -and $disableRoot) {
                 $okButton.Enabled = $false
             } else {
@@ -1981,7 +2045,14 @@ function select-OrganizationalUnit {
         $DEPTH = 1000
         write-log "LOADING FULL TREE..." -type warning
     }
-    add-Nodes $rootNode -localDepth $DEPTH
+    $addNodes=@{
+        node = $rootNode
+        localDepth = $DEPTH
+    }
+    if($filterObject) {
+        $addNodes.add('filterObject',$filterObject)
+    }
+    add-Nodes @addNodes
     $treeView.nodes[0].Expand()
 
     $result = $Form.ShowDialog()
@@ -1989,13 +2060,13 @@ function select-OrganizationalUnit {
         $currentView=($mainTable.controls|? name -match 'treeView')
         if($currentView.name -eq 'treeView') {
             if($object.IsPresent) {
-                return (Get-ADOrganizationalUnit $currentView.SelectedNode.tag.distinguishedName -properties *)
+                return (Get-ADObject $currentView.SelectedNode.tag.distinguishedName -properties *)
             } else {
                 return $currentView.SelectedNode.tag.distinguishedName
             }
         } else {
             if($object.IsPresent) {
-                return (Get-ADOrganizationalUnit $currentView.SelectedNode.text -properties *)
+                return (Get-ADObject $currentView.SelectedNode.text -properties *)
             } else {
                 return $currentView.SelectedNode.text
             }
@@ -2008,6 +2079,48 @@ function select-OrganizationalUnit {
     } 
     return $false
     
+}
+
+function select-OrganizationalUnit {
+    <#
+    .SYNOPSIS
+        proxy function for backward compatibility - replaced by select-ADObject
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210810
+            last changes
+            - 210810 initialized
+    
+        #TO|DO
+    #>
+    param(
+        #starting OU (tree root)
+        [Parameter(mandatory=$false,position=0)]
+            [string]$startingOU=(get-ADRootDSE).defaultNamingContext,
+        #root node can't be selected
+        [Parameter(mandatory=$false,position=1)]
+            [switch]$disableRoot,
+        #return OU object instead of string name
+        [Parameter(mandatory=$false,position=2)]
+            [switch]$object,
+        #enable text search box - will load entire tree which might take time, but will allow to search thru entire tree
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$loadAll,
+        #if critical - will exit instead of returning false
+        [Parameter(mandatory=$false,position=4)]
+            [switch]$isCritical
+    ) 
+    $runParam = @{
+        startingOU = $startingOU
+        filterObject = 'organizationalUnit'
+    }
+    if($disableRoot) { $runParam.Add('disableRoot',$true) }
+    if($object) { $runParam.Add('object',$true) }
+    if($loadAll) { $runParam.Add('loadAll',$true) }
+    if($isCritical) { $runParam.Add('isCritical',$true) }
+    select-ADObject @runParam
 }
 set-alias -Name select-OU -Value select-OrganizationalUnit
 
