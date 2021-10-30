@@ -60,6 +60,8 @@ if($SKUNamesFileURI) {
     $AccountSkus | %{ 
         if( $ProductNamesReference.ContainsKey($_.SkuPartNumber) ) {
             $_.SkuPartNumber = $ProductNamesReference[$_.SkuPartNumber] 
+        } else {
+            write-log "$($_.SkuPartNumber) not found" -type warning
         }
     }
 }
