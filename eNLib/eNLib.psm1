@@ -9,9 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 220201
+    version 220202
     changes
-        - 220201 multichoice for select-ADObject [1.3.2]
+        - 220202 multichoice for select-ADObject [1.3.2]
         - 210810 select-OrganizationalUnit replaced with select-ADObject and proxy function for backward compatibility [1.3.1]
         - 210609 set-QuickEditMode function [1.3.0]
         - 210524 fix to select-Directory
@@ -1782,8 +1782,9 @@ function select-ADObject {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 220201
+        version 220202
             last changes
+            - 220202 improvements
             - 220201 multichoice initial, load fixes
             - 210520 icons, load improvements, behaviour fixes
             - 210511 return object
@@ -1819,134 +1820,136 @@ function select-ADObject {
             [switch]$isCritical
     )
 
-Function add-Nodes {
-    param(
-        [Parameter(Mandatory=$true,position=0)]
-            $node,
-        [Parameter(Mandatory=$false,position=1)]
-            [int]$localDepth=0,
-        [Parameter(Mandatory=$false,position=2)]
-            [ValidateSet('computer','group','user','organizationalUnit')]
-            [string[]]$filterObject
-    )
+    Function add-Nodes {
+        param(
+            [Parameter(Mandatory=$true,position=0)]
+                $node,
+            [Parameter(Mandatory=$false,position=1)]
+                [int]$localDepth=0,
+            [Parameter(Mandatory=$false,position=2)]
+                [ValidateSet('computer','group','user','organizationalUnit')]
+                [string[]]$filterObject
+        )
 
-    if([string]::IsNullOrEmpty($filterObject)) {
-        $Filter = "*"
-    } elseif($filterObject -eq 'organizationalUnit') {
-        $Filter="objectClass -eq 'organizationalUnit' -or objectClass -eq 'container'"
-    } else {
-        $Filter="objectClass -eq '$filterObject' -or objectClass -eq 'organizationalUnit' -or objectClass -eq 'container'"
-    } 
-    if($node.tag.unfolded -eq $false ) {
-        try {
-            $OUobjects = get-ADObject -Filter $Filter -SearchBase $node.tag.distinguishedName -SearchScope OneLevel|Sort-Object @{E={$_.ObjectClass};Ascending=$false},name
-        } catch {
-            write-log "error getting objects using provided values. $($_.exception)" -type error
-            break
-        }
-        $node.tag.unfolded = $true
-        foreach($obj in $OUobjects) {
-            if([string]::isNullOrEmpty($obj.name)) { continue }
+        write-verbose ("(adding node) {0} | type: {1} | deph: {2}" -f $node.text, $node.tag.type, $localDepth)
+        if($node.tag.type -notmatch 'organizationalUnit|container|root') { return } 
+        if([string]::IsNullOrEmpty($filterObject)) {
+            $Filter = "*"
+        } elseif($filterObject -eq 'organizationalUnit') {
+            $Filter="objectClass -eq 'organizationalUnit' -or objectClass -eq 'container'"
+        } else {
+            $Filter="objectClass -eq '$filterObject' -or objectClass -eq 'organizationalUnit' -or objectClass -eq 'container'"
+        } 
+        if($node.tag.unfolded -eq $false ) {
             try {
-                $NodeSub = $Node.Nodes.Add($obj.Name)
-            } CATCH {
-                write-host 'err' -ForegroundColor red
-                $obj
+                $OUobjects = get-ADObject -Filter $Filter -SearchBase $node.tag.distinguishedName -SearchScope OneLevel|Sort-Object @{E={$_.ObjectClass};Ascending=$false},name
+            } catch {
+                write-log "error getting objects using provided values. $($_.exception)" -type error
+                break
             }
-            $NodeSub.tag = [psobject]@{
-                distinguishedName = $obj.DistinguishedName
-                unfolded = $false
-                name = $rxADObjName.Match($obj.DistinguishedName).groups[1].value
-                type = $obj.objectClass
-            }
+            $node.tag.unfolded = $true
+            foreach($obj in $OUobjects) {
+                if([string]::isNullOrEmpty($obj.name)) { continue }
+                try {
+                    $NodeSub = $Node.Nodes.Add($obj.Name)
+                } CATCH {
+                    write-host 'err' -ForegroundColor red
+                    $obj
+                }
+                $NodeSub.tag = [psobject]@{
+                    distinguishedName = $obj.DistinguishedName
+                    unfolded = $false
+                    name = $rxADObjName.Match($obj.DistinguishedName).groups[1].value
+                    type = $obj.objectClass
+                }
 
-            switch($Obj.objectClass) {
-                'computer' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 2 }
-                'group' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 3 }
-                'user' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 4 }
-                'contact' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 5 }
-                {($_ -eq 'organizationalUnit') -or ($_ -eq 'container')} { 
-                    $NodeSub.ImageIndex = 0
-                    $nodeSub.SelectedImageIndex = 1 
+                switch($Obj.objectClass) {
+                    'computer' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 2 }
+                    'group' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 3 }
+                    'user' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 4 }
+                    'contact' { $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 5 }
+                    {($_ -eq 'organizationalUnit') -or ($_ -eq 'container')} { 
+                        $NodeSub.ImageIndex = 0
+                        $nodeSub.SelectedImageIndex = 1 
+                    }
+                    default { 
+                        #write-log "unknown AD object type: $($obj.objectClass)"
+                        $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 6
+                    }
                 }
-                default { 
-                    #write-log "unknown AD object type: $($obj.objectClass)"
-                    $NodeSub.ImageIndex = $nodeSub.SelectedImageIndex = 6
+                $script:NodeList += $NodeSub.tag
+                if($localDepth -gt 0) { 
+                    $addNodes=@{
+                        node = $NodeSub
+                        localDepth = $localDepth - 1
+                    }
+                    if($filterObject) {
+                        $addNodes.add('filterObject',$filterObject)
+                    }
+                    add-Nodes @addNodes
                 }
             }
-            $script:NodeList += $NodeSub.tag
-            if($localDepth -gt 0) { 
-                $addNodes=@{
-                    node = $NodeSub
-                    localDepth = $localDepth - 1
-                }
-                if($filterObject) {
-                    $addNodes.add('filterObject',$filterObject)
-                }
-                add-Nodes @addNodes
-            }
-        }
-    } else {
-        foreach($SubNode in $node.Nodes) {
-            if($localDepth -gt 0) { 
-                $addNodes=@{
-                    node = $SubNode
-                    localDepth = $localDepth -1
-                }
-                if($filterObject) {
-                    $addNodes.add('filterObject',$filterObject)
-                }
-                add-Nodes @addNodes
-            }
-        }
-    }
-}
-
-Function list-Nodes {
-    param(
-        #reference to an object
-        [parameter(mandatory=$true,position=0)]
-            $nodeSet,
-        #flat - for searchlist and treeview for regular treeview object
-        [parameter(mandatory=$false,position=1)]
-            [validateSet('flat','treeView')]
-            $type='treeView'
-    ) 
-
-#    write-verbose ("{0} : {1}" -f $nodeSet.checked,$nodeSet.Tag.distinguishedName)
-    if($type -eq 'treeView') {
-        foreach($node in $nodeSet.nodes) {
-            list-Nodes $node
-        }
-        if($nodeSet.checked) {
-            if($null -eq $filterObject -or ($filterObject -eq $nodeSet.tag.type) ) {
-                $nodeSet.tag.distinguishedName
-            }
-        }
-    } else {
-        foreach($node in $nodeSet.nodes) {
-            if($node.checked) {
-                if($null -eq $filterObject -or ($filterObject -eq $node.tag.type) ) {
-                    $node.text
+        } else {
+            foreach($SubNode in $node.Nodes) {
+                if($localDepth -gt 0) { 
+                    $addNodes=@{
+                        node = $SubNode
+                        localDepth = $localDepth -1
+                    }
+                    if($filterObject) {
+                        $addNodes.add('filterObject',$filterObject)
+                    }
+                    add-Nodes @addNodes
                 }
             }
         }
     }
-}
 
-Function check-Nodes {
-    param(
-        [parameter(Mandatory=$true,Position=0)]
-            $nodeSet,
-        [parameter(Mandatory=$true,Position=1)]
-            [bool]$set
-    )
+    Function list-Nodes {
+        param(
+            #reference to an object
+            [parameter(mandatory=$true,position=0)]
+                $nodeSet,
+            #flat - for searchlist and treeview for regular treeview object
+            [parameter(mandatory=$false,position=1)]
+                [validateSet('flat','treeView')]
+                $type='treeView'
+        ) 
 
-    foreach($node in $nodeSet.Nodes) {
-        $node.checked = $set
-        check-Nodes -nodeSet $node -set $set
+        write-verbose ("(list nodes) {0} : {1}" -f $nodeSet.checked,$nodeSet.Tag.distinguishedName)
+        if($type -eq 'treeView') {
+            foreach($node in $nodeSet.nodes) {
+                list-Nodes $node
+            }
+            if($nodeSet.checked) {
+                if($null -eq $filterObject -or ($filterObject -eq $nodeSet.tag.type) ) {
+                    $nodeSet.tag.distinguishedName
+                }
+            }
+        } else {
+            foreach($node in $nodeSet.nodes) {
+                if($node.checked) {
+                    if($null -eq $filterObject -or ($filterObject -eq $node.tag.type) ) {
+                        $node.text
+                    }
+                }
+            }
+        }
     }
-}
+
+    Function check-Nodes {
+        param(
+            [parameter(Mandatory=$true,Position=0)]
+                $nodeSet,
+            [parameter(Mandatory=$true,Position=1)]
+                [bool]$set
+        )
+
+        foreach($node in $nodeSet.Nodes) {
+            $node.checked = $set
+            check-Nodes -nodeSet $node -set $set
+        }
+    }
 
     [regex]$rxADObjName="^(?:OU|CN)=(.*?),"
     $script:NodeList=@()
@@ -1990,6 +1993,7 @@ Function check-Nodes {
     $rootNode.Tag=[psobject]@{
         distinguishedName = $startingOU
         unfolded = $false
+        type = "root"
     }
     
     $SearchTreeView = New-Object System.Windows.Forms.TreeView
@@ -2078,6 +2082,8 @@ Function check-Nodes {
 
     $treeview.add_afterSelect({
         param($sender,$e)
+        [System.Windows.Forms.Cursor]::Current = 'WaitCursor'
+        [System.Windows.Forms.Application]::UseWaitCursor=$true
         if(!$script:COLLAPSING) {
             $okButton.Enabled = $true
             $e.node.Expand()
@@ -2097,6 +2103,7 @@ Function check-Nodes {
         } else {
             $script:COLLAPSING = $false
         }
+        [System.Windows.Forms.Application]::UseWaitCursor=$false
     })
     $treeView.add_BeforeCollapse({
         $script:COLLAPSING = $true
@@ -2107,15 +2114,30 @@ Function check-Nodes {
     })
     $treeView.add_afterCheck({
         param($sender, $e)
+        [System.Windows.Forms.Cursor]::Current = 'WaitCursor'
+        [System.Windows.Forms.Application]::UseWaitCursor=$true
+        $addNodes=@{
+            node = $e.node
+            localDepth = 1000
+        }
+        if($filterObject) {
+            $addNodes.add('filterObject',$filterObject)
+        }
+        add-Nodes @addNodes
         check-Nodes -nodeSet $e.node -set $e.node.checked
+        [System.Windows.Forms.Application]::UseWaitCursor=$false
+        [System.Windows.Forms.Cursor]::Current = 'Default'
     })
     #endregion FORM_FUNCTIONS
 
+    #region SCRIPT_BODY
     $COLLAPSING = $false
     $DEPTH = 1
     if($loadAll) {
         $DEPTH = 1000
         write-log "LOADING FULL TREE..." -type warning
+    } else {
+        write-log "loading..." -type info
     }
     $addNodes=@{
         node = $rootNode
@@ -2124,10 +2146,17 @@ Function check-Nodes {
     if($filterObject) {
         $addNodes.add('filterObject',$filterObject)
     }
+    #[System.Windows.Forms.Application]::UseWaitCursor=$true
+    $form.UseWaitCursor=$true
     add-Nodes @addNodes
     $treeView.nodes[0].Expand()
+    #[System.Windows.Forms.Application]::UseWaitCursor=$false
+    $form.UseWaitCursor=$false
 
     $result = $Form.ShowDialog()
+    #endregion SCRIPT_BODY
+
+    #region results
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         $currentView=($mainTable.controls|? name -match 'treeView')
         if($currentView.name -eq 'treeView') { #return from regular treeview
@@ -2166,6 +2195,7 @@ Function check-Nodes {
         break
     } 
     return $false
+ 
 }
 
 function select-OrganizationalUnit {
