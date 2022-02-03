@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 220202
+    version 220203
     changes
+        - 220203 fixed retuned values from mutlichoice [1.3.21]
         - 220202 multichoice for select-ADObject [1.3.2]
         - 210810 select-OrganizationalUnit replaced with select-ADObject and proxy function for backward compatibility [1.3.1]
         - 210609 set-QuickEditMode function [1.3.0]
@@ -1782,8 +1783,9 @@ function select-ADObject {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 220202
+        version 220203
             last changes
+            - 220203 fixed how multichoice is returned
             - 220202 improvements
             - 220201 multichoice initial, load fixes
             - 210520 icons, load improvements, behaviour fixes
@@ -1793,6 +1795,9 @@ function select-ADObject {
             - 210308 initialized
     
         #TO|DO
+        - [optimization] loading and viewing is very slow, using a lot of recursion and re-reading. especialy painful on slow DC connections.
+          should use some caching mechanism... 
+        - [optimization] multichoice should use additional table to store chosen values - to quickly return values
     #>
     
     param(
@@ -1922,14 +1927,14 @@ function select-ADObject {
                 list-Nodes $node
             }
             if($nodeSet.checked) {
-                if($null -eq $filterObject -or ($filterObject -eq $nodeSet.tag.type) ) {
+                if([string]::isNullOrEmpty($filterObject) -or ($filterObject -eq $nodeSet.tag.type) ) {
                     $nodeSet.tag.distinguishedName
                 }
             }
         } else {
             foreach($node in $nodeSet.nodes) {
                 if($node.checked) {
-                    if($null -eq $filterObject -or ($filterObject -eq $node.tag.type) ) {
+                    if([string]::isNullOrEmpty($filterObject) -or ($filterObject -eq $node.tag.type) ) {
                         $node.text
                     }
                 }
