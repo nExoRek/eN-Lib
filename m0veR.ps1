@@ -55,7 +55,7 @@ $timer.add_Tick({
         }
         [Windows.Forms.Cursor]::Position = $mousePosition
     } else {
-        [System.Windows.Forms.SendKeys]::SendWait("%") #keypress emu chosen
+        [System.Windows.Forms.SendKeys]::SendWait("{%}") #keypress emu chosen
     }
     $timer.Interval = [int]$nudNumber.text * 1000
     Write-Verbose ("{0} {1} {2}" -f $timer.Interval, $script:STATUS, $nudNumber.Text)
