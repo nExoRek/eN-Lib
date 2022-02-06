@@ -3,8 +3,8 @@
     simple wizard-script to kill idle timer. 
 .DESCRIPTION
     if you have enough of your Windows GPO locking you screen too early - you need an Idle-killer. 
-    mouse doesn't work when terminam connection is minimized.
-
+    doesn't work against RDP sessions - idle time is calculated on host by session signals.  
+   
     you can choose between mouse-move or key-press emulation. beware, that while timer is running and you chose 'key'
     it presses 'SCROLLLCLOCK' which may interfere with what you do (like Excel). mouse on the otherhand may be little 
     annoying but it moving single pixel only. neithertheway the purpose is to be run when you're not at the screen.
@@ -53,7 +53,7 @@ $timer.add_Tick({
         }
         [Windows.Forms.Cursor]::Position = $mousePosition
     } else {
-        [System.Windows.Forms.SendKeys]::Send("{SCROLLLOCK}") #keypress emu chosen
+        [System.Windows.Forms.SendKeys]::Send("%^") #keypress emu chosen
     }
     $timer.Interval = [int]$nudNumber.text * 1000
     Write-Verbose ("{0} {1} {2}" -f $timer.Interval, $script:STATUS, $nudNumber.Text)
@@ -99,7 +99,7 @@ $lblMouse.Size = New-Object System.Drawing.Size(40,15)
 $lblMouse.Text = "Mouse"
 $lblMouse.Anchor = 'none'
 $layout.Controls.Add($lblMouse,0,0)
-(new-object System.Windows.forms.ToolTip).SetToolTip($lblMouse,"less interferent, but doesn't work when remote session is minimized.")
+(new-object System.Windows.forms.ToolTip).SetToolTip($lblMouse,"less interferent.")
 
 $chbMouseKey = New-Object System.Windows.Forms.CheckBox
 $chbMouseKey.Size = New-Object System.Drawing.Size(35,20)
@@ -122,7 +122,7 @@ $lblKey.Size = New-Object System.Drawing.Size(30,15)
 $lblKey.Text = "Key"
 $lblKey.Anchor = 'none'
 $layout.Controls.Add($lblKey,2,0)
-(new-object System.Windows.forms.ToolTip).SetToolTip($lblKey,"may interfere as it presses Scroll Lock, but more universal.")
+(new-object System.Windows.forms.ToolTip).SetToolTip($lblKey,"may interfere as it presses Scroll Lock")
 
 $lblInterval = New-Object System.Windows.Forms.Label 
 $lblInterval.Size = New-Object System.Drawing.Size(20,15)
