@@ -89,6 +89,26 @@ function Get-MenuSelection {
             switch($choice) {
                 [...]
             }
+    .EXAMPLE
+    #run below code to understand how to create menu:
+        $mainMenu = [MenuLevel]::new('select option')
+        $mainMenu.addLeafItem('terminating option') #terminating option
+        $l2_1 = $mainMenu.addMenuLevel('submenu options 1', 'SUBMENU L2') #adding 2nd level menu
+        $l3_1 = $l2_1.addMenuLevel('submenu option 2', 'SUBMENU L3') #adding next submenu - 3rd level
+        $l2_1.addLeafItem('terminating option 2_1') #add terminating option to L2 menu
+        $l2_1.addLeafItem('terminating option 2_2') #add terminating option to L2 menu
+
+        $l3_1.addLeafItem('terminate op 3_1') 
+        $l3_1.addLeafItem('terminate op 3_2') 
+        $choice = Get-MenuSelection $mainMenu
+        switch($choice) {
+            'terminating option' { write-host "some logic there for option from main menu" } 
+            'terminating option 2_1' { write-host "some logic there for option 1 from L2 menu" }
+            'terminating option 2_2' { write-host "some logic there for option 2 from L2 menu"}
+            'terminate op 3_1' { write-host "some logic there for option 1 from L3 menu" }
+            'terminate op 3_2' { write-host "some logic there for option 2 from L3 menu" }
+            default { write-host -ForegroundColor red "UNKNOWN OPTION" }
+        }        
     #>
     [CmdletBinding()]
     [OutputType([string])]
@@ -140,11 +160,15 @@ function Get-MenuSelection {
         Show-Menu -selectedItemIndex $itemNumber
         $press = $host.ui.rawui.readkey("NoEcho,IncludeKeyDown")
         $key = $press.virtualkeycode
-        if ($key -eq 38 -and $itemNumber -gt 0) {
+        if ($key -eq 38 -and $itemNumber -gt 0) { #down arrow
             $itemNumber--
         }
-        if ($key -eq 40 -and $itemNumber -lt $MenuItems.nextLevel.count) {
+        if ($key -eq 40 -and $itemNumber -lt $MenuItems.nextLevel.count) { #up arrow
             $itemNumber++
+        }        
+        if ($key -eq 8 -and $MenuItems.previousLevel) { #backspace
+            $itemNumber = 0 #that assumes that 'back' is always on the first position.
+            break   
         }        
     }
     #act on return
