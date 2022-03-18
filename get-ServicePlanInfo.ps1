@@ -28,6 +28,8 @@
     shows all service plans included in 'Microsoft 365 F3' license. you can use either code name or friendly name.
 .LINK
     https://w-files.pl
+.LINK
+    https://docs.microsoft.com/en-us/azure/active-directory/enterprise-users/licensing-service-plan-reference
 .NOTES
     nExoR ::))o-
     version 220315
@@ -35,9 +37,6 @@
         - 220315 initialized
 
     #TO|DO
-     resolve technical name to displayname
-     list SPs for license
-     show licenses for SP
 #>
 [CmdletBinding(DefaultParameterSetName='default')]
 param (
