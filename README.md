@@ -27,6 +27,8 @@
   * [get-o365UserLicenseInformation.ps1](https://github.com/nExoRek/eN-Lib/blob/master/get-o365UserLicenseInformation.ps1)
     show information on user license focusing on direct/group assignment. particullarly
       usefull during moving from direct to Groub Based Licensing.
+  * [get-ServicePlanInfo.ps1](https://github.com/nExoRek/eN-Lib/blob/master/get-ServicePlanInfo.ps1)
+    handy tool for Service Plan lookups - SKU to friendly name resolution, which licenses contain given SP, list SPs included in license.
   * [get-AccountSkuReport.ps1](https://github.com/nExoRek/eN-Lib/blob/master/get-AccountSkuReport.ps1)
     create nice Account Sku report for documentation with display names.
   * [list-AADAdmins.ps1](https://github.com/nExoRek/eN-Lib/blob/master/list-AADAdmins.ps1)
