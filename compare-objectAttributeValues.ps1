@@ -23,6 +23,7 @@
     #TO|DO
     - check object types and add 'force' flag to skip comparison
     - separately list attribute names, that do not exist on the other object
+    - compare complex values such as arrays and objects
 #>
 
 [cmdletbinding()]

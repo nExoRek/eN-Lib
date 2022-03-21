@@ -9,8 +9,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 220203
+    version 220321
     changes
+        - 220321 loading in PS 7.x of icon extractor didn't work
+        - 220301 write-log error handling fix [1.3.22]
         - 220203 fixed retuned values from mutlichoice [1.3.21]
         - 220202 multichoice for select-ADObject [1.3.2]
         - 210810 select-OrganizationalUnit replaced with select-ADObject and proxy function for backward compatibility [1.3.1]
@@ -262,8 +264,9 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210526
+        version 220301
         changes:
+            - 220301 error handling for add-content - issues found when trying to write to network drives. 
             - 210526 ...saga with catching $null continues
             - 210507 rare issue with message type check
             - 210421 interpreting $message elements fix
@@ -383,7 +386,11 @@ function write-log {
         }
         $finalMessageString += $message
         $message=$finalMessageString -join ''
-        Add-Content -Path $global:logFile -Value $message
+        try {
+            Add-Content -Path $global:logFile -Value $message -ErrorAction Stop
+        } catch {
+            "ERROR WRITING TO LOG FILE: $($_.exception)" | out-host 
+        }
         if(-not $silent) {
             switch($type) {
                 'error' {
@@ -1344,7 +1351,7 @@ namespace System
 	 private static extern int ExtractIconEx(string sFile, int iIndex, out IntPtr piLargeVersion, out IntPtr piSmallVersion, int amountIcons);
 	}
 }
-"@ -ReferencedAssemblies System.Drawing
+"@ -ReferencedAssemblies System.Drawing,System.Drawing.Common,System.Runtime.InteropServices
 
 function get-Icon {
     param( 
