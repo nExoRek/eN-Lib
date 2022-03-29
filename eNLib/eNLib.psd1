@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.3.22'
+ModuleVersion = '1.3.30'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -77,7 +77,7 @@ FunctionsToExport = 'start-Logging', 'write-Log', 'import-structuredCSV', 'conve
 CmdletsToExport = @()
 
 # Variables to export from this module
-VariablesToExport = @('logFile')
+VariablesToExport = @()
 
 # Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
 AliasesToExport = @('load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS')

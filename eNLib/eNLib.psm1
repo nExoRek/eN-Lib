@@ -9,8 +9,12 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 220321
+    version 220328
     changes
+        - 220328 get-CSVDelimiter universalized and TAB delim added for detection [1.3.30]
+                 major changes in write-log/start-logging
+                 fix to extract icon - incompatibilities between PS5 & PS7
+                 quickEdit mode typedef tuning
         - 220321 loading in PS 7.x of icon extractor didn't work
         - 220301 write-log error handling fix [1.3.22]
         - 220203 fixed retuned values from mutlichoice [1.3.21]
@@ -44,8 +48,6 @@
 #>
 
 #################################################### GENERAL
-$logFile=''
-
 function start-Logging {
     <#
     .SYNOPSIS
@@ -96,8 +98,9 @@ function start-Logging {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210408
+        version 220328
         changes:
+            - 220328 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
             - 210408 breaks
             - 210210 removing recurrency to write-log (loop elimination)
             - 210205 fixes to logfilename initialization
@@ -116,59 +119,71 @@ function start-Logging {
             [switch]$userProfilePath,
         #similar to logFileName, but takes folder only and log file name is generic.
         [Parameter(ParameterSetName='Folder',mandatory=$false,position=0)]
-            [string]$logFolder
+            [string]$logFolder,
+        #make this path persisent till the end of the PS Session or re-running start-Logging (write-log will not generate new name)
+        [Parameter(mandatory=$false,position=1)]
+            [switch]$persistent
     )
-
-    #write-host -ForegroundColor red ">>$($MyInvocation.PSCommandPath)<<"
-    if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #if run from console - set the logfile name as 'console'
-        $scriptBaseName = 'console'
-        $script:lastScriptUsed = 'console'
-    } elseif( $MyInvocation.PSCommandPath -match '\.psm1$' ) { #if run from inside module...
-        if([string]::isNullOrEmpty($script:lastScriptUsed) ) {
-            $scriptBaseName = 'console'
-        } else {
-            $scriptBaseName = $script:lastScriptUsed
+    #prepare baseName of the logFile 
+    #main global object used to keep record
+    if(-not $global:logFile) {
+        $global:logFile = @()
+        for($lvl = 0; $lvl -lt 10; $lvl++ ) {       #yeah.. hardcoding such limits is a risk, but I assume script will not be nested/stacked more 1o times
+            $global:logFile += [PSCustomObject]@{   #need to be array as $script context is broken and to handle nested invocation need to keep seperate values
+                logName = ''                        #actual logFile name declared
+                persistent = $false                 #enforce all scripts to use this name until directly changed with start-logging
+                lastScriptUsed = ''                 #name of the script that created the logFile
+            } 
         }
-    } else { #regular run from the script - take a script basename as logfile name
-        $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename
-        $script:lastScriptUsed = $scriptBaseName
     }
+    $scriptCallStack = (Get-PSCallStack |Where-Object {$_.command -ne 'write-log' -and $_.command -ne 'start-logging' -and $_.ScriptName -notmatch "\\eNLib.psm1$"} )
+    $runLevel = $scriptCallStack.count - 1
+    if( $scriptCallStack.count -eq 1 -and [string]::isNullOrEmpty($scriptCallStack[0].ScriptName) ) { #if run from console - set the logfile name as 'console'
+        $scriptBaseName = 'console'
+    } else {
+        $scriptBaseName = ([System.IO.FileInfo]$scriptCallStack[0].ScriptName).basename #after removing write-log and start-logging from callStack, next is a script that called
+    }
+    $logFile[$runLevel].lastScriptUsed = $scriptBaseName
+    
+    #dependently on the parameters prepare actual logFile name and folder
     switch($PSCmdlet.ParameterSetName) {
         'userProfile' {
             $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-            $global:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+            $logFile[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
         'Folder' {
-            $global:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+            $logFile[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
         'filePath' {
-            if($scriptBaseName -eq 'console') {
-                $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-                $global:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
-            }elseif ( [string]::IsNullOrEmpty($logFileName) ) {          #by default 'filepath' is used and empty 
-                $logFolder="$($MyInvocation.PSScriptRoot)\Logs"
-                $global:logFile = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
-            } else {
-                #logfile can be: 1. file, 2. folder, 3. fullpath
-                $logFolder = Split-Path $logFileName -Parent
-                if([string]::isNullOrEmpty($logFolder) ) { #logfile name without full path, name only
-                    if( [string]::isNullOrEmpty($MyInvocation.PSScriptRoot) ) { #run directly from console
+            if ( [string]::IsNullOrEmpty($logFileName) ) { #start-logging used without any parameters (default)
+                if($scriptBaseName -eq 'console') {
+                    $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
+                    $logFile[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
+                } else {
+                    $logFolder = "$(split-path $scriptCallStack[0].scriptname -Parent)\Logs"
+                    $logFile[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
+                }
+            } else { #$logFileName provided . it can be: 1. file, 2. folder, 3. fullpath
+                if( [string]::isNullOrEmpty( (split-path $logFileName) ) ) { #no path - only file name
+                    if( $scriptBaseName -eq 'console' ) { #run directly from console
                         $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
                     } else {
                         $logFolder = $MyInvocation.PSScriptRoot
                     }
+                } else {    
+                    if( test-path $logFileName -PathType Container ) { #folder ...ups!
+                        write-host "$logFileName seems to be an existing folder. use 'logFolder' parameter or change log name. quitting." -ForegroundColor Red
+                        return
+                    }
+                    $logFolder = split-path $logFileName -Parent
+                    $logFileName = split-path $logFileName -Leaf
                 }
-                $logFile = Split-Path $logFileName -Leaf
-                if( test-path $logFile -PathType Container ) {
-                    write-host "$logFileName seems to be an existing folder. use 'logFolder' parameter or change log name. quitting." -ForegroundColor Red
-                    break
-                }
-                $global:logFile = "$logFolder\$logFile"
+                $logFile.logName = "$logFolder\$logFileName"
             }
         }
         default {
             write-host -ForegroundColor Magenta 'very strange error'
-            break
+            return
         }
     }
 
@@ -181,15 +196,20 @@ function start-Logging {
             break
         }
     }
-    "*logging initiated $(get-date) in $($global:logFile)"|Out-File $global:logFile -Append
-    write-host "*logging initiated $(get-date) in $($global:logFile)"
-    "*script parameters:"|Out-File $global:logFile -Append
-    if($script:PSBoundParameters.count -gt 0) {
-        $script:PSBoundParameters|Out-File $global:logFile -Append
+    if($persistent.IsPresent) {
+        $logFile[$runLevel].Persistent = $true
     } else {
-        "<none>"|Out-File $global:logFile -Append
+        $logFile[$runLevel].Persistent = $false
     }
-    "***************************************************"|Out-File $global:logFile -Append
+    "*logging initiated $(get-date) in $($logFile[$runLevel].logName)"|Out-File $logFile[$runLevel].logName -Append
+    write-host "*logging initiated $(get-date) in $($logFile[$runLevel].logName)"
+    "*script parameters:"|Out-File $logFile[$runLevel].logName -Append
+    if($script:PSBoundParameters.count -gt 0) {
+        $script:PSBoundParameters|Out-File $logFile[$runLevel].logName -Append
+    } else {
+        "<none>"|Out-File $logFile[$runLevel].logName -Append
+    }
+    "***************************************************"|Out-File $logFile[$runLevel].logName -Append
 }
 function write-log {
     <#
@@ -264,9 +284,10 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 220301
+        version 220328
         changes:
-            - 220301 error handling for add-content - issues found when trying to write to network drives. 
+            - 220328 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
+            - 220301 error handling for add-content - issue found when trying to write to network drives and timeout occurs. 
             - 210526 ...saga with catching $null continues
             - 210507 rare issue with message type check
             - 210421 interpreting $message elements fix
@@ -302,30 +323,32 @@ function write-log {
     )
 
 #region INIT_LOG_FILE_NAME
-    #$fullCallStack = Get-PSCallStack #DEBUG
-    #$fullCallStack
-    #in some rare cases - eg. launching app from VSC host - 'scriptblock' part is not present
-    #$callStack = (Get-PSCallStack)[-2]
-    $callStack = (Get-PSCallStack |Where-Object ScriptName)[-1]
-    if( [string]::isNullOrEmpty($MyInvocation.PSCommandPath) ) { #it's run directly from console.
-        $scriptBaseName = 'console'
-        $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-    } elseif( -not [string]::isNullOrEmpty( $callStack ) ){ 
-        if( $callStack.ScriptName -match '\.psm1$' ) { #run from inside module
-            $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-            $scriptBaseName = 'console'
-        } else {
-            $logFolder = "$(split-path $callStack.scriptname -Parent)\Logs"
-            $scriptBaseName = ([System.IO.FileInfo]$callStack.scriptname).basename
+    #0. no logFile - new
+    #1. logfile & persistent - keep the same
+    #       logfile and not persisent:
+    #   2. different script name - new
+    #   3. same script and the same level (invocations) - keep the same
+    #   4. same script but different level - new
+    $scriptCallStack = (Get-PSCallStack | Where-Object {$_.command -ne 'write-log' -and $_.command -ne 'start-logging' -and $_.ScriptName -notmatch "\\eNLib.psm1$"} )
+    $runLevel = $scriptCallStack.count - 1
+    #$scriptCallStack|fl|Out-Host
+    $scriptBaseName = ([System.IO.FileInfo]$scriptCallStack[0].ScriptName).basename 
+    if( $logFile ) { #$logFile already initialized
+        if( -not ($logFile | Where-Object persistent) ) { #logFile set but not Persistent 
+            if([string]::isNullOrEmpty($scriptBaseName)) { #run directly from console
+                $scriptBaseName = 'console'
+            } 
+            if($logFile[$runLevel].lastScriptUsed -ne $scriptBaseName) { #logfile exists and for the same script - check if the same level
+                start-Logging
+            }
+            $localLogFile = $logFile[$runLevel].logName
+        } else { #if persisent - then don't generate new
+            $localLogFile = ($logFile | Where-Object persistent).logName
         }
     } else {
-        $scriptBaseName = ([System.IO.FileInfo]$($MyInvocation.PSCommandPath)).basename 
-        $logFolder = "$($MyInvocation.PSScriptRoot)\Logs"
-    }
-    if( [string]::isNullOrEmpty($global:logFile) -or ( $script:lastScriptUsed -ne $scriptbasename) ) {   
-        $script:lastScriptUsed = $scriptBaseName
-        $logFileName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
-        start-Logging -logFileName $logFileName
+        #no $logFile - create new
+        start-Logging 
+        $localLogFile = $logFile[$runLevel].logName
     }
 #endregion INIT_LOG_FILE_NAME
 
@@ -387,7 +410,7 @@ function write-log {
         $finalMessageString += $message
         $message=$finalMessageString -join ''
         try {
-            Add-Content -Path $global:logFile -Value $message -ErrorAction Stop
+            Add-Content -Path $localLogFile -Value $message -ErrorAction Stop
         } catch {
             "ERROR WRITING TO LOG FILE: $($_.exception)" | out-host 
         }
@@ -431,21 +454,23 @@ function get-CSVDelimiter {
         return $null
     }
 
-    #this is very simple delimiter check based on number of columns detected with , and ;
+    #this is very simple delimiter check based on number of columns in two first lines
     $FirstLines=$FirstLines -replace '''.*?''|".*?"','ANTI-DELIMITER' #change all quoted strings to simple string to avoid quoted delimiter characters
-    $delimiter=',' #set default
-    $semi0=$FirstLines[0].split(';').Length -1 
-    $semi1=$FirstLines[1].split(';').Length -1
-    $colon0=$FirstLines[0].split(',').Length -1
-    $colon1=$FirstLines[1].split(',').Length -1
-    if( (($semi0 -eq $semi1) -and ($colon0 -ne $colon1)) -or `
-        (($semi0 -eq $semi1) -and ($semi0 -gt $colon0)) -or `
-        ($colon0 -eq 0 -and $semi0 -gt 0)
-      ){
-        $delimiter=';'
-    } 
-    write-log "'$delimiter' detected as delimiter." -type info
-    return $delimiter
+    $delims=@(",",";","`t")
+    $current = ','
+    $maxCount = 0
+    foreach($delimiter in $delims) {
+        $fl = $FirstLines[0].split($delimiter).Length - 1
+        $sl = $FirstLines[1].split($delimiter).Length - 1
+        if( ($sl - $fl) -eq 0 ) {
+            if( $maxCount -lt $fl ) { 
+                $maxCount = $fl
+                $current = $delimiter
+            }
+        }
+    }
+    write-log "'$current' detected as delimiter." -type info
+    return $current
 }
 function import-structuredCSV {
     <#
@@ -784,6 +809,7 @@ function convert-CSVtoXLS {
 
     process {
         #$ErrorActionPreference="SilentlyContinue"
+        #read CSV
         if($PSCmdlet.ParameterSetName -eq 'byName') {
             if(-not (test-path $CSVfileName) ) {
                 write-host -ForegroundColor Red "file $CSVfileName is not accessible"
@@ -1013,7 +1039,36 @@ function new-RandomPassword {
     return $password
 }
 
-$QuickEditModeCodeSnippet = @" 
+function Set-QuickEditMode {
+    <#
+    .SYNOPSIS
+        function allowing to disable/enable Quick Edit Mode for current PS host session.
+    .DESCRIPTION
+        accidental mouse-press on PS screen will lead to script pause. this is real problem - especially if
+        you're providing scripts to unaware users. this simple function taken from CodeOverflow allows
+        to control Quick Edit Mode setting for current PS host. this will allow to disable this 
+        feature before running the script.
+    .EXAMPLE
+        PS C:\> set-QuickEditMode -DisableQuickEdit
+        disables Quick Edit mode for current PS Session
+    .EXAMPLE
+        PS C:\> set-QuickEditMode 
+        enables Quick Edit mode for current PS Session
+    .LINK
+        source code taken from:
+        https://stackoverflow.com/questions/30872345/script-commands-to-disable-quick-edit-mode/42792718
+    .NOTES
+        nExoR ::))o-
+        version 210609
+            last changes
+            - 210609 initialized
+    #>
+    param(
+        [Parameter(Mandatory=$false)]
+            [switch]$DisableQuickEdit
+    )
+
+    add-type -TypeDefinition @" 
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -1054,38 +1109,8 @@ public static class DisableConsoleQuickEdit {
         return true;
     }
 }
-"@
-
-$QuickEditMode = add-type -TypeDefinition $QuickEditModeCodeSnippet -Language CSharp
-function Set-QuickEditMode {
-    <#
-    .SYNOPSIS
-        function allowing to disable/enable Quick Edit Mode for current PS host session.
-    .DESCRIPTION
-        accidental mouse-press on PS screen will lead to script pause. this is real problem - especially if
-        you're providing scripts to unaware users. this simple function taken from CodeOverflow allows
-        to control Quick Edit Mode setting for current PS host. this will allow to disable this 
-        feature before running the script.
-    .EXAMPLE
-        PS C:\> set-QuickEditMode -DisableQuickEdit
-        disables Quick Edit mode for current PS Session
-    .EXAMPLE
-        PS C:\> set-QuickEditMode 
-        enables Quick Edit mode for current PS Session
-    .LINK
-        source code taken from:
-        https://stackoverflow.com/questions/30872345/script-commands-to-disable-quick-edit-mode/42792718
-    .NOTES
-        nExoR ::))o-
-        version 210609
-            last changes
-            - 210609 initialized
-    #>
-    param(
-        [Parameter(Mandatory=$false)]
-            [switch]$DisableQuickEdit
-    )
-
+"@ -Language CSharp
+    
     if( [DisableConsoleQuickEdit]::SetQuickEdit($DisableQuickEdit) ) {
         Write-Log "QuickEdit settings has been updated." -type info 
     } else {
@@ -1325,7 +1350,18 @@ function get-valueFromInputBox {
     }   
 }
 
-#icon extractor 
+
+function get-Icon {
+    param( 
+        [int]$iconNumber,
+        [string]$fileContaining = 'Shell32.dll'
+    ) 
+    #icon extractor 
+    if($PSVersionTable.PSVersion.Major -le 5) {
+        $ref = @('System.Drawing')
+    } else {
+        $ref = @('System.Drawing.Common','System.Runtime.InteropServices')
+    }
 Add-Type -TypeDefinition @"
 using System;
 using System.Drawing;
@@ -1333,31 +1369,25 @@ using System.Runtime.InteropServices;
 
 namespace System
 {
-	public class IconExtractor
-	{
+    public class IconExtractor
+    {
 
-	 public static Icon Extract(string file, int number, bool largeIcon)
-	 {
-	  IntPtr large;
-	  IntPtr small;
-	  ExtractIconEx(file, number, out large, out small, 1);
-	  try {
-	    return Icon.FromHandle(largeIcon ? large : small);
-	  } catch {
-	    return null;
-	  }
-	 }
-	 [DllImport("Shell32.dll", EntryPoint = "ExtractIconExW", CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
-	 private static extern int ExtractIconEx(string sFile, int iIndex, out IntPtr piLargeVersion, out IntPtr piSmallVersion, int amountIcons);
-	}
+    public static Icon Extract(string file, int number, bool largeIcon)
+    {
+    IntPtr large;
+    IntPtr small;
+    ExtractIconEx(file, number, out large, out small, 1);
+    try {
+        return Icon.FromHandle(largeIcon ? large : small);
+    } catch {
+        return null;
+    }
+    }
+    [DllImport("Shell32.dll", EntryPoint = "ExtractIconExW", CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+    private static extern int ExtractIconEx(string sFile, int iIndex, out IntPtr piLargeVersion, out IntPtr piSmallVersion, int amountIcons);
+    }
 }
-"@ -ReferencedAssemblies System.Drawing,System.Drawing.Common,System.Runtime.InteropServices
-
-function get-Icon {
-    param( 
-        [int]$iconNumber,
-        [string]$fileContaining = 'Shell32.dll'
-    ) 
+"@ -ReferencedAssemblies $ref
 
     return [System.IconExtractor]::Extract($fileContaining, $iconNumber, $true)
 }
@@ -2434,5 +2464,5 @@ function connect-Azure {
     Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 }
 
-Export-ModuleMember -Function * -Variable 'logFile' -Alias 'load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS'
+Export-ModuleMember -Function * -Alias 'load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS'
 
