@@ -68,13 +68,21 @@ function start-Logging {
     .EXAMPLE
         write-log 
 
-        using write-log will inderctly call start-logging function and initializes the log file with generic name,
-        saved in 'Logs' subfolder under script run path. 
+        using write-log will inderectly call start-logging function and initialize the log file with generic name,
+        saved in 'Logs' subfolder under script run path or 'documents' folder if run directly from console. 
     .EXAMPLE
         start-Logging -logFileName c:\temp\myLogs\somelog.log
         write-log 'test message'
 
         initializes the log file as c:\temp\myLogs\somelog.log .
+    .EXAMPLE
+        start-Logging -logFileName c:\temp\myLogs\somelog.log -persistent
+        write-log 'test message'
+
+        initializes the log file as c:\temp\myLogs\somelog.log and makes it persistent - all scripts run afterwards
+        will use the same log file until cosonle is closed, or another start-logging is run. this is important when 
+        using dot-sourcing or calls (& or invoke-command) to enforce sub-code to use the same logfile - otherwise 
+        will create a new log file
     .EXAMPLE
         start-Logging -logFileName somelog.log
         write-log 'test message'
@@ -89,7 +97,7 @@ function start-Logging {
         start-Logging -userProfilePath
         write-log 'test message'
 
-        initializes the log file in Logs subfolder uder user profile path
+        initializes the log file in Logs subfolder uder user profile path with generic name containing script name and date.
     .INPUTS
         None.
     .OUTPUTS
@@ -101,6 +109,7 @@ function start-Logging {
         version 220328
         changes:
             - 220328 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
+                persistent switch added which related to multi-level calls. 
             - 210408 breaks
             - 210210 removing recurrency to write-log (loop elimination)
             - 210205 fixes to logfilename initialization
@@ -110,17 +119,17 @@ function start-Logging {
     #>
     [CmdletBinding(DefaultParameterSetName='FilePath')]
     param(
-        # full name for custom log file. 
+        #provide custom name or full file path for log file. 
         [Parameter(ParameterSetName='FilePath',mandatory=$false,position=0)]
             [string]$logFileName,
-        #create log in profile folder rather than script run path
+        #create log file with automatic name in the user profile folder rather than script run path
         [Parameter(ParameterSetName='userProfile',mandatory=$false,position=0)]
             [alias('useProfile')]
             [switch]$userProfilePath,
         #similar to logFileName, but takes folder only and log file name is generic.
         [Parameter(ParameterSetName='Folder',mandatory=$false,position=0)]
             [string]$logFolder,
-        #make this path persisent till the end of the PS Session or re-running start-Logging (write-log will not generate new name)
+        #make this logFile persisent till the end of the PS Session or re-running start-Logging (write-log will not generate new name)
         [Parameter(mandatory=$false,position=1)]
             [switch]$persistent
     )
@@ -307,7 +316,7 @@ function write-log {
         #TO|DO
         - colouring codes for text - change screen text colour on ** <y></y> <r></r> <g></g> 
     #>
-    
+    #DO NOT ADD 'parameter' data as it will break ValueFromRemainingArgs taking over numbered parameters    
     param(
         #message to display - can be an object
         [parameter(ValueFromRemainingArguments=$true,mandatory=$false,position=0)]
@@ -317,7 +326,8 @@ function write-log {
         #do not output to a screen - logfile only
             [switch]$silent,
         # do not show timestamp with the message
-            [switch]$skipTimestamp,
+            [Alias('skipTimestamp')]
+            [switch]$noTimeStamp,
         #experimantal - 3rd output object so you can add virtually anything that accepts text to be set to. 
             [ref][alias('thirdOutput')]$externallyReferencedObject
     )
@@ -401,7 +411,7 @@ function write-log {
 #region FILE_OUTPUT
     try {
         $finalMessageString=@()
-        if(-not $skipTimestamp) {
+        if(-not $noTimestamp) {
             $finalMessageString += "$(Get-Date -Format "hh:mm:ss>") "
         }
         if(-not [string]::IsNullOrEmpty( $type) ) { 
