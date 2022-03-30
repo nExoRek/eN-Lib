@@ -138,7 +138,7 @@ function start-Logging {
     }
     $scriptCallStack = (Get-PSCallStack |Where-Object {$_.command -ne 'write-log' -and $_.command -ne 'start-logging' -and $_.ScriptName -notmatch "\\eNLib.psm1$"} )
     $runLevel = $scriptCallStack.count - 1
-    if( $scriptCallStack.count -eq 1 -and [string]::isNullOrEmpty($scriptCallStack[0].ScriptName) ) { #if run from console - set the logfile name as 'console'
+    if( -not ($scriptCallStack | ? ScriptName) ) { #if run from console - set the logfile name as 'console'
         $scriptBaseName = 'console'
     } else {
         $scriptBaseName = ([System.IO.FileInfo]$scriptCallStack[0].ScriptName).basename #after removing write-log and start-logging from callStack, next is a script that called
