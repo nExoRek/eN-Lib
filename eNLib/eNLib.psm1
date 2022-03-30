@@ -178,7 +178,7 @@ function start-Logging {
                     $logFolder = split-path $logFileName -Parent
                     $logFileName = split-path $logFileName -Leaf
                 }
-                $logFile.logName = "$logFolder\$logFileName"
+                $logFile[$runLevel].logName = "$logFolder\$logFileName"
             }
         }
         default {
