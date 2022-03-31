@@ -145,7 +145,7 @@ function start-Logging {
             } 
         }
     }
-    $scriptCallStack = (Get-PSCallStack |Where-Object {$_.command -ne 'write-log' -and $_.command -ne 'start-logging' -and $_.ScriptName -notmatch "\\eNLib.psm1$"} )
+    $scriptCallStack = (Get-PSCallStack | Where-Object {$_.command -ne 'write-log' -and $_.command -ne 'start-logging' -and $_.ScriptName -notmatch "\.psm1$"} )
     $runLevel = $scriptCallStack.count - 1
     if( -not ($scriptCallStack | ? ScriptName) ) { #if run from console - set the logfile name as 'console'
         $scriptBaseName = 'console'
@@ -339,7 +339,7 @@ function write-log {
     #   2. different script name - new
     #   3. same script and the same level (invocations) - keep the same
     #   4. same script but different level - new
-    $scriptCallStack = (Get-PSCallStack | Where-Object {$_.command -ne 'write-log' -and $_.command -ne 'start-logging' -and $_.ScriptName -notmatch "\\eNLib.psm1$"} )
+    $scriptCallStack = (Get-PSCallStack | Where-Object {$_.command -ne 'write-log' -and $_.command -ne 'start-logging' -and $_.ScriptName -notmatch "\.psm1$"} )
     $runLevel = $scriptCallStack.count - 1
     #$scriptCallStack|fl|Out-Host
     $scriptBaseName = ([System.IO.FileInfo]$scriptCallStack[0].ScriptName).basename 
