@@ -23,6 +23,9 @@
   * [voice-Ping.ps1](https://github.com/nExoRek/eN-Lib/blob/master/voice-Ping.ps1)
     when you looking for some fun script to show PowerShell - this one can help. just don't foget to switch speakers on! (;
 
+  * [MultiLevelTextMenu.lib.ps1](https://github.com/nExoRek/eN-Lib/blob/master/MultiLevelTextMenu.lib.ps1)
+    library allowing to easily create text menu with multi-level choices (tree-menu)
+
 ## M365
   * [get-o365UserLicenseInformation.ps1](https://github.com/nExoRek/eN-Lib/blob/master/get-o365UserLicenseInformation.ps1)
     show information on user license focusing on direct/group assignment. particullarly
