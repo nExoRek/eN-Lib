@@ -32,8 +32,9 @@
     https://docs.microsoft.com/en-us/azure/active-directory/enterprise-users/licensing-service-plan-reference
 .NOTES
     nExoR ::))o-
-    version 220315
+    version 220331
         last changes
+        - 210331 MS fixed CSV ... changing column name /:
         - 220315 initialized
 
     #TO|DO
@@ -66,9 +67,9 @@ function resolveNames {
                 return $ServicePlan.'Service_Plan_Name'
             }
             'Product_Display_Name' {
-                return $ServicePlan.'String_ Id'
+                return $ServicePlan.'String_Id'
             }
-            'String_ Id' {
+            'String_Id' {
                 return $ServicePlan.'Product_Display_Name'
             }
             default { return $null }
@@ -88,7 +89,7 @@ function listServicePlans {
     param([string]$name)
     return (
         $spInfo | 
-        Where-Object {$_.Product_Display_Name -eq $name -or $_.'String_ Id' -eq $name} | 
+        Where-Object {$_.Product_Display_Name -eq $name -or $_.'String_Id' -eq $name} | 
         Select-Object @{L='SKU';E={$_.Service_Plan_Name}},@{L='Firendly Name';E={$_.Service_Plans_Included_Friendly_Names}}
     )
 }
