@@ -53,18 +53,27 @@ function start-Logging {
     .SYNOPSIS
         initilizes log file under $logFile variable for write-log function.
     .DESCRIPTION
-        all scripts require logging mechinism. write-log function forking each output to screen and to logfile
-        is a very convinient way keeping all logs consistent with very nice host output. 
-        this function initilizeds $logFile variable creation, and initiates the log file itself. in order to 
+        all scripts require logging mechinism. write-log function forking each output to the screen and to the 
+        logfile is a very convinient way keeping all logs consistent with very nice host output. for those who
+        use scripts with 'always verbose' paradigm meaning that while running a script you want to have information
+        what is going on (on screen) and have it logged in case anything goes wrong.
+        this function initilizes $logFiles variable creation, and initiates the log file itself. in order to 
         ease the creation there are several ways of initilizing $logFile:
         - using write-log directly
             - from console host
             - from script
-        - using this function directly 
-            - no parameters - defaults to $ScriptRoot/Logs folder
+        - using start-logging function directly 
+            - no parameters - defaults to $ScriptRoot/Logs folder or user documents/Logs if run from console
             - using 'useProfile' - to store logs in User Documents/Logs directory
             - using 'logFolder' parameter to define particular folder for logs
             - using 'logFileName' - (exclusive to logFolder) presenting full path for the log or logfile name 
+        logFile name changes automatically when script name changes. you can use 'persistent' switch to make given 
+        logFile persistent for all scripts run later - this is especially important if you use externall calls 
+        (invoke-command or &) so they are still logging to the same single file. 
+
+        script initializes $logFiles array variable to keep tract on log file names run from different context.
+        write-log creates simple [string]$LogFile variable so you can easly reference the log file name in your 
+        scripts.
     .EXAMPLE
         write-log 
 
@@ -80,9 +89,9 @@ function start-Logging {
         write-log 'test message'
 
         initializes the log file as c:\temp\myLogs\somelog.log and makes it persistent - all scripts run afterwards
-        will use the same log file until cosonle is closed, or another start-logging is run. this is important when 
-        using dot-sourcing or calls (& or invoke-command) to enforce sub-code to use the same logfile - otherwise 
-        will create a new log file
+        will use the same log file until cosonle is closed, or another start-logging with persistent flag is run again. 
+        this is important when using dot-sourcing or calls (& or invoke-command) to enforce sub-code to use the same 
+        logfile - otherwise will create a new log file.
     .EXAMPLE
         start-Logging -logFileName somelog.log
         write-log 'test message'
@@ -236,8 +245,10 @@ function write-log {
         endpoints - on the host, using write-host and to the file, appening its content, similarly 
         to tee-object, but adds more options like message tag (error, info, warning) with cloured 
         output and timestamps.
+        ...actually there is option to fork on third source, described later...
+
         write-log converts everything to a string, so you can use it for virtually any type of 
-        variable. 
+        variable - including objects. 
 
         in order to use write-log, $logFiles variable requires to be set up. you can initialize the 
         value directly with 'start-Logging', configure $logFile manually or simply run write-log to 
@@ -245,20 +256,30 @@ function write-log {
         with generic file name. if you need special location refer to start-logging help how to
         initialize variable. 
 
-        function may also be used from command line - in this scenario log file will be created in 
-        Logs directory under User Documents folder. file with be named 'console-<date>.log'.
+        function may also be used directly from command line - in this scenario log file will be created 
+        in Logs directory under User Documents folder. file with be named 'console-<date>.log'.
 
         THIRD OBJECT
 
           third object was introduced to help developing GUI apps and ability to show log on Forms
         elements, but may be used for regular strings as well and may be easily extended on other types.
         referenced objects must be provided as '([ref]$OBJECTNAME)' - with parenthesis and [ref]. 
-        as example, lets assume you have a Froms Label to show progress:
+        as example, lets assume you have a Forms Label to show progress:
 
               $LabelStatus = New-Object System.Windows.Forms.Label
 
-        you can then use write log to fork on screen, file and show it on the label:
+        you can then use write-log to fork on the screen, the file and show it on the label:
         write-log "something happens" -type info -thirdOutput $labelStatus
+
+        GLOBAL VARIABLES
+        start-logging initializes $logFiles variable which is an array, allowing to store different log
+        file names for scripts run on different stack levels (when you do dot sourcing, &, invokes etc).
+        this variable persists gloabally so the next script has 'a memory' to reuse the name.
+
+        write-log creates simple [string]$logFile globally so you can easily reference the name in your 
+        srcipts e.g.:
+
+        write-log "script run finished. check $logFile for details" -type ok
 
     .EXAMPLE
         write-log "all is fine"
@@ -301,6 +322,7 @@ function write-log {
         version 220328
         changes:
             - 220328 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
+                     skipTimeStamp changed to noTimeStamp.
             - 220301 error handling for add-content - issue found when trying to write to network drives and timeout occurs. 
             - 210526 ...saga with catching $null continues
             - 210507 rare issue with message type check
