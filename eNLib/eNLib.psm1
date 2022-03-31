@@ -135,14 +135,19 @@ function start-Logging {
     )
     #prepare baseName of the logFile 
     #main global object used to keep record
-    if(-not $global:logFile) {
-        $global:logFile = @()
+    if(-not $global:logFiles) {
+        $global:logFiles = @()
         for($lvl = 0; $lvl -lt 10; $lvl++ ) {       #yeah.. hardcoding such limits is a risk, but I assume script will not be nested/stacked more 1o times
-            $global:logFile += [PSCustomObject]@{   #need to be array as $script context is broken and to handle nested invocation need to keep seperate values
+            $global:logFiles += [PSCustomObject]@{   #need to be array as $script context is broken and to handle nested invocation need to keep seperate values
                 logName = ''                        #actual logFile name declared
                 persistent = $false                 #enforce all scripts to use this name until directly changed with start-logging
                 lastScriptUsed = ''                 #name of the script that created the logFile
             } 
+        }
+    } elseif( -not $persistent.IsPresent ) {
+        if($LogFiles|? persistent) {
+            Write-Host "start-logging has been initiated, but persistent log is set. use '-persistent' switch to overwrite." -ForegroundColor Yellow
+            return
         }
     }
     $scriptCallStack = (Get-PSCallStack | Where-Object {$_.command -ne 'write-log' -and $_.command -ne 'start-logging' -and $_.ScriptName -notmatch "\.psm1$"} )
@@ -152,25 +157,25 @@ function start-Logging {
     } else {
         $scriptBaseName = ([System.IO.FileInfo]$scriptCallStack[0].ScriptName).basename #after removing write-log and start-logging from callStack, next is a script that called
     }
-    $logFile[$runLevel].lastScriptUsed = $scriptBaseName
+    $logFiles[$runLevel].lastScriptUsed = $scriptBaseName
     
     #dependently on the parameters prepare actual logFile name and folder
     switch($PSCmdlet.ParameterSetName) {
         'userProfile' {
             $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-            $logFile[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+            $logFiles[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
         'Folder' {
-            $logFile[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
+            $logFiles[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)
         }
         'filePath' {
             if ( [string]::IsNullOrEmpty($logFileName) ) { #start-logging used without any parameters (default)
                 if($scriptBaseName -eq 'console') {
                     $logFolder = [Environment]::GetFolderPath("MyDocuments") + '\Logs'
-                    $logFile[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
+                    $logFiles[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
                 } else {
                     $logFolder = "$(split-path $scriptCallStack[0].scriptname -Parent)\Logs"
-                    $logFile[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
+                    $logFiles[$runLevel].logName = "{0}\_{1}-{2}.log" -f $logFolder,$scriptBaseName,$(Get-Date -Format yyMMddHHmm)   
                 }
             } else { #$logFileName provided . it can be: 1. file, 2. folder, 3. fullpath
                 if( [string]::isNullOrEmpty( (split-path $logFileName) ) ) { #no path - only file name
@@ -187,7 +192,7 @@ function start-Logging {
                     $logFolder = split-path $logFileName -Parent
                     $logFileName = split-path $logFileName -Leaf
                 }
-                $logFile[$runLevel].logName = "$logFolder\$logFileName"
+                $logFiles[$runLevel].logName = "$logFolder\$logFileName"
             }
         }
         default {
@@ -206,19 +211,19 @@ function start-Logging {
         }
     }
     if($persistent.IsPresent) {
-        $logFile[$runLevel].Persistent = $true
+        $logFiles[$runLevel].Persistent = $true
     } else {
-        $logFile[$runLevel].Persistent = $false
+        $logFiles[$runLevel].Persistent = $false
     }
-    "*logging initiated $(get-date) in $($logFile[$runLevel].logName)"|Out-File $logFile[$runLevel].logName -Append
-    write-host "*logging initiated $(get-date) in $($logFile[$runLevel].logName)"
-    "*script parameters:"|Out-File $logFile[$runLevel].logName -Append
+    "*logging initiated $(get-date) in $($logFiles[$runLevel].logName)"|Out-File $logFiles[$runLevel].logName -Append
+    write-host "*logging initiated $(get-date) in $($logFiles[$runLevel].logName)"
+    "*script parameters:"|Out-File $logFiles[$runLevel].logName -Append
     if($script:PSBoundParameters.count -gt 0) {
-        $script:PSBoundParameters|Out-File $logFile[$runLevel].logName -Append
+        $script:PSBoundParameters|Out-File $logFiles[$runLevel].logName -Append
     } else {
-        "<none>"|Out-File $logFile[$runLevel].logName -Append
+        "<none>"|Out-File $logFiles[$runLevel].logName -Append
     }
-    "***************************************************"|Out-File $logFile[$runLevel].logName -Append
+    "***************************************************"|Out-File $logFiles[$runLevel].logName -Append
 }
 function write-log {
     <#
@@ -234,7 +239,7 @@ function write-log {
         write-log converts everything to a string, so you can use it for virtually any type of 
         variable. 
 
-        in order to use write-log, $logFile variable requires to be set up. you can initialize the 
+        in order to use write-log, $logFiles variable requires to be set up. you can initialize the 
         value directly with 'start-Logging', configure $logFile manually or simply run write-log to 
         have it initialized automatically. by default logs are stored in $PSScriptRoot/Logs directory 
         with generic file name. if you need special location refer to start-logging help how to
@@ -343,22 +348,22 @@ function write-log {
     $runLevel = $scriptCallStack.count - 1
     #$scriptCallStack|fl|Out-Host
     $scriptBaseName = ([System.IO.FileInfo]$scriptCallStack[0].ScriptName).basename 
-    if( $logFile ) { #$logFile already initialized
-        if( -not ($logFile | Where-Object persistent) ) { #logFile set but not Persistent 
+    if( $logFiles ) { #$logFiles already initialized
+        if( -not ($logFiles | Where-Object persistent) ) { #logFiles set but not Persistent 
             if([string]::isNullOrEmpty($scriptBaseName)) { #run directly from console
                 $scriptBaseName = 'console'
             } 
-            if($logFile[$runLevel].lastScriptUsed -ne $scriptBaseName) { #logfile exists and for the same script - check if the same level
+            if($logFiles[$runLevel].lastScriptUsed -ne $scriptBaseName) { #logFiles exists and for the same script - check if the same level
                 start-Logging
             }
-            $localLogFile = $logFile[$runLevel].logName
+            $LogFile = $logFiles[$runLevel].logName
         } else { #if persisent - then don't generate new
-            $localLogFile = ($logFile | Where-Object persistent).logName
+            $LogFile = ($logFiles | Where-Object persistent).logName
         }
     } else {
-        #no $logFile - create new
+        #no $logFiles - create new
         start-Logging 
-        $localLogFile = $logFile[$runLevel].logName
+        $LogFile = $logFiles[$runLevel].logName
     }
 #endregion INIT_LOG_FILE_NAME
 
@@ -420,7 +425,8 @@ function write-log {
         $finalMessageString += $message
         $message=$finalMessageString -join ''
         try {
-            Add-Content -Path $localLogFile -Value $message -ErrorAction Stop
+            Add-Content -Path $LogFile -Value $message -ErrorAction Stop
+            $global:logFile = $logFile
         } catch {
             "ERROR WRITING TO LOG FILE: $($_.exception)" | out-host 
         }
