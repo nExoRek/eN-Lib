@@ -9,8 +9,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 220328
+    version 220403
     changes
+        - 220407 rare error to persistent flag (requires rethinking) 
+        - 220403 fix for autosave during XLS2CSV load [1.3.31]
         - 220328 get-CSVDelimiter universalized and TAB delim added for detection [1.3.30]
                  major changes in write-log/start-logging
                  fix to extract icon - incompatibilities between PS5 & PS7
@@ -319,9 +321,10 @@ function write-log {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 220328
+        version 220407
         changes:
-            - 220328 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
+            - 220407 tiny fix to persistant logging
+            - 220328 v3 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
                      skipTimeStamp changed to noTimeStamp.
             - 220301 error handling for add-content - issue found when trying to write to network drives and timeout occurs. 
             - 210526 ...saga with catching $null continues
@@ -380,7 +383,7 @@ function write-log {
             }
             $LogFile = $logFiles[$runLevel].logName
         } else { #if persisent - then don't generate new
-            $LogFile = ($logFiles | Where-Object persistent).logName
+            $LogFile = ($logFiles | Where-Object persistent)[0].logName
         }
     } else {
         #no $logFiles - create new
@@ -639,8 +642,10 @@ function convert-XLStoCSV {
         drag'n'drop version - separate file.
     .NOTES
         nExoR ::))o-
-        version 210422
+        version 220403
             last changes
+            - 220403 autosave error when not on OD
+            - 220401 stupid autosave behaviour, file open error handling
             - 210422 ...again fixes to exit/break/return
             - 210408 proper 'run from console' detection and exit
             - 210317 firstWorksheet, suppress directory creation info
@@ -695,7 +700,18 @@ function convert-XLStoCSV {
         if( -not (test-path($outputFolder)) ) {
             new-Item -ItemType Directory $outputFolder|Out-Null
         }
-        $workBookFile = $Excel.Workbooks.Open($XLSFile)
+        try {
+            $workBookFile = $Excel.Workbooks.Open($XLSFile)
+        } catch {
+            write-log "can't open $XLSfileName. $($_.Exception)" -type error
+            exit
+        }
+        #if file is opened from OneDrive and workbook is set to autosave - additional sheet will autoamtically be saved, although script is deleting it /:
+        try {
+            $workBookFile.autoSaveOn = $false
+        } catch { 
+            #silence out error when already disabled 
+        }
 
         #excel file save statics
         $fileType=62 #CSVUTF8 https://docs.microsoft.com/en-us/office/vba/api/excel.xlfileformat
@@ -820,7 +836,7 @@ function convert-CSVtoXLS {
         try{
             $Excel = New-Object -ComObject Excel.Application
         } catch {
-            write-log "not able to initialize Excel lib. requires Excel to run.`n$($_.Exeption)" -type error
+            write-log "not able to initialize Excel lib. requires Excel to run.`n$($_.Exception)" -type error
             break
         }
         $Excel.Visible = $false

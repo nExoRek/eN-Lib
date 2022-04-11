@@ -144,25 +144,33 @@ function Get-MenuSelection {
         #List of menu items to display
         [Parameter(Mandatory = $true)]
             [ValidateNotNullOrEmpty()]
-            [MenuLevel]$MenuItems
+            [MenuLevel]$MenuItems,
+        #align menu items to left
+        [Parameter(mandatory=$false)]
+            [switch]$alignLeft
     )
     function get-MenuPosition {
         param( [MenuLevel]$currentLevel )
 
         Clear-Host
-        #position the cursor
+        #position the X cursor
         $winSize = $host.ui.RawUI.WindowSize
         $menuMinLength = $currentLevel.getLength()
-        if(($winSize.Width - $menuMinLength) -ge 10 ) { #common scenario - calculate for '     <item.length>     '
-            $menuItemLength = $menuMinLength + 10
-        } elseif( ($winSize.Width - $menuMinLength) -lt 1 ) { #menu item length wider then screen size
-            $menuItemLength = $winSize.Width
-        } else { #there is less then 10 chars difference between longest element and screen size
-            $menuItemLength = $menuMinLength + $nrOfSpaces
+        $widthDiff = $winSize.Width - $menuMinLength 
+        $emptySpace = 10
+        if( $widthDiff -lt $emptySpace ) { 
+            $emptySpace = $widthDiff - 1
+        } 
+        $menuItemLength = $menuMinLength + $emptySpace
+        #position the Y cursor
+        $y = 10
+        $heightDiff = $winSize.Height - ($currentLevel.nextLevel.count + 2)
+        if( $heightDiff -le $y ) {
+            $y = [int]($heightDiff/2)
         }
         return [PSCustomObject]@{
             X = [int]( ($winSize.Width - $menuItemLength) / 2 )
-            Y = 10
+            Y = $y
             menuItemLength = $menuItemLength
         }
     }
@@ -186,14 +194,21 @@ function Get-MenuSelection {
         $y = $menuPosition.Y + 2
 
         #DRAW ACTUAL MENU ITEMS
-        for ($item = 0; $item -lt $currentLevel.nextLevel.Count; $item++) {
+        $startFrom = $selectedItemIndex - 1 #small optimization to not redraw entire menu - only two lines
+        if($startFrom -lt 0) { $startFrom = 0 }
+        for ($item = $startFrom; $item -lt $currentLevel.nextLevel.Count; $item++) {
             $currentDescription = $currentLevel.nextLevel[$item].description
-            if($currentDescription.Length -gt $winWidth) {
-                $currentDescription = $currentDescription.substring(0,($winWidth-1))
+            if($currentDescription.Length -gt ($winWidth - 2)) { #2 - minimum 'border'
+                $currentDescription = $currentDescription.substring(0,($winWidth-3)) #3 - minimum border and avoid division by 0
             }
-            $nrOfSpaces = [int]( ($menuPosition.menuItemLength - $currentDescription.Length) / 2 )
             $Host.UI.RawUI.CursorPosition = [PSCustomObject]@{X=$menuPosition.X;Y=$y+$item}
-            $itemText = (" "*$nrOfSpaces) +  $currentDescription + (" " * $nrOfSpaces)
+            if($alignLeft.IsPresent) {
+                $lSpaces = 2
+                $rSpaces = $menuPosition.menuItemLength - $currentDescription.Length - 2
+            } else {
+                $lSpaces = $rSpaces = [int]( ($menuPosition.menuItemLength - $currentDescription.Length) / 2 )
+            }
+            $itemText = (" " * $lSpaces) +  $currentDescription + (" " * $rSpaces)
             if ($selectedItemIndex -eq $item) {
 #                if($currentDescription -eq 'back' -or $currentDescription -eq 'exit') {
     #need to create colors table and convert to [int]
@@ -230,9 +245,17 @@ function Get-MenuSelection {
     if($MenuItems.nextLevel[$itemNumber].tag -eq 'exit') { #EXIT
         break
     } elseif($MenuItems.nextLevel[$itemNumber].tag -eq 'back') { #BACK
-        Get-MenuSelection -MenuItems $MenuItems.previousLevel
+        $menuParams=@{
+            MenuItems = $MenuItems.previousLevel
+            alignLeft = $alignLeft.IsPresent
+        }
+        Get-MenuSelection @menuParams
     } elseif($MenuItems.nextLevel[$itemNumber].nextLevel) { #SHOW NEXT LEVEL
-        Get-MenuSelection -MenuItems $MenuItems.nextLevel[$itemNumber]
+        $menuParams=@{
+            MenuItems = $MenuItems.nextLevel[$itemNumber]
+            alignLeft = $alignLeft.IsPresent
+        }
+        Get-MenuSelection @menuParams
     } else { #ACTUAL CHOICE - LEAF 
         return $MenuItems.nextLevel[$itemNumber].tag
     }
