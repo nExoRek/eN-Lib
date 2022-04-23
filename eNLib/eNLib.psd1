@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.3.31'
+ModuleVersion = '1.3.33'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()

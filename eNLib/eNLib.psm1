@@ -9,8 +9,12 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 220403
+    version 220418
     changes
+        - 220423 updates to select-disk
+        - 220418 convert-CSV2XLS PS7 fix [1.3.33]
+        - 220412 setting 'persistent' as option was a mistake - this must be a default behaviour [1.3.32]
+        - 220411 convert-CSV2XLS out folder change
         - 220407 rare error to persistent flag (requires rethinking) 
         - 220403 fix for autosave during XLS2CSV load [1.3.31]
         - 220328 get-CSVDelimiter universalized and TAB delim added for detection [1.3.30]
@@ -87,13 +91,12 @@ function start-Logging {
 
         initializes the log file as c:\temp\myLogs\somelog.log .
     .EXAMPLE
-        start-Logging -logFileName c:\temp\myLogs\somelog.log -persistent
+        start-Logging -logFileName c:\temp\myLogs\somelog.log -persistent:$false
         write-log 'test message'
 
-        initializes the log file as c:\temp\myLogs\somelog.log and makes it persistent - all scripts run afterwards
-        will use the same log file until cosonle is closed, or another start-logging with persistent flag is run again. 
-        this is important when using dot-sourcing or calls (& or invoke-command) to enforce sub-code to use the same 
-        logfile - otherwise will create a new log file.
+        initializes the log file as c:\temp\myLogs\somelog.log and makes it non-persistent - next script run from this 
+        script will generate new logfile name. this is usefull for 'launchers' - scripts that launch series of other 
+        scripts that supposed to run with its own logfiles
     .EXAMPLE
         start-Logging -logFileName somelog.log
         write-log 'test message'
@@ -117,8 +120,9 @@ function start-Logging {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 220328
+        version 220412
         changes:
+            - 220412 persistence set as default - multilevel calls are not expected by default
             - 220328 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
                 persistent switch added which related to multi-level calls. 
             - 210408 breaks
@@ -142,7 +146,7 @@ function start-Logging {
             [string]$logFolder,
         #make this logFile persisent till the end of the PS Session or re-running start-Logging (write-log will not generate new name)
         [Parameter(mandatory=$false,position=1)]
-            [switch]$persistent
+            [switch]$persistent = $true
     )
     #prepare baseName of the logFile 
     #main global object used to keep record
@@ -155,12 +159,7 @@ function start-Logging {
                 lastScriptUsed = ''                 #name of the script that created the logFile
             } 
         }
-    } elseif( -not $persistent.IsPresent ) {
-        if($LogFiles|? persistent) {
-            Write-Host "start-logging has been initiated, but persistent log is set. use '-persistent' switch to overwrite." -ForegroundColor Yellow
-            return
-        }
-    }
+    } 
     $scriptCallStack = (Get-PSCallStack | Where-Object {$_.command -ne 'write-log' -and $_.command -ne 'start-logging' -and $_.ScriptName -notmatch "\.psm1$"} )
     $runLevel = $scriptCallStack.count - 1
     if( -not ($scriptCallStack | ? ScriptName) ) { #if run from console - set the logfile name as 'console'
@@ -692,7 +691,7 @@ function convert-XLStoCSV {
             }
             $XLSFile=get-Item $XLSfileName
         }
-        if($XLSFile.Extension -notmatch '\.xls') {
+        if($XLSFile.Extension -notmatch '\.xls.$') {
             write-log "$($XLSFile.Name) doesn't look like excel file. exitting" -type error
             return
         }
@@ -793,8 +792,10 @@ function convert-CSVtoXLS {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210430
+        version 220418
             last changes
+            - 220418 further fixes for PS7
+            - 220411 destination folder changed to CSV location - to mach convert-XLS2CSV behaviour
             - 210430 #typedef skip
             - 210422 ...again fixes to exit/break/return
             - 210408 breaks
@@ -848,11 +849,11 @@ function convert-CSVtoXLS {
             $autoDelimiter=$true
         }
         if(![string]::isNullOrEmpty($XLSfileName) ){
-            $parent = Split-Path $XLSfileName -Parent
-            if([string]::isNullOrEmpty($parent)) {
+            $XLSFolder = Split-Path $XLSfileName -Parent
+            if([string]::isNullOrEmpty($XLSFolder)) {
                 $XLSfileName = ($pwd).path +'\'+$XLSfileName
             } else {
-                $XLSFileName = (Resolve-Path $parent).Path + '\' + (Split-Path $XLSfileName -Leaf)
+                $XLSFileName = (Resolve-Path $XLSFolder).Path + '\' + (Split-Path $XLSfileName -Leaf)
             }
             if($XLSFileName -notmatch "\.xls[x]?") {
                 $XLSfileName+=".xlsx"
@@ -874,15 +875,15 @@ function convert-CSVtoXLS {
             if((Get-Content $CSVfileName -Head 1) -match "^#") {
                 $TYPEline = $true
                 Get-Content $CSVfileName|select-object -Skip 1|Out-File "$CSVfileName-tmp" -Encoding utf8
-                $CSVFile=get-childItem "$CSVfileName-tmp"
+                $CSVFile = get-Item "$CSVfileName-tmp"
             } else {
-                $CSVFile=get-childItem $CSVfileName
+                $CSVFile = get-Item $CSVfileName
             }
         } 
 
         #convert output file name to full path
         if([string]::isNullOrEmpty($XLSfileName)) {
-            $XLSfileName= ($pwd).path + '\' + $CSVFile.BaseName + '.xlsx'
+            $XLSfileName = ($CSVfile.DirectoryName) + '\' + $CSVFile.BaseName + '.xlsx'
             write-log "creating $XLSfileName excel file..." -type info
         } 
 
@@ -913,12 +914,16 @@ function convert-CSVtoXLS {
             $range=$query.ResultRange
             $query.Delete()
 
+            #can't load assembly on PS7 and don't have access to enums. so far didn't found a method to load types on PS7 correctly.
+            #https://github.com/PowerShell/PowerShell/issues/12052
             $Table = $worksheet.ListObjects.Add(
-                [Microsoft.Office.Interop.Excel.XlListObjectSourceType]::xlSrcRange,
+                #[Microsoft.Office.Interop.Excel.XlListObjectSourceType]::xlSrcRange,  
+                1,
                 $Range, 
                 "importedCSV",
-                [Microsoft.Office.Interop.Excel.XlYesNoGuess]::xlYes
+                1 #[Microsoft.Office.Interop.Excel.XlYesNoGuess]::xlYes
                 )
+
             <#
             TableStyle:
             - Light
@@ -988,6 +993,7 @@ function import-XLS {
             - 210315 initialized
     
         #TO|DO
+         - add cleanup of xls output
     #>
     
     param(
@@ -1467,8 +1473,9 @@ function select-Directory {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210524
+        version 220423
             last changes
+            - 220423 added disk dorpdown and filter, fixes to search, 'hidden' changed to 'force'
             - 210524 fix to shortcut folders
             - 210521 optimization, tuning
             - 210519 initialized
@@ -1481,9 +1488,9 @@ function select-Directory {
         #starting folder (tree root)
         [Parameter(mandatory=$false,position=0)]
             [string]$startingDirectory='\',
-        #show hidden folders
+        #search mask for files
         [Parameter(mandatory=$false,position=1)]
-            [switch]$hidden,
+            [string]$filter,
         #include files
         [Parameter(mandatory=$false,position=2)]
             [switch]$files,
@@ -1492,7 +1499,11 @@ function select-Directory {
             [switch]$object,
         #enable text search box - will load entire tree which might take time, but will allow to search thru entire tree. best used with -startingDirectory for subfolders
         [Parameter(mandatory=$false,position=4)]
-            [switch]$loadAll
+            [switch]$loadAll,
+        #show hidden folders
+        [Parameter(mandatory=$false,position=5)]
+            [alias('hidden')]
+            [switch]$force
     )
 
     Function add-Nodes {
@@ -1503,14 +1514,13 @@ function select-Directory {
         write-verbose "check $($node.tag.name)"
         if($node.tag.unfolded -eq $false -and $node.tag.type -eq 'DirectoryInfo') {
             write-verbose "addingNode $($node.tag.name)"
+            #directories first, later files [if chosen]
             $listParams = @{
                 ErrorAction = 'SilentlyContinue'
                 Path = $node.tag.FullName
-            }
-            if(!$files.IsPresent) {
-                $listParams.Add('Directory',$true)
-            }
-            if($hidden.IsPresent) {
+                Directory = $true
+            } 
+            if($force.IsPresent) {
                 $listParams.Add("Force",$true)
             }
             $SubDirList = Get-ChildItem @listParams
@@ -1526,6 +1536,32 @@ function select-Directory {
                     type = $dir.gettype().name
                 }
                 $script:NodeList += $NodeSub.tag
+            }
+            #load files [if -files switch present]
+            if($files.IsPresent) {
+                $listParams = @{
+                    ErrorAction = 'SilentlyContinue'
+                    Path = $node.tag.FullName
+                    file = $true
+                }
+                if($filter) {
+                    $listParams.Add("Filter",$filter)
+                }
+                if($force.IsPresent) {
+                    $listParams.Add("Force",$true)
+                }
+                $fileList = Get-ChildItem @listParams
+                $node.tag.unfolded = $true
+                foreach ( $file in $fileList ) {
+                    $NodeSub = $Node.Nodes.Add($file.Name)
+                    $NodeSub.tag = [psobject]@{
+                        fullName = $file.FullName
+                        unfolded = $true #files are not to be unfolded...
+                        name = $file.name
+                        type = $file.gettype().name
+                    }
+                    $script:NodeList += $NodeSub.tag
+                }
             }
             if($localDepth -gt 0) { 
                 foreach($SubNode in $node.Nodes) {
@@ -1583,8 +1619,48 @@ function select-Directory {
     $gbShortcuts.autosize = $true
     $gbShortcuts.Padding = 0
 
+    $cbDrives = New-Object System.Windows.Forms.Combobox
+    $cbDrives.Location = New-Object System.Drawing.Point(10,15) 
+    $cbDrives.Size = New-Object System.Drawing.Size(40,20)
+    $cbDrives.Text = "C:"
+    foreach($vol in (get-volume | Where-Object DriveLetter)){
+        [void]$cbDrives.Items.Add("$($vol.DriveLetter):\")
+    }
+    $cbDrives.add_SelectedIndexChanged({
+        param($sender,$e)
+
+        try {
+            $initialDirectory = Get-Item $sender.text -force -ErrorAction Stop
+        } catch {
+            (new-object System.Windows.Forms.ToolTip -Property @{
+                ToolTipIcon = 3
+                isBalloon = $true
+            }).show('access error',$cbDrives,3000)
+        
+            return
+        }
+        $treeView.Nodes.Clear()
+        $rootNode = $treeView.Nodes.Add($initialDirectory.FullName)
+        $rootNode.Tag=[psobject]@{
+            fullName = $initialDirectory.FullName
+            unfolded = $false
+            name = $initialDirectory.Name
+            type = $initialDirectory.gettype().name
+        }
+        
+        $DEPTH = 0
+        if($loadAll) {
+            $DEPTH = 1000
+            write-log "LOADING FULL TREE (will take time)..." -type warning
+        }
+        add-Nodes $rootNode -localDepth $DEPTH
+        $treeView.refresh()
+        $formFolders.refresh()
+        $treeView.nodes[0].Expand()
+    })
+
     $pbxDocument = New-Object System.windows.forms.pictureBox
-    $pbxDocument.Location = New-Object System.Drawing.Point(10,13) 
+    $pbxDocument.Location = New-Object System.Drawing.Point(85,13) 
     $pbxDocument.Size = New-Object System.Drawing.Size(25,25)
     $pbxDocument.SizeMode = 'StretchImage'
     $pbxDocument.Image = get-Icon -iconNumber 1
@@ -1596,7 +1672,7 @@ function select-Directory {
     })
 
     $pbxDownloads = New-Object System.Windows.Forms.pictureBox
-    $pbxDownloads.Location = New-Object System.Drawing.Point(65,13) 
+    $pbxDownloads.Location = New-Object System.Drawing.Point(115,13) 
     $pbxDownloads.Size = New-Object System.Drawing.Size(25,25)
     $pbxDownloads.SizeMode = 'StretchImage'
     $pbxDownloads.Image = get-Icon -iconNumber 122
@@ -1608,7 +1684,7 @@ function select-Directory {
     })
     
     $pbxDesktop = New-Object System.Windows.Forms.pictureBox
-    $pbxDesktop.Location = New-Object System.Drawing.Point(120,13) 
+    $pbxDesktop.Location = New-Object System.Drawing.Point(145,13) 
     $pbxDesktop.Size = New-Object System.Drawing.Size(25,25)
     $pbxDesktop.SizeMode = 'StretchImage'
     $pbxDesktop.Image = get-Icon -iconNumber 34
@@ -1631,7 +1707,7 @@ function select-Directory {
         $formFolders.Close()
     })
    
-    $gbShortcuts.controls.addRange(@($pbxDocument, $pbxDownloads, $pbxDesktop, $pbxTemp))
+    $gbShortcuts.controls.addRange(@($cbDrives, $pbxDocument, $pbxDownloads, $pbxDesktop, $pbxTemp))
     #endregion shortcut_buttons
    
     #regular Tree View component - after loading
@@ -1769,10 +1845,19 @@ function select-Directory {
         if($txtSearch.Text.Length -gt 1) {
             $searchTreeView.Nodes.Clear()
             foreach($n in $NodeList) {
-                if($n.name -match $txtSearch.Text) {
-                    $searchTreeView.Nodes.Add($n.FullName)
-                }
+                try {
+                    if($txtSearch.Text.indexof('*') -ge 0) {
+                        if($n.name -like $txtSearch.Text) {
+                            $searchTreeView.Nodes.Add($n.FullName)
+                        }
+                    } else {
+                        if($n.name -match $txtSearch.Text) {
+                            $searchTreeView.Nodes.Add($n.FullName)
+                        }
+                    }
+                } catch { }#eliminate regexp errors
             }
+            
         }
         $searchTimer.stop()
     })
@@ -1819,8 +1904,9 @@ function select-File {
         wrapper function for select-directory with 'files' flag
     .NOTES
         nExoR ::))o-
-        version 210520
+        version 220423
             last changes
+            - 220423 filter
             - 210520 initialized
     
         #TO|DO
@@ -1829,16 +1915,20 @@ function select-File {
     param(
         #starting folder (tree root)
         [Parameter(mandatory=$false,position=0)]
-            [string]$startingDirectory='\',
-        #show hidden folders
+        [string]$startingDirectory='\',
+        #search mask for files and folders
         [Parameter(mandatory=$false,position=1)]
-            [switch]$hidden,
+            [string]$filter,
         #return directory path as string instead of 'folder object'
         [Parameter(mandatory=$false,position=2)]
             [switch]$object,
         #enable text search box - will load entire tree which might take time, but will allow to search thru entire tree. best used with -startingDirectory for subfolders
         [Parameter(mandatory=$false,position=3)]
-            [switch]$loadAll
+            [switch]$loadAll,
+        #show hidden folders
+        [Parameter(mandatory=$false,position=4)]
+            [alias('hidden')]
+            [switch]$force
     )
 
     select-Directory -files @PSBoundParameters 
