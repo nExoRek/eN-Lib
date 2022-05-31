@@ -9,9 +9,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 220418
+    version 220523
     changes
-        - 220423 updates to select-disk
+        - 220523 silent mode for CSV/XLS, default message for get-valueFromInputBox
+        - 220423 updates to select-directory
         - 220418 convert-CSV2XLS PS7 fix [1.3.33]
         - 220412 setting 'persistent' as option was a mistake - this must be a default behaviour [1.3.32]
         - 220411 convert-CSV2XLS out folder change
@@ -531,8 +532,9 @@ function import-structuredCSV {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210421
+        version 210523
             last changes
+            - 210523 silent mode
             - 210421 exit/return/break tuning
             - 210317 delimiter detection as function
             - 210315 finbished auto, non-terminating from console, header not mandatory
@@ -555,8 +557,14 @@ function import-structuredCSV {
             [switch]$headerIsCritical,
         #CSV delimiter if different then regional settings. auto - tries to detect between comma and semicolon. uses comma if failed.
         [parameter(mandatory=$false,position=3)]
-            [string]$delimiter='auto'
+            [string]$delimiter='auto',
+        #silent - no output on screen. my script are in always-verbose logic, so this is opposite to regular PS 
+        [Parameter(mandatory=$false,position=4)]
+            [switch]$silent
     )
+    if($silent.IsPresent) {
+        $PSDefaultParameterValues=@{"write-log:silent"=$true}
+    }
 
     if(-not (test-path $inputCSV) ) {
         write-log "$inputCSV not found." -type error
@@ -641,8 +649,9 @@ function convert-XLStoCSV {
         drag'n'drop version - separate file.
     .NOTES
         nExoR ::))o-
-        version 220403
+        version 220523
             last changes
+            - 220523 silent mode - for import-xls
             - 220403 autosave error when not on OD
             - 220401 stupid autosave behaviour, file open error handling
             - 210422 ...again fixes to exit/break/return
@@ -669,10 +678,16 @@ function convert-XLStoCSV {
             [switch]$firstWorksheetOnly,
         #include hidden worksheets? 
         [Parameter(mandatory=$false,position=2)]
-            [switch]$includeHiddenWorksheets
+            [switch]$includeHiddenWorksheets,
+        #silent - no output on screen. my script are in always-verbose logic, so this is opposite to regular PS 
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$silent
     )
 
     begin {
+        if($silent.IsPresent) {
+            $PSDefaultParameterValues=@{"write-log:silent"=$true}
+        }
         try{
             $Excel = New-Object -ComObject Excel.Application
         } catch {
@@ -792,8 +807,9 @@ function convert-CSVtoXLS {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 220418
+        version 220523
             last changes
+            - 220523 silent mode
             - 220418 further fixes for PS7
             - 220411 destination folder changed to CSV location - to mach convert-XLS2CSV behaviour
             - 210430 #typedef skip
@@ -830,10 +846,17 @@ function convert-CSVtoXLS {
             [int]$tableStyleNumber=21,
         #CSV delimiter character
         [Parameter(mandatory=$false,position=4)]
-            [string]$delimiter='auto'
+            [string]$delimiter='auto',
+        #silent - no output on screen. my script are in always-verbose logic, so this is opposite to regular PS 
+        [Parameter(mandatory=$false,position=5)]
+            [switch]$silent
     )
+    
 
     begin {
+        if($silent.IsPresent) {
+            $PSDefaultParameterValues=@{"write-log:silent"=$true}
+        }
         try{
             $Excel = New-Object -ComObject Excel.Application
         } catch {
@@ -987,13 +1010,14 @@ function import-XLS {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210317
+        version 210523
             last changes
+            - 220523 silent import
             - 210317 use of firstWorksheet
             - 210315 initialized
     
         #TO|DO
-         - add cleanup of xls output
+         - add cleanup of files after xls output
     #>
     
     param(
@@ -1002,8 +1026,7 @@ function import-XLS {
             [string]$XLSfileName
     )
 
-    write-log "EXERIMAENTAL FUNCTION" -type warning
-    $tempCSV = convert-XLStoCSV -XLSfileName $XLSfileName -firstWorksheetOnly
+    $tempCSV = convert-XLStoCSV -XLSfileName $XLSfileName -firstWorksheetOnly -silent
     if( $tempCSV ) {
         return (import-structuredCSV -inputCSV $tempCSV[0].FullName)
     }
@@ -1304,8 +1327,9 @@ function get-valueFromInputBox {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210402
+        version 210523
         last changes
+            - 210523 default message to be displayed while loading
             - 210507 maxChars fix
             - 210402 allowcharacter check worked for last character only.
             - 210317 allowCharacter 
@@ -1331,7 +1355,10 @@ function get-valueFromInputBox {
         #regular expression limiting characters -eg 'only digits'
         [Parameter(mandatory=$false,position=4)]
             [alias('regex')]
-            [regex]$allowedCharacters
+            [regex]$allowedCharacters,
+        #default value to be shown on screen
+        [Parameter(mandatory=$false,position=5)]
+            [string]$defaultMessage
     )
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
@@ -1400,6 +1427,14 @@ function get-valueFromInputBox {
             }
         }
     })
+
+    $promptWindowForm.add_Shown({
+        if($defaultMessage) {
+            $txtUserInput.Text = $defaultMessage
+            $txtUserInput.SelectionStart = 0
+            $txtUserInput.SelectionLength = $defaultMessage.Length
+        }
+    })
     $result = $promptWindowForm.ShowDialog()
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         $response = $txtUserInput.Text
@@ -1409,8 +1444,6 @@ function get-valueFromInputBox {
         return $null
     }   
 }
-
-
 function get-Icon {
     param( 
         [int]$iconNumber,
