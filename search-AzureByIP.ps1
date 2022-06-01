@@ -16,6 +16,8 @@
 
     #TO|DO
     - resolve automatically full CIDR IP - change regex
+    - when direct resource IP provided, show actual network information not assuming mask
+    - networks and NICs are not all resources with IP - extend
 #>
 
 param(
@@ -48,9 +50,9 @@ if($IP -eq $netIP) {
     $lookForResource = $false
 }
 
-write-log "searching networks containing $IP..."
+write-log "searching networks containing $netIP..."
 Search-AzGraph -Query "resources 
-    | where type =~ 'microsoft.network/virtualNetworks' and properties.addressSpace.addressPrefixes contains '$IP'
+    | where type =~ 'microsoft.network/virtualNetworks' and properties.addressSpace.addressPrefixes contains '$netIP'
     | join kind=inner (resourceContainers 
         | where type =~ 'microsoft.resources/subscriptions' 
         | project subscriptionId,subscriptionName=name) on subscriptionId
@@ -58,7 +60,7 @@ Search-AzGraph -Query "resources
 " | Format-List
 
 if($lookForResource) {
-    write-log "searching resources..."
+    write-log "searching resource with IP $IP..."
     Search-AzGraph -Query "resources 
         | where type =~ 'Microsoft.Network/networkInterfaces' and properties.ipConfigurations[0].properties.privateIPAddress contains '$IP' 
         | extend sName = tostring(properties.ipConfigurations[0].properties.subnet.id) 
