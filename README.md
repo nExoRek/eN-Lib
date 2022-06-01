@@ -53,6 +53,9 @@
     generate report on mobile devices registered under EXO users.
 
 ## AZURE
+  * [search-AzureByIP.ps1](https://github.com/nExoRek/eN-Lib/blob/master/search-AzureByIP.ps1)
+    searches Resources and Networks by IP
+
   * [gui-ForceShutdownAzVM.ps1](https://github.com/nExoRek/eN-Lib/blob/master/gui-ForceShutdownAzVM.ps1)
     demo how to use elements of PS-GUI, force shutdown VM in Azure
 
