@@ -55,6 +55,9 @@
 ## AZURE
   * [search-AzureByIP.ps1](https://github.com/nExoRek/eN-Lib/blob/master/search-AzureByIP.ps1)
     searches Resources and Networks by IP
+  
+  * [search-AzureByName.ps1](https://github.com/nExoRek/eN-Lib/blob/master/search-AzureByName.ps1)
+    searches Resources and resource-containers by name or partial name
 
   * [gui-ForceShutdownAzVM.ps1](https://github.com/nExoRek/eN-Lib/blob/master/gui-ForceShutdownAzVM.ps1)
     demo how to use elements of PS-GUI, force shutdown VM in Azure
