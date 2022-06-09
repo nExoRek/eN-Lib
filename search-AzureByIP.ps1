@@ -19,8 +19,9 @@
     https://www.powershellgallery.com/packages/OftenOn/1.0.8/Content/Private%5CConvertFrom-CIDR.ps1
 .NOTES
     nExoR ::))o-
-    version 220608
+    version 220609
         last changes
+        - 220609 display fix
         - 220608 v1
         - 220601 initialized
 
@@ -117,7 +118,7 @@ try {
 if($result.data.count -eq 0) {
     write-log "no network objects found matching $netIP..." -type warning
 } else {
-    write-log $result.data -noTimeStamp
+    write-log $result.GetEnumerator() -noTimeStamp
     $trueNetMask = $rxMask.Match($result.addressSpace).Groups[1].value
     if($trueNetMask -ne $fullIP.CIDRSuffix) {
         write-log "network mask read from the object ($trueNetMask) differs from provided ($($fullIP.CIDRSuffix))" -type warning
@@ -150,7 +151,7 @@ try {
 if($result.data.count -eq 0) {
     write-log "no resources found matching $IP" -type warning
 } else {
-    write-log $result.data -noTimeStamp
+    write-log $result.GetEnumerator() -noTimeStamp
 }
 
 write-log 'done' -type ok
