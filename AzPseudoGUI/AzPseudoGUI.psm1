@@ -13,8 +13,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 210518
+    version 210711
         last changes
+        - 220711 subnets multichoice, keyVaultKey - name
         - 210518 default sorting
         - 210430 naming normalization
         - 210310 vnet fix
@@ -657,8 +658,9 @@ function select-Subnet {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210518
+        version 220711 
             last changes
+            - 220711 multichoice (default)
             - 210518 default sort by name
             - 210302 autoSelectSingle,comment-based-help
     #>
@@ -710,7 +712,7 @@ function select-Subnet {
         write-log "single vSubnet available: $($vSubnetList.Name) found. selecting." -type info
         return (Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vNet -Name $vSubnetList.Name)
     } else {
-        $vSubnet = $vSubnetList | sort-object name | Out-GridView -Title $title -OutputMode Single
+        $vSubnet = $vSubnetList | sort-object name | Out-GridView -Title $title -OutputMode Multiple
         if([string]::isNullOrEmpty($vSubnet) ) {
             write-host "Cancelled."
             if($isCritical.IsPresent) {
@@ -720,7 +722,11 @@ function select-Subnet {
             }
         }
         write-log "vSubnet $($vSubnet.name) chosen." -type info
-        return (Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vNet -Name $vSubnet.name)
+        $ret = @()
+        foreach($sNet in $vSubnet) {
+            $ret += Get-AzVirtualNetworkSubnetConfig -VirtualNetwork $vNet -Name $sNet.name
+        }
+        return $ret
     }    
 }
 Set-Alias -Name 'select-vSubnet' -Value 'select-Subnet'
@@ -790,7 +796,7 @@ function select-KeyVault {
         }
     }
 }
-function select-encryptionKey {
+function select-KeyVaultKey {
     <#
     .SYNOPSIS
         acceleration function enabling to visually choose Encryption Key resources. 
@@ -865,6 +871,7 @@ function select-encryptionKey {
         }
     }
 }
+Set-Alias -Name 'select-encryptionKey' -Value 'select-keyVaultKey'
 function select-recoveryVault {
     <#
     .SYNOPSIS
@@ -1081,4 +1088,4 @@ function select-LogAnalyticsWorkspace {
 }
 Set-Alias -Name 'select-LAWorkspace' -Value 'select-LogAnalyticsWorkspace'
 
-Export-ModuleMember -Function * -Alias 'select-NSG','select-LAWorkspace','select-VM','select-vNet','select-vSubnet'
+Export-ModuleMember -Function * -Alias 'select-NSG','select-LAWorkspace','select-VM','select-vNet','select-vSubnet','select-encryptionKey'
