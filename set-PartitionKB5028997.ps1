@@ -1,9 +1,11 @@
 <#
 .SYNOPSIS
-    semi-automated soluton for KB503441 and KB5028997
+    semi-automated soluton for KB503441
     - downloads WinRE which is required to enable it back
     - creates input file for diskpart
     ...the rest is in yur hands - check if file is properly generated
+
+    USE ON YOUR OWN RISK
     
 .EXAMPLE
     .\set-PartitionForKB.ps1
@@ -103,7 +105,7 @@ $diskpartInput = "c:\temp\winre.txt"
 "format quick fs=ntfs label=""Windows RE tools"""|out-file $diskpartInput -Append -Encoding UTF8
 write-host -ForegroundColor green "diskpart script:"
 Get-Content $diskpartInput|Out-Host
-if(!(test-path "$($env:SystemRoot)\system32\Recovery\Winre.wim")) {
+if(!(test-path "$($env:windir)\system32\Recovery\Winre.wim")) {
     write-host -ForegroundColor Red "`nWinRE image is not present! before continuing deploy it first`n"
 }
 write-host -ForegroundColor green "now you need to:`n * check if disks and partitions were correctly detected"
