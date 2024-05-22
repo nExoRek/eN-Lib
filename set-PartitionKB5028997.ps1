@@ -28,11 +28,12 @@
 [cmdletbinding()]
 #download winRE - which is not being saved by disabling with reagentc
 $ProductName = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\').productName
+#I had to remove WIM files byt it should work with the newest for each type
 switch($productName) {
-  {$_ -match 'windows 10'}  { $winRElink = 'http://download.w-files.pl/winRM/winRE_win10.wim'}
+  {$_ -match 'windows 10'}  { $winRElink = 'http://download.w-files.pl/winRM/winRE_win11.wim'}
   {$_ -match 'windows 11'}  { $winRElink = 'http://download.w-files.pl/winRM/winRE_win11.wim' }
-  {$_ -match 'Server 2016'} { $winRElink = 'http://download.w-files.pl/winRM/winRE_srv16.wim' }
-  {$_ -match 'Server 2019'} { $winRElink = 'http://download.w-files.pl/winRM/winRE_srv19.wim' }
+  {$_ -match 'Server 2016'} { $winRElink = 'http://download.w-files.pl/winRM/winRE_srv22.wim' }
+  {$_ -match 'Server 2019'} { $winRElink = 'http://download.w-files.pl/winRM/winRE_srv22.wim' }
   {$_ -match 'Server 2022'} { $winRElink = 'http://download.w-files.pl/winRM/winRE_srv22.wim' }
   default { 
     "$productName not found"
