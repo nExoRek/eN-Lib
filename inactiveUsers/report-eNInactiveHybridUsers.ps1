@@ -15,12 +15,14 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 240520
+    version 240627
         last changes
+        - 240627 add displayname as matching attribute. forceHybrid is for now default and parameter doesn't do anything
         - 240520 initialized
 
     #TO|DO
     * edge scenarios - eg. the same UPN on both sides, but account is not hybrid; maybe some other i did not expect?
+    * change hybrid user detection
 #>
 [CmdletBinding()]
 param (
@@ -32,8 +34,11 @@ param (
         [string]$inputCSVEntraID,
     #key attribute to match the users, default userPrincipalName
     [Parameter(mandatory=$false,position=2)]
-        [validateSet('userPrincipalName','mail')]
-        [string]$matchBy = 'userPrincipalName'
+        [validateSet('userPrincipalName','mail','displayName')]
+        [string]$matchBy = 'userPrincipalName',
+    #force match for non-hybrid users - low accuracy...
+    [Parameter(Mandatory=$false,position=3)]
+        [switch]$forceHybrid
     
 )
 $VerbosePreference = 'Continue'
