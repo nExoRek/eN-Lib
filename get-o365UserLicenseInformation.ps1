@@ -241,6 +241,7 @@ process {
         foreach($license in $msolUser.licenses){
             $exportLicenceObject = [PSCustomObject]@{
                 userPrincipalName = $msolUser.userPrincipalName
+                Enabled = !$MSOLUser.BlockCredential
                 AccountSkuId = $license.AccountSkuId
                 assignSource = ''
                 licenseName  = ''
@@ -283,6 +284,7 @@ process {
         #no license - return object with some empty values
         $exportLicenceObject=[PSCustomObject]@{
             userPrincipalName = $msolUser.userPrincipalName
+            Enabled = !$MSOLUser.BlockCredential
             AccountSkuId = ''
             assignSource = ''
             licenseName  = ''
@@ -303,7 +305,7 @@ end {
     write-host "processed $userCounter user(s)."
     if($exportToCSV) {
         $userLicenses|
-            select-object userPrincipalName,AccountSkuId,assignSource,licenseName,licenseGroup,usageLocation,@{N='servicePlans';E={$_.servicePlans}}|
+            select-object userPrincipalName,Enabled, AccountSkuId,assignSource,licenseName,licenseGroup,usageLocation,@{N='servicePlans';E={$_.servicePlans}}|
             export-csv -NoTypeInformation -Path "LicenseReport-$(get-date -Format yyMMddHHmm).csv"
         Write-Host "report exported as .\LicenseReport-$(get-date -Format yyMMddHHmm).csv"
     }
