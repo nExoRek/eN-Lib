@@ -18,7 +18,7 @@
     version 240811
         last changes
         - added delegated permissions to understand shared mailboxes (and security check),
-            dived on steps and ability to pick up the work in case of broken job
+            dived on steps, data refresh
             fixed mailbox type check
             other fixes
         - 240718 UPNs (for merge) and account status (for independent reports)
@@ -34,19 +34,31 @@ param (
     #skip connection - if you're already connected
     [Parameter(mandatory=$false,position=0)]
         [switch]$skipConnect,
-    #skip delegation permissions
+    #load existing file with recipient list
     [Parameter(mandatory=$false,position=1)]
-        [switch]$skipDelegations,
-    #stats are generated for a long time. if you broke the script run, pick up where you left it
+        [string]$inputFile,
+    #skip UPNs
     [Parameter(mandatory=$false,position=2)]
-        [switch]$pickUp
+        [switch]$skipUPNs,
+    #skip mailbox statistics
+    [Parameter(mandatory=$false,position=3)]
+        [switch]$skipMbxStats,
+    #skip delegation permissions
+    [Parameter(mandatory=$false,position=4)]
+        [switch]$skipDelegations
     
 )
 $VerbosePreference = 'Continue'
 
 if(!$skipConnect) {
-    Disconnect-ExchangeOnline -confirm:$false
-    Connect-ExchangeOnline
+    Disconnect-ExchangeOnline -confirm:$false -ErrorAction SilentlyContinue
+    try {
+        Connect-ExchangeOnline -ErrorAction Stop
+    } catch {
+        write-log "not connected to Exchange Online." -type error
+        write-log $_.Exception -type error
+        return
+    }
 }
 
 #get some domain information 
@@ -54,51 +66,18 @@ $domain = (Get-AcceptedDomain|? Default -eq $true).domainName
 Write-log "connected to $domain" -type info
 $outfile = "mbxstats-$domain-$(get-date -Format "yyMMdd-hhmm").csv"
 
-$stepFiles = @(
-    "step0",
-    "tmp_recipients.csv",
-    "tmp_UPNs.csv",
-    "tmp_mbxStats.csv"
-)
-
-$lastStep = 1
-$pickUpFile = 'none'
-if($pickUp) {
+#'Recipients' is much wider, providing additional object infomration, thus starting from a getting all 'emails' in the tenant
+#load from file...
+if($inputFile) {
     try {
-        $pickUpFile = $stepFiles[1]
-        get-item $pickUpFile -ErrorAction Stop
-        $lastStep = 2
+        write-log "loading $inputFile..." -type info
+        $recipients = load-CSV $inputFile #header enformcement
     } catch {
-        write-log "$pickUpFile not found" -silent
+        write-log "can't load data from $inputFile" -type error
+        write-log $_.Exception -silent
+        return
     }
-    try {
-        $pickUpFile = $stepFiles[2]
-        get-item $pickUpFile -ErrorAction Stop
-        $lastStep = 3
-    } catch {
-        write-log "$pickUpFile not found" -silent
-    }
-    try {
-        $pickUpFile = $stepFiles[3]
-        get-item $pickUpFile -ErrorAction Stop
-        $lastStep = 4
-    } catch {
-        write-log "$pickUpFile not found" -silent
-    }
-} 
-if($lastStep -gt 1) {
-    write-log "found $pickUpFile. picking up the work from here..." -type info
-    $recipients = load-CSV $pickUpFile
-    write-log "loaded $($recipients.count) records." -type info
-} else {
-    write-log "close unfished job" -silent
-    Remove-Item tmp_recipients.csv -ErrorAction SilentlyContinue
-    Remove-Item tmp_UPNs.csv -ErrorAction SilentlyContinue
-    Remove-Item tmp_mbxStats.csv -ErrorAction SilentlyContinue
-}
-
-if($lastStep -lt 2) {
-    #'Recipients' is much wider, providing additional object infomration, thus starting from a getting all 'emails' in the tenant
+} else { #read from EXO
     write-log "getting general recipients stats..." -type info
     $recipients = get-recipient |
         Select-Object Identity,userPrincipalName,enabled,DisplayName,FirstName,LastName,RecipientType,RecipientTypeDetails,`
@@ -107,6 +86,8 @@ if($lastStep -lt 2) {
     #save current step
     $recipients | export-csv -nti -Encoding unicode tmp_recipients.csv
 }
+$numberOfRecords = $recipients.count
+write-log "loaded $numberOfRecords records." -type info
 
 <#      recipient types
 only UserMailbox has actual mailbox 
@@ -125,7 +106,7 @@ MailUniversalSecurityGroup     MailUniversalSecurityGroup
 MailUniversalDistributionGroup MailUniversalDistributionGroup
 #>
 
-if($lastStep -lt 3) {
+if(!$skipUPNs) {
     #some parameters make sens only for mailboxes - filter out non-mailbox enabled exchange objects and get the identity UPN for them
     write-log "getting UPNs from mailboxes..." -type info
     $recipients |? RecipientType -match 'userMailbox'| %{
@@ -135,9 +116,11 @@ if($lastStep -lt 3) {
     }
     #save current step
     $recipients | export-csv -nti -Encoding unicode tmp_UPNs.csv
+} else {
+    write-log "UPN check skipped." -type info
 }
 
-if($lastStep -lt 4) {
+if(!$skipMbxStats) {
     #to know more about activity on a mailbox, get some last usage and basic size stats
     write-log "enriching mbx statistics..." -type info
     $recipients |? RecipientType -match 'userMailbox'| %{
@@ -147,22 +130,22 @@ if($lastStep -lt 4) {
         $_.TotalItemSize = $stats.TotalItemSize
     }
     $recipients | export-csv -nti -Encoding unicode tmp_mbxStats.csv
+} else {
+    write-log "mailbox stats skipped." -type info
 }
 
-if($lastStep -lt 5) {
-    #especially useful for migration projects - mailbox delegations
-    if(!$skipDelegations) {
-        $recipients |? RecipientType -match 'userMailbox'| %{
-            $permissions = Get-MailboxPermission -identity $_.ExchangeObjectId |
-                ?{$_.isinherited -eq $false -and $_.user -notmatch 'NT AUTHORITY'} |
-                %{"{0}:{1}" -f $_.user,$_.accessRights}
-            if($permissions) {
-                $_.delegations = $permissions -join "| "
-            }
+#especially useful for migration projects - mailbox delegations
+if(!$skipDelegations) {
+    $recipients |? RecipientType -match 'userMailbox'| %{
+        $permissions = Get-MailboxPermission -identity $_.ExchangeObjectId |
+            ?{$_.isinherited -eq $false -and $_.user -notmatch 'NT AUTHORITY'} |
+            %{"{0}:{1}" -f $_.user,$_.accessRights}
+        if($permissions) {
+            $_.delegations = $permissions -join "| "
         }
-    } else {
-        Write-log "permissions check skipped." -type info
     }
+} else {
+    Write-log "permissions check skipped." -type info
 }
 
 #final results export
