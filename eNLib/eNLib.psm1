@@ -9,8 +9,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 220523
+    version 241029
     changes
+        - 241029 1.3.34
+        - 241007 CSV2XLS fixes and -open switch
         - 220523 silent mode for CSV/XLS, default message for get-valueFromInputBox
         - 220423 updates to select-directory
         - 220418 convert-CSV2XLS PS7 fix [1.3.33]
@@ -807,8 +809,9 @@ function convert-CSVtoXLS {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 220523
+        version 241007
             last changes
+            - 241007 CSV2XLS fixes and -open switch
             - 220523 silent mode
             - 220418 further fixes for PS7
             - 220411 destination folder changed to CSV location - to mach convert-XLS2CSV behaviour
@@ -844,11 +847,15 @@ function convert-CSVtoXLS {
         [Parameter(mandatory=$false,position=3)]
             [alias('nr')]
             [int]$tableStyleNumber=21,
-        #CSV delimiter character
+        #open excel file automatically after conversion
         [Parameter(mandatory=$false,position=4)]
+            [alias('run')]
+            [switch]$openOnConversion,
+        #CSV delimiter character
+        [Parameter(mandatory=$false,position=5)]
             [string]$delimiter='auto',
         #silent - no output on screen. my script are in always-verbose logic, so this is opposite to regular PS 
-        [Parameter(mandatory=$false,position=5)]
+        [Parameter(mandatory=$false,position=6)]
             [switch]$silent
     )
     
@@ -922,7 +929,12 @@ function convert-CSVtoXLS {
                 $worksheet = $workbook.worksheets.add([System.Reflection.Missing]::Value,$workbook.Worksheets.Item($workbook.Worksheets.count))
             }
             $worksheet = $workbook.worksheets.Item($workbook.Worksheets.count)
-            $worksheet.name = $CSVfile.BaseName
+            if($CSVfile.BaseName.Length -gt 20) {
+                $wksName = $CSVfile.BaseName.Substring(0,19)
+            } else {
+                $wksName = $CSVfile.BaseName
+            }
+            $worksheet.name = $wksName
             ### Build the QueryTables.Add command and reformat the data
             $TxtConnector = ("TEXT;" + $CSVFile.FullName)
             $Connector = $worksheet.QueryTables.add($TxtConnector,$worksheet.Range("A1"))
@@ -989,6 +1001,9 @@ function convert-CSVtoXLS {
             write-log "convertion done, saved as $XLSfileName"
             $XLSfileList += (Get-Item $XLSfileName)
             Write-log "done and cleared." -type ok
+            if($openOnConversion) {
+                & $XLSfileName
+            }
             return $XLSfileList
         } else {
             return $null

@@ -48,7 +48,10 @@ param (
         [switch]$skipMFACheck,
     #skip getting user licenses information
     [Parameter(mandatory=$false,position=2)]
-        [switch]$skipLicenseCheck
+        [switch]$skipLicenseCheck,
+    #automatically generate XLSX report using eNLib 
+    [Parameter(mandatory=$false,position=3)]
+        [switch]$xlsxReport
     
 )
 $VerbosePreference = 'Continue'
@@ -175,12 +178,23 @@ function convert-SKUCodeToDisplayName {
 }
 
 if(!$skipConnect) {
-    Disconnect-MgGraph
+    try {
+        Disconnect-MgGraph -ErrorAction Stop
+    } catch {
+        write-host 'testing error'
+        write-verbose $_.Exception
+        $_.ErrorDetails
+    }
     Write-Verbose "athenticate to tenant..."
     #"Domain.ReadWrite.All" comes from get-mgDomain - but is not required.
     #"email" comes from get-mgDomain - and was double-requesting the authentication without this option
     #Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All","Domain.Read.All","email"
-    Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Domain.Read.All","email","UserAuthenticationMethod.Read.All"
+    try {
+        Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Domain.Read.All","email","UserAuthenticationMethod.Read.All"
+    } catch {
+        throw "error connecting. $($_.Exception)"
+        return
+    }
 }
 Write-Verbose "getting connection info..."
 $ctx = Get-MgContext
@@ -271,4 +285,12 @@ if(!$skipLicenseCheck) {
     Write-Verbose "skipping license check..."
 }
 $entraUsers | Sort-Object UserType,AccountEnabled,daysInactive,DisplayName | export-csv -nti $exportCSVFile -Encoding unicode
-Write-Verbose "results saved in '$exportCSVFile'." 
+
+if($xlsxReport) {
+    write-host "creating xls report"
+    $xlsFile = $exportCSVFile.Substring(0,20)
+    Rename-Item $exportCSVFile "$xlsFile.csv"
+    &(convert-CSV2XLS "$xlsFile.csv" -XLSfileName "$xlsFile.xlsx")
+} else {
+    Write-Verbose "results saved in '$exportCSVFile'." 
+}

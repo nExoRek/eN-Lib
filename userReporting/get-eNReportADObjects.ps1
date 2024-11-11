@@ -6,6 +6,9 @@
     Search-ADAccount commandlet is useful for quick ad-hoc queried, but it does not return all required object attributes 
     for proper reporting. This script is gathering much more information and is a part of a wider project allowing to
     create aggregated object reporting to support migrations, clean up or regular audits.
+
+    requires to be run As Administrator as running in less priviledged context is not returing some values - e.g. 'enabled'
+    status is sometimes returnes, sometimes not. 
 .EXAMPLE
     .\get-eNReportADObjects.ps1
     
@@ -27,7 +30,7 @@
     #TO|DO
     - resultpagesize - not managed. for now only for environments under 2k objects
 #>
-#requires -module ActiveDirectory
+#requires -module ActiveDirectory -RunAsAdministrator
 [CmdletBinding()]
 param (
     #Parameter description

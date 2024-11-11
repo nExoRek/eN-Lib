@@ -112,7 +112,7 @@ if(!$skipUPNs) {
     $recipients |? RecipientType -match 'userMailbox'| %{
         $mbx = Get-mailbox -identity $_.ExchangeObjectId
         $_.userPrincipalName = $mbx.userPrincipalName
-        $_.enabled = $mbx.enabled
+        $_.enabled = -not $mbx.AccountDisabled
     }
     #save current step
     $recipients | export-csv -nti -Encoding unicode tmp_UPNs.csv
