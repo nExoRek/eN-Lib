@@ -6,6 +6,8 @@
 !/eNLib/
 !/AzPseudoGUI/
 !/PSCmdletTest/
+!/inactiveUsers/
+!/userReporting/
 #...except PS
 !*.ps1
 !*.psm1

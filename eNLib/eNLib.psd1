@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.4.0'
+ModuleVersion = '1.3.34'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -27,7 +27,7 @@ Author = '::))o-'
 CompanyName = 'LogicUnion'
 
 # Copyright statement for this module
-Copyright = '(MIT) 2o23 nExoR ::))o-'
+Copyright = '(MIT) 2024 nExoR ::))o-'
 
 # Description of the functionality provided by this module
 Description = "powerfull write-log function forking information to the screen and to the file with timestamp and screen colouring and more, CSV manipulation functions allowing to convert to and from XLS and load CSV with header check, password generator, input message GUI, connection checkers and couple other usefull functions accelerating scripting and helping in everyday work with commandline."

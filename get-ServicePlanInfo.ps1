@@ -34,7 +34,7 @@
     nExoR ::))o-
     version 220331
         last changes
-        - 210331 MS fixed CSV ... changing column name /:
+        - 220331 MS fixed CSV ... changing column name /:
         - 220315 initialized
 
     #TO|DO
@@ -102,8 +102,9 @@ function default {
 $spFile = ".\servicePlans.csv"
 
 if(!(test-path $spFile)) {
+    Write-Verbose "file containing plans list not found - downloading..."
     [System.Uri]$url = "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
-    Invoke-WebRequest $url -OutFile serviceplans.csv
+    Invoke-WebRequest $url -OutFile $spFile
 } 
 $spInfo = import-csv $spFile -Delimiter ','
 
