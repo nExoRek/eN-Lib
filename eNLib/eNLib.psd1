@@ -12,7 +12,7 @@
 RootModule = '.\eNLib.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.3.33'
+ModuleVersion = '1.4.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -27,7 +27,7 @@ Author = '::))o-'
 CompanyName = 'LogicUnion'
 
 # Copyright statement for this module
-Copyright = '(MIT) 2022 nExoR ::))o-'
+Copyright = '(MIT) 2o23 nExoR ::))o-'
 
 # Description of the functionality provided by this module
 Description = "powerfull write-log function forking information to the screen and to the file with timestamp and screen colouring and more, CSV manipulation functions allowing to convert to and from XLS and load CSV with header check, password generator, input message GUI, connection checkers and couple other usefull functions accelerating scripting and helping in everyday work with commandline."
@@ -93,9 +93,7 @@ AliasesToExport = @('load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS')
 
 # Private data to pass to the module specified in RootModule/ModuleToProcess. This may also contain a PSData hashtable with additional module metadata used by PowerShell.
 PrivateData = @{
-
     PSData = @{
-
         # Tags applied to this module. These help with module discovery in online galleries.
         Tags = @('write-log','logging','log','utility','GUI','CSV','password')
 
@@ -113,9 +111,7 @@ PrivateData = @{
 
         # External dependent modules of this module
         # ExternalModuleDependencies = ''
-
     } # End of PSData hashtable
-
 } # End of PrivateData hashtable
 
 # HelpInfo URI of this module
@@ -123,6 +119,5 @@ PrivateData = @{
 
 # Default prefix for commands exported from this module. Override the default prefix using Import-Module -Prefix.
 # DefaultCommandPrefix = ''
-
 }
 

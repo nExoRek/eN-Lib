@@ -482,6 +482,37 @@ function write-log {
 
 }
 function get-CSVDelimiter {
+    <#
+    .SYNOPSIS
+        support function for CSV import. primitive function trying to detect delimiter used in CSV file.
+    .DESCRIPTION
+        different languages have different separators. CSV actually means 'Country-specyfic Separator Value' when you use Excel.
+        to avoid necessity to transporm semicolon-separated to/from comma-separated, this function counts characters to guess 
+        the separator. 
+        it requires at least two data lines as the trick is to compare characters in the first and the second line to chose
+        which occures in consistent number.
+
+        currently function checks free most common separators: ';', ',' and TAB. otherwise returns default ',' as English 
+        regionals are the most common.
+
+    .EXAMPLE
+        get-CSVDelimiter c:\temp\mydata.csv
+        
+    .INPUTS
+        csv table
+    .OUTPUTS
+        [char]
+    .LINK
+        https://w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 210219
+            last changes
+            - 210219 initialized
+    
+        #TO|DO
+    #>
+    
     param(
         [string]$inputCSV
     )
@@ -516,17 +547,38 @@ function get-CSVDelimiter {
 function import-structuredCSV {
     <#
     .SYNOPSIS
-        loads CSV file with header check and auto delimiter detection 
+        loads CSV file with header check and auto delimiter detection. 
     .DESCRIPTION
         support function to gather data from CSV file with ability to ensure it is correct CSV file by
-        enumerating header. if you operate on data you need to ensure that it is CORRECT file, and not some
-        random CSV. extremally usuful in the projects when you use xls/csv as data providers and need to ensure
+        enumerating header. 
+        if you operate on data you need to ensure that it is CORRECT file, and not some random CSV. 
+        extremally usuful in the projects when you use xls/csv as data providers and need to ensure
         that you stick to the standard column names.
+
         with non-critical header function allows to add missing columns.
+    .EXAMPLE
+        $inputCSV = "c:\temp\mydata.csv"
+        $data = load-CSV $inputCSV
+
+        most common usage - as a replacement for import-csv. big difference is that it automatically detects delimiter
+        which is important for non-enliglish regionals users. 
     .EXAMPLE
         $inputCSV = "c:\temp\mydata.csv"
         $header=@('column1','column2')
         $data = load-CSV -header $header -headerIsCritical -delimiter ';' -inputCSV $inputCSV
+
+        tries to load mydata.csv file and checks if the file contains two columns: column1 and column2. header is
+        defined as critical meaning, that function will exit if any of defined columns is missing - but will allow any 
+        additional columns. e.g. file with columns 'column1','column2','column3','column4' will be loaded sucessfully. 
+        delmiter used is ';'
+    .EXAMPLE
+        $inputCSV = "c:\temp\mydata.csv"
+        $header=@('column1','column2')
+        $data = load-CSV -header $header -inputCSV $inputCSV
+
+        tries to load mydata.csv file and checks if the file contains two columns: column1 and column2. there is no
+        heder critical flag so if the file is missing any of the colums defined - loaded data will be extended with
+        'column1' and 'column2' columns. delimiter will be auto-detected.
         
     .LINK
         https://w-files.pl
@@ -542,8 +594,6 @@ function import-structuredCSV {
             - 210219 initialized
     
         #TO|DO
-        - add nonCritical header + crit header handling
-        - silent mode
     #>
     param(
         #path to CSV file containing data
@@ -585,6 +635,7 @@ function import-structuredCSV {
         return
     }
 
+    #get all column names
     $csvHeader=$CSVData|get-Member -MemberType NoteProperty|select-object -ExpandProperty Name
     $hmiss=@()
     foreach($el in $header) {
@@ -625,10 +676,10 @@ function convert-XLStoCSV {
         export all tables in XLSX files to CSV files. enumerates all sheets, and each table goes to another file.
         if sheet does not contain table - whole sheet is saved as csv
     .DESCRIPTION
-        if file contain information out of table objects - they will be exported as a whole worksheet.
+        if file contains information outside of table objects - they will not be exported.
         files will be named after the sheet name + table/worksheet name and placed in seperate directory.
 
-        separate script with ability to drang'n'drop may be downloaded from
+        separate script with ability to drag'n'drop may be downloaded from
         https://github.com/nExoRek/eN-Lib/blob/master/convert-XLSX2CSV.ps1
     .EXAMPLE
         convert-XLS2CSV -fileName .\myFile.xlsx
@@ -649,8 +700,9 @@ function convert-XLStoCSV {
         drag'n'drop version - separate file.
     .NOTES
         nExoR ::))o-
-        version 220523
+        version 231016
             last changes
+            - 231016 return/exit, cleanup
             - 220523 silent mode - for import-xls
             - 220403 autosave error when not on OD
             - 220401 stupid autosave behaviour, file open error handling
@@ -679,7 +731,7 @@ function convert-XLStoCSV {
         #include hidden worksheets? 
         [Parameter(mandatory=$false,position=2)]
             [switch]$includeHiddenWorksheets,
-        #silent - no output on screen. my script are in always-verbose logic, so this is opposite to regular PS 
+        #silent - no output on screen. my scripts are built with always-verbose logic, opposite to regular PS 
         [Parameter(mandatory=$false,position=3)]
             [switch]$silent
     )
@@ -718,7 +770,7 @@ function convert-XLStoCSV {
             $workBookFile = $Excel.Workbooks.Open($XLSFile)
         } catch {
             write-log "can't open $XLSfileName. $($_.Exception)" -type error
-            exit
+            return
         }
         #if file is opened from OneDrive and workbook is set to autosave - additional sheet will autoamtically be saved, although script is deleting it /:
         try {
@@ -769,7 +821,7 @@ function convert-XLStoCSV {
 
     end {
         $Excel.Quit()
-        #any method of closing Excel file is not working 1oo% there are scenarios where excel process stays in memory.
+        #any method of closing Excel file is not working 1oo%. there are scenarios where excel process stays in memory.
         #Remove-Variable -name workBookFile
         #Remove-Variable -Name excel
         #[gc]::collect()
@@ -786,7 +838,7 @@ function convert-CSVtoXLS {
     .SYNOPSIS
         Converts CSV file into XLS with table.
     .DESCRIPTION
-        creates XLXS out of CSV file and formats data as a table.
+        creates XLXS out of CSV file and formats data as a table of preferable style.
     .EXAMPLE
         convert-CSV2XLSX c:\temp\test.csv -delimiter ','
         
@@ -822,7 +874,6 @@ function convert-CSVtoXLS {
             - 201123 initialized
         
         TO|DO
-        - add silent mode 
     #>
     [CmdletBinding()]
     param (
@@ -847,7 +898,7 @@ function convert-CSVtoXLS {
         #CSV delimiter character
         [Parameter(mandatory=$false,position=4)]
             [string]$delimiter='auto',
-        #silent - no output on screen. my script are in always-verbose logic, so this is opposite to regular PS 
+        #silent - no output on screen. my script are in always-verbose logic - opposite to regular PS. silent mode is for automated background run
         [Parameter(mandatory=$false,position=5)]
             [switch]$silent
     )
@@ -922,7 +973,8 @@ function convert-CSVtoXLS {
                 $worksheet = $workbook.worksheets.add([System.Reflection.Missing]::Value,$workbook.Worksheets.Item($workbook.Worksheets.count))
             }
             $worksheet = $workbook.worksheets.Item($workbook.Worksheets.count)
-            $worksheet.name = $CSVfile.BaseName
+            #max 31 chars for a sheet name
+            $worksheet.name = if ($CSVfile.BaseName.Length -gt 30) { $CSVfile.BaseName.Substring(0, 30) } else { $CSVfile.BaseName }
             ### Build the QueryTables.Add command and reformat the data
             $TxtConnector = ("TEXT;" + $CSVFile.FullName)
             $Connector = $worksheet.QueryTables.add($TxtConnector,$worksheet.Range("A1"))
@@ -962,7 +1014,7 @@ function convert-CSVtoXLS {
             - 7,14,21 green
             #>
             $tableStyle=[string]"$tableStyleIntensity$tableStyleNumber"
-            $Table.TableStyle = "TableStyle$tableStyle" #green with with gray shadowing
+            $Table.TableStyle = "TableStyle$tableStyle" #green with gray shadowing
 
         } catch {
             write-log "error converting CSV to XLS: $($_.exception)" -type error
@@ -1010,7 +1062,7 @@ function import-XLS {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210523
+        version 220523
             last changes
             - 220523 silent import
             - 210317 use of firstWorksheet
@@ -1056,6 +1108,17 @@ function new-RandomPassword {
         version 210127
             last changes
             - 210127 initialized
+    #TO|DO
+    - character sets: 
+      - upper case letters
+      - lower case letters 
+      - digits
+      - spec0 = '.-_ '
+      - spec1
+      - spec2
+      - spec3
+    - at least one char per set - redo
+    - avoid similarities (Il, 0O)
     #>
     
     param( 
@@ -1515,6 +1578,7 @@ function select-Directory {
     
         #TO|DO
         - multichoice
+        - default folder should select it but let app open
     #>
     [cmdletbinding()]
     param(
@@ -1604,6 +1668,45 @@ function select-Directory {
         } else {
         }
     }
+    Function select-NodeByPath {
+        param (
+            [Parameter(Mandatory=$true)]
+            [System.Windows.Forms.TreeView]$TreeView,
+    
+            [Parameter(Mandatory=$true)]
+            [string]$Path
+        )
+    
+        # Split the path into its components
+        $pathComponents = $Path.Split([IO.Path]::DirectorySeparatorChar)
+    
+        # Start with the root node
+        $currentNodes = $TreeView.Nodes
+    
+        foreach ($component in $pathComponents) {
+            $foundNode = $null
+            
+            write-host $component
+            foreach ($node in $currentNodes) {
+                write-host "test: $($node.text)"
+                if ($node.Text -eq $component) {
+                    $foundNode = $node
+                    #break
+                }
+            }
+    
+            # If the component wasn't found, exit
+            if (-not $foundNode) {
+                #return $null
+            }
+    
+            # Otherwise, move to the child nodes for the next iteration
+            $currentNodes = $foundNode.Nodes
+        }
+    
+        # Select the found node
+        $TreeView.SelectedNode = $foundNode
+    }
 
     Add-Type -AssemblyName System.Drawing
     Add-Type -AssemblyName System.Windows.Forms
@@ -1646,16 +1749,17 @@ function select-Directory {
     $formFolders.dock = "fill"
 
     #region shortcut_buttons
-    $gbShortcuts = new-object system.windows.forms.groupBox
-    $gbShortcuts.Text = 'Shortcuts'
-    $gbShortcuts.Anchor = 'left,right'
-    $gbShortcuts.autosize = $true
-    $gbShortcuts.Padding = 0
+    $lpUpperMenu = new-object system.windows.forms.TableLayoutPanel
+    $lpUpperMenu.Anchor = 'left,right'
+    $lpUpperMenu.Padding = 0
+    $lpUpperMenu.ColumnCount = 2
+    #$lpUpperMenu.RowCount = 1
+    #$lpUpperMenu.Dock = [System.Windows.Forms.DockStyle]::Fill
 
     $cbDrives = New-Object System.Windows.Forms.Combobox
-    $cbDrives.Location = New-Object System.Drawing.Point(10,15) 
     $cbDrives.Size = New-Object System.Drawing.Size(40,20)
     $cbDrives.Text = "C:"
+    $cbDrives.Anchor = 'none'
     foreach($vol in (get-volume | Where-Object DriveLetter)){
         [void]$cbDrives.Items.Add("$($vol.DriveLetter):\")
     }
@@ -1691,64 +1795,118 @@ function select-Directory {
         $formFolders.refresh()
         $treeView.nodes[0].Expand()
     })
+    $lpUpperMenu.Controls.Add($cbDrives,0,0)
 
+    $gbShortcuts = new-object system.windows.forms.groupBox
+    $gbShortcuts.Text = 'Shortcuts'
+    $gbShortcuts.Anchor = 'left,right'
+    $gbShortcuts.Height = 55
+
+    $lpIcons = new-object system.windows.forms.TableLayoutPanel
+    $lpIcons.ColumnCount = 6
+    $lpIcons.Dock = [System.Windows.Forms.DockStyle]::Fill
+    #debug
+    #$lpIcons.BackColor = 'Gray'
+    #$lpIcons.padding = 1
+    [void]$lpIcons.ColumnStyles.Add( (new-object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent,100)) )
+    [void]$lpIcons.ColumnStyles.Add( (new-object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute,30)) )
+    [void]$lpIcons.ColumnStyles.Add( (new-object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute,30)) )
+    [void]$lpIcons.ColumnStyles.Add( (new-object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute,30)) )
+    [void]$lpIcons.ColumnStyles.Add( (new-object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Absolute,30)) )
+    [void]$lpIcons.ColumnStyles.Add( (new-object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent,100)) )
+                  
     $pbxDocument = New-Object System.windows.forms.pictureBox
-    $pbxDocument.Location = New-Object System.Drawing.Point(85,13) 
     $pbxDocument.Size = New-Object System.Drawing.Size(25,25)
     $pbxDocument.SizeMode = 'StretchImage'
     $pbxDocument.Image = get-Icon -iconNumber 1
-
     $pbxDocument.add_Click({
-        $result.value = ([Environment]::GetFolderPath("MyDocuments")) 
-        $formFolders.DialogResult = [System.Windows.Forms.DialogResult]::OK
-        $formFolders.Close()
+        select-NodeByPath -Path ([Environment]::GetFolderPath("MyDocuments")) -treeView $treeView
+        #$result.value = ([Environment]::GetFolderPath("MyDocuments")) 
+        #$formFolders.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        #$formFolders.Close()
     })
+    $lpIcons.controls.add($pbxDocument,1,0)
 
     $pbxDownloads = New-Object System.Windows.Forms.pictureBox
-    $pbxDownloads.Location = New-Object System.Drawing.Point(115,13) 
     $pbxDownloads.Size = New-Object System.Drawing.Size(25,25)
     $pbxDownloads.SizeMode = 'StretchImage'
     $pbxDownloads.Image = get-Icon -iconNumber 122
-
     $pbxDownloads.add_Click({
         $result.value = ((New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path)
         $formFolders.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $formFolders.Close()
     })
+    $lpIcons.controls.add($pbxDownloads,2,0)
     
     $pbxDesktop = New-Object System.Windows.Forms.pictureBox
-    $pbxDesktop.Location = New-Object System.Drawing.Point(145,13) 
     $pbxDesktop.Size = New-Object System.Drawing.Size(25,25)
     $pbxDesktop.SizeMode = 'StretchImage'
     $pbxDesktop.Image = get-Icon -iconNumber 34
-
     $pbxDesktop.add_Click({
         $result.value = ([Environment]::GetFolderPath("Desktop"))
         $formFolders.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $formFolders.Close()
     })
+    $lpIcons.controls.add($pbxDesktop,3,0)
 
     $pbxTemp = New-Object System.Windows.Forms.pictureBox
-    $pbxTemp.Location = New-Object System.Drawing.Point(175,13) 
     $pbxTemp.Size = New-Object System.Drawing.Size(25,25)
     $pbxTemp.SizeMode = 'StretchImage'
     $pbxTemp.Image = get-Icon -iconNumber 35
-
     $pbxTemp.add_Click({
         $result.value = ($env:temp) 
         $formFolders.DialogResult = [System.Windows.Forms.DialogResult]::OK
         $formFolders.Close()
     })
+    $lpIcons.controls.add($pbxTemp,4,0)
    
-    $gbShortcuts.controls.addRange(@($cbDrives, $pbxDocument, $pbxDownloads, $pbxDesktop, $pbxTemp))
+    $gbShortcuts.Controls.Add($lpIcons)
+    $lpUpperMenu.Controls.Add($gbShortcuts,1,0)
     #endregion shortcut_buttons
-   
+    
+    $txtSearch = New-Object system.Windows.Forms.TextBox
+    $txtSearch.multiline = $false
+    $txtSearch.ReadOnly = $false
+    $txtSearch.MinimumSize = new-object System.Drawing.Size(300,20)
+    $txtSearch.AutoSize = $true
+    $txtSearch.Height = 20
+    $txtSearch.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 8)
+    $txtSearch.Location = new-object System.Drawing.Point(3,3)
+    $txtSearch.TabIndex = 2
+    $txtSearch.add_gotFocus({
+        $okButton.Enabled = $false
+    })
+
+    $txtSearch.add_KeyUp({
+        #param($sender,$e)
+        $searchTimer.start()
+    })
+
     #regular Tree View component - after loading
     $treeView = New-Object System.Windows.Forms.TreeView
     $treeView.Dock = 'Fill'
     $treeView.CheckBoxes = $false
     $treeView.Name = 'treeView'
     $treeView.TabIndex = 1
+    $treeview.add_beforeExpand({
+        param($sender, $e)
+        write-verbose "beforeExand: $($e.node.tag.name)"
+        $treeView.SelectedNode = $e.node
+    })
+    $treeview.add_afterSelect({
+        param($sender, $e)
+        write-verbose "afterSelect: $($e.node.tag.name)"
+        $okButton.Enabled = $true
+        #$e.node.Expand()
+        $loading.Show()
+        foreach($subNode in $e.node.Nodes) {
+            add-Nodes -node $subNode
+        }
+        $loading.Hide()
+        [System.windows.Forms.Application]::UseWaitCursor = $false
+        [System.windows.Forms.Application]::DoEvents()        
+        $formFolders.Focus()
+    })    
 
     #'shadow' Tree View component used during text search 
     $SearchTreeView = New-Object System.Windows.Forms.TreeView
@@ -1784,28 +1942,19 @@ function select-Directory {
     $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
     $formFolders.CancelButton = $cancelButton
     #endregion OKCANCEL
-    
-    $txtSearch = New-Object system.Windows.Forms.TextBox
-    $txtSearch.multiline = $false
-    $txtSearch.ReadOnly = $false
-    $txtSearch.MinimumSize = new-object System.Drawing.Size(300,20)
-    $txtSearch.Height = 20
-    $txtSearch.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 8)
-    $txtSearch.Location = new-object System.Drawing.Point(3,3)
-    $txtSearch.TabIndex = 2
 
     $mainTable = New-Object System.Windows.Forms.TableLayoutPanel
     $mainTable.AutoSize = $true
     $mainTable.ColumnCount = 2
     $mainTable.RowCount = 4
     $mainTable.Dock = "fill"
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,50)) )|out-null
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent,100)) )|out-null
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
+    [void]$mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,65)) )
+    [void]$mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )
+    [void]$mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent,100)) )
+    [void]$mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )
     
-    $mainTable.Controls.add($gbShortcuts,0,0)
-    $mainTable.SetColumnSpan($gbShortcuts,2)
+    $mainTable.Controls.add($lpUpperMenu,0,0)
+    $mainTable.SetColumnSpan($lpUpperMenu,2)
     $mainTable.controls.Add($txtSearch,1,0)
     $mainTable.SetColumnSpan($txtSearch,2)
     $mainTable.Controls.Add($treeView,2,0)
@@ -1855,14 +2004,6 @@ function select-Directory {
         $loading.dispose()
     })
 
-    $txtSearch.add_gotFocus({
-        $okButton.Enabled = $false
-    })
-
-    $txtSearch.add_KeyUp({
-        #param($sender,$e)
-        $searchTimer.start()
-    })
     $searchTimer.add_Tick({
         if($txtSearch.Text.Length -gt 1 -and ($mainTable.Controls|Where-Object name -eq 'treeView')) {
             $mainTable.Controls.Remove($treeView)
@@ -1893,26 +2034,6 @@ function select-Directory {
             
         }
         $searchTimer.stop()
-    })
-
-    $treeview.add_beforeExpand({
-        param($sender, $e)
-        write-verbose "beforeExand: $($e.node.tag.name)"
-        $treeView.SelectedNode = $e.node
-    })
-    $treeview.add_afterSelect({
-        param($sender, $e)
-        write-verbose "afterSelect: $($e.node.tag.name)"
-        $okButton.Enabled = $true
-        #$e.node.Expand()
-        $loading.Show()
-        foreach($subNode in $e.node.Nodes) {
-            add-Nodes -node $subNode
-        }
-        $loading.Hide()
-        [System.windows.Forms.Application]::UseWaitCursor = $false
-        [System.windows.Forms.Application]::DoEvents()        
-        $formFolders.Focus()
     })
     $SearchTreeView.add_afterSelect({
         $okButton.Enabled = $true
@@ -2196,108 +2317,17 @@ function select-ADObject {
     }
     $treeView.Name = 'treeView'
 
-    $treeViewImageList = new-object System.Windows.Forms.ImageList
-    $treeViewImageList.Images.Add( (get-Icon -iconNumber 4 -fileContaining 'imageres.dll') ) #0 folder
-    $treeViewImageList.Images.Add( (get-Icon -iconNumber 6 -fileContaining 'imageres.dll') ) #1 opened folder
-    $treeViewImageList.Images.Add( (get-Icon -iconNumber 104 -fileContaining 'imageres.dll') ) #2 computer
-    $treeViewImageList.Images.Add( (get-Icon -iconNumber 74 -fileContaining 'imageres.dll') ) #3 group
-    $treeViewImageList.Images.Add( (get-Icon -iconNumber 208 -fileContaining 'imageres.dll') ) #4 user
-    $treeViewImageList.Images.Add( (get-Icon -iconNumber 124 -fileContaining 'imageres.dll') ) #5 contact
-    $treeViewImageList.Images.Add( (get-Icon -iconNumber 63 -fileContaining 'imageres.dll') ) #6 other
+        $treeViewImageList = new-object System.Windows.Forms.ImageList
+        $treeViewImageList.Images.Add( (get-Icon -iconNumber 4 -fileContaining 'imageres.dll') ) #0 folder
+        $treeViewImageList.Images.Add( (get-Icon -iconNumber 6 -fileContaining 'imageres.dll') ) #1 opened folder
+        $treeViewImageList.Images.Add( (get-Icon -iconNumber 104 -fileContaining 'imageres.dll') ) #2 computer
+        $treeViewImageList.Images.Add( (get-Icon -iconNumber 74 -fileContaining 'imageres.dll') ) #3 group
+        $treeViewImageList.Images.Add( (get-Icon -iconNumber 208 -fileContaining 'imageres.dll') ) #4 user
+        $treeViewImageList.Images.Add( (get-Icon -iconNumber 124 -fileContaining 'imageres.dll') ) #5 contact
+        $treeViewImageList.Images.Add( (get-Icon -iconNumber 63 -fileContaining 'imageres.dll') ) #6 other
     $treeView.ImageList = $treeViewImageList
     $treeView.ImageIndex = 0
     $treeView.SelectedImageIndex = 1
-     
-    $rootNode = $treeView.Nodes.Add($startingOU)
-    $rootNode.Tag=[psobject]@{
-        distinguishedName = $startingOU
-        unfolded = $false
-        type = "root"
-    }
-    
-    $SearchTreeView = New-Object System.Windows.Forms.TreeView
-    $SearchTreeView.Dock = 'Fill'
-    if($multichoice.IsPresent) {
-        $SearchTreeView.CheckBoxes = $true
-    } else {
-        $SearchTreeView.CheckBoxes = $false
-    }
-    $SearchTreeView.name = 'SearchTreeView'
-     
-    $okButton = New-Object System.Windows.Forms.Button
-    $okButton.Size = New-Object System.Drawing.Size(75,23)
-    $okButton.Anchor = 'left'
-    $okButton.Text = "OK"
-    $okButton.Enabled = $false
-    $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    $Form.AcceptButton = $okButton
-    
-    $cancelButton = New-Object System.Windows.Forms.Button
-    $cancelButton.Size = New-Object System.Drawing.Size(75,23)
-    $cancelButton.anchor = 'right'
-    $cancelButton.Text = "Cancel"
-    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-    $Form.CancelButton = $cancelButton
-    
-    $txtSearch = New-Object system.Windows.Forms.TextBox
-    $txtSearch.multiline = $false
-    $txtSearch.ReadOnly = $false
-    $txtSearch.MinimumSize = new-object System.Drawing.Size(300,20)
-    $txtSearch.Height = 20
-    $txtSearch.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 8)
-    $txtSearch.Location = new-object System.Drawing.Point(3,3)
-
-    $mainTable = New-Object System.Windows.Forms.TableLayoutPanel
-    $mainTable.AutoSize = $true
-    $mainTable.ColumnCount = 2
-    $mainTable.RowCount = 3
-    $mainTable.Dock = "fill"
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent,100)) )|out-null
-    $mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )|out-null
-    
-    $mainTable.controls.Add($txtSearch,0,0)
-    $mainTable.SetColumnSpan($txtSearch,2)
-    $mainTable.Controls.Add($treeView,1,0)
-    $mainTable.SetColumnSpan($treeView,2)
-    $mainTable.Controls.add($okButton,2,0)
-    $mainTable.Controls.add($cancelButton,2,1)
-    
-    $form.Controls.Add($mainTable)
-    #endregion FORM
-
-    #region FORM_FUNCTIONS
-    $txtSearch.add_KeyUp({
-        #param($sender,$e)
-        if($txtSearch.Text.Length -gt 1 -and ($mainTable.Controls|Where-Object name -eq 'treeView')) {
-            $mainTable.Controls.Remove($treeView)
-            $mainTable.controls.add($searchTreeView,1,0)
-            $mainTable.SetColumnSpan($searchTreeView,2)
-            $form.Refresh()
-        } 
-        if($txtSearch.Text.Length -le 1) {
-            $mainTable.Controls.Remove($searchTreeView)
-            $mainTable.Controls.Add($treeView,1,0)
-            $form.Refresh()
-        }
-        if($txtSearch.Text.Length -gt 1) {
-            $searchTreeView.Nodes.Clear()
-            foreach($n in $NodeList) {
-                if($n.name -match $txtSearch.Text) {
-                    $searchTreeView.Nodes.Add($n.distinguishedName)
-                }
-            }
-        }
-    })
-    $txtSearch.add_gotFocus({
-        $okButton.Enabled = $false
-    })    
-    $SearchTreeView.add_afterSelect({
-        $okButton.Enabled = $true
-    })    
-    $SearchTreeView.add_afterCheck({
-        $okButton.Enabled = $true
-    })    
 
     $treeview.add_afterSelect({
         param($sender,$e)
@@ -2347,9 +2377,99 @@ function select-ADObject {
         [System.Windows.Forms.Application]::UseWaitCursor=$false
         [System.Windows.Forms.Cursor]::Current = 'Default'
     })
-    #endregion FORM_FUNCTIONS
+     
+    $rootNode = $treeView.Nodes.Add($startingOU)
+    $rootNode.Tag=[psobject]@{
+        distinguishedName = $startingOU
+        unfolded = $false
+        type = "root"
+    }
+    
+    $SearchTreeView = New-Object System.Windows.Forms.TreeView
+    $SearchTreeView.Dock = 'Fill'
+    if($multichoice.IsPresent) {
+        $SearchTreeView.CheckBoxes = $true
+    } else {
+        $SearchTreeView.CheckBoxes = $false
+    }
+    $SearchTreeView.name = 'SearchTreeView'
+     
+    $SearchTreeView.add_afterSelect({
+        $okButton.Enabled = $true
+    })    
+    $SearchTreeView.add_afterCheck({
+        $okButton.Enabled = $true
+    })    
+    
+    $txtSearch = New-Object system.Windows.Forms.TextBox
+    $txtSearch.multiline = $false
+    $txtSearch.ReadOnly = $false
+    $txtSearch.MinimumSize = new-object System.Drawing.Size(300,20)
+    $txtSearch.Height = 20
+    $txtSearch.Font = New-Object System.Drawing.Font('Microsoft Sans Serif', 8)
+    $txtSearch.Location = new-object System.Drawing.Point(3,3)
+    $txtSearch.add_KeyUp({
+        #param($sender,$e)
+        if($txtSearch.Text.Length -gt 1 -and ($mainTable.Controls|Where-Object name -eq 'treeView')) {
+            $mainTable.Controls.Remove($treeView)
+            $mainTable.controls.add($searchTreeView,1,0)
+            $mainTable.SetColumnSpan($searchTreeView,2)
+            $form.Refresh()
+        } 
+        if($txtSearch.Text.Length -le 1) {
+            $mainTable.Controls.Remove($searchTreeView)
+            $mainTable.Controls.Add($treeView,1,0)
+            $form.Refresh()
+        }
+        if($txtSearch.Text.Length -gt 1) {
+            $searchTreeView.Nodes.Clear()
+            foreach($n in $NodeList) {
+                if($n.name -match $txtSearch.Text) {
+                    $searchTreeView.Nodes.Add($n.distinguishedName)
+                }
+            }
+        }
+    })
+    $txtSearch.add_gotFocus({
+        $okButton.Enabled = $false
+    }) 
 
-    #region SCRIPT_BODY
+#region MAINFORM-END
+    $okButton = New-Object System.Windows.Forms.Button
+    $okButton.Size = New-Object System.Drawing.Size(75,23)
+    $okButton.Anchor = 'left'
+    $okButton.Text = "OK"
+    $okButton.Enabled = $false
+    $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $Form.AcceptButton = $okButton
+    
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Size = New-Object System.Drawing.Size(75,23)
+    $cancelButton.anchor = 'right'
+    $cancelButton.Text = "Cancel"
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $Form.CancelButton = $cancelButton
+
+    $mainTable = New-Object System.Windows.Forms.TableLayoutPanel
+    $mainTable.AutoSize = $true
+    $mainTable.ColumnCount = 2
+    $mainTable.RowCount = 3
+    $mainTable.Dock = "fill"
+    [void]$mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )
+    [void]$mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent,100)) )
+    [void]$mainTable.RowStyles.Add( (new-object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,30)) )
+    
+    $mainTable.controls.Add($txtSearch,0,0)
+    $mainTable.SetColumnSpan($txtSearch,2)
+    $mainTable.Controls.Add($treeView,1,0)
+    $mainTable.SetColumnSpan($treeView,2)
+    $mainTable.Controls.add($okButton,2,0)
+    $mainTable.Controls.add($cancelButton,2,1)
+    
+    $form.Controls.Add($mainTable)
+#endregion MAINFORM-END
+
+#region SCRIPT_BODY
     $COLLAPSING = $false
     $DEPTH = 1
     if($loadAll) {
@@ -2373,9 +2493,9 @@ function select-ADObject {
     $form.UseWaitCursor=$false
 
     $result = $Form.ShowDialog()
-    #endregion SCRIPT_BODY
+#endregion SCRIPT_BODY
 
-    #region results
+#region results
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         $currentView=($mainTable.controls|? name -match 'treeView')
         if($currentView.name -eq 'treeView') { #return from regular treeview
@@ -2414,6 +2534,7 @@ function select-ADObject {
         break
     } 
     return $false
+#endregion results
  
 }
 
@@ -2563,12 +2684,16 @@ function connect-Azure {
     .SYNOPSIS
         quick Azure connection check by verifying AzContext.
     .DESCRIPTION
-        there is no session to Azure and Az commandlets are using saved AzContext and token. when 
+        there is no life session to Azure. Az commandlets are using saved AzContext and token. when 
         token expires, context is returned, but connection attemt will return error. to clean it up
         - best is to clear context and exforce re-authentication.
 
         function is checking azcontext and test connection by calling get-AzTenant. clears context if 
         connection is broken.
+    .EXAMPLE
+        connect-Azure
+
+        checks AzContext and connection health
     .EXAMPLE
         connect-Azure
 
@@ -2581,8 +2706,9 @@ function connect-Azure {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210302
+        version 241110
             last changes
+            - 241110 Environments
             - 210302 fix to expired token - PSMessageDetail is not populated on many OSes. why? 
             - 210301 proper detection of expired tokens
             - 210220 proper handiling of consonle call - return instead of exit
@@ -2591,9 +2717,21 @@ function connect-Azure {
     
         #TO|DO
     #>
-    
+    [CmdletBinding()]
+    param (
+        #Provide cloud type 
+        [Parameter(mandatory=$false,position=0)]
+        [validateSet('AzureCloud','AzureChinaCloud','AzureUSGovernment')]
+            [string]$Environment = 'AzureCloud',
+        #confirm the connection
+        [Parameter(mandatory=$false,position=1)]
+            [switch]$Confirm
+        
+    )
+    Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
+
     try {
-        $AzSourceContext=Get-AzContext
+        $AzSourceContext = Get-AzContext
     } catch {
         write-log $_.exception -type error
         write-log "trying to fix" -type info
@@ -2601,18 +2739,29 @@ function connect-Azure {
     }
     if([string]::IsNullOrEmpty( $AzSourceContext ) ) {
         write-log "you need to be connected before running this script. use connect-AzAccount first." -type warning
-        $AzSourceContext = Connect-AzAccount -ErrorAction SilentlyContinue
+        $AzSourceContext = Connect-AzAccount -Environment $Environment -ErrorAction SilentlyContinue
         if([string]::isNullOrEmpty($AzSourceContext) ) {
+            write-log "cancelled"
             if( (Get-PSCallStack).count -gt 2 ) { #run from script
-                write-log "cancelled"
                 exit
             } else { #run from console  
-                write-log "cancelled"
                 return $null
             }          
         }
         $AzSourceContext = Get-AzContext
-    } else { #token exist, check if it is still working
+    } else { 
+        #1. check if context is from a proper Cloud Environment
+        if($AzSourceContext.Environment.Name -ne $Environment) {
+            write-Log -message "different Cloud environment connected: $($AzSourceContext.Environment.Name); requested: $Environment." -type error
+            Clear-AzContext -Force
+            write-log "re-run the script."
+            if( (Get-PSCallStack).count -gt 2 ) { #run from script
+                exit
+            } else { #run from console  
+                return $null
+            }
+        }
+        #2. token exist, check if it is still working
         try{
             #if access token has been revoked, Az commands return warning "Unable to acquire token for tenant"
             Get-AzSubscription -WarningAction stop|Out-Null
@@ -2638,7 +2787,14 @@ function connect-Azure {
     write-host -foreground Yellow "$($AzSourceContext.Subscription.name)"
     write-host "  connected as: " -noNewLine 
     write-host -foreground Yellow "$($AzSourceContext.account.id)"
-    Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
+    if($Confirm.IsPresent) {
+        write-log "Is that a correct account? (press 'y' to continue)" -type warning -skipTimestamp
+        $keyPress = [console]::ReadKey($true)
+        if ($keyPress.KeyChar -ne 'y') {
+            Write-log "wrong account. disconnecting." -type warning
+            exit -1
+        }        
+    }
 }
 
 Export-ModuleMember -Function * -Alias 'load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS'
