@@ -30,7 +30,7 @@
     #TO|DO
     - resultpagesize - not managed. for now only for environments under 2k objects
 #>
-#requires -module ActiveDirectory -RunAsAdministrator
+#requires -module ActiveDirectory
 [CmdletBinding()]
 param (
     #Parameter description
@@ -42,6 +42,14 @@ param (
         [int]$DaysInactive = 0 #by default make a full report   
 )
 $VerbosePreference = 'Continue'
+
+#check for admin priviledges. there is this strange bug [or feature (; ] that if you run console without
+#admin, some account do report 'enabled' attribute, some are not. so it's suggested to run as admin.
+$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if(-not $isAdmin) {
+    Write-Warning "It's recommended to run script as administrator for full attribute visibility"
+}
+
 Write-Verbose "searching '$objectType' objects inactive for $DaysInactive days"
 
 #http://www.selfadsi.org/ads-attributes/user-userAccountControl.htm

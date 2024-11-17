@@ -9,9 +9,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 241029
+    version 241114
     changes
-        - 241029 1.3.34
+        - 241114 major changes and fixes to the load-CSV [1.3.35]
+        - 241029 [1.3.34]
         - 241007 CSV2XLS fixes and -open switch
         - 220523 silent mode for CSV/XLS, default message for get-valueFromInputBox
         - 220423 updates to select-directory
@@ -521,21 +522,62 @@ function import-structuredCSV {
         loads CSV file with header check and auto delimiter detection 
     .DESCRIPTION
         support function to gather data from CSV file with ability to ensure it is correct CSV file by
-        enumerating header. if you operate on data you need to ensure that it is CORRECT file, and not some
-        random CSV. extremally usuful in the projects when you use xls/csv as data providers and need to ensure
-        that you stick to the standard column names.
-        with non-critical header function allows to add missing columns.
+        enumerating header. 
+        if you operate on data you need to ensure that it is CORRECT file, and not some random CSV. 
+        extremally usuful in the projects when you use xls/csv as data providers and need to ensure
+        that you stick to the standard column names. You have an ability to force adding columns when only 
+        several are obligatory and others are not (default) or define string checking making entire header 
+        structure critical.
+
+        additionally you can manipulate parameter names during the import by adding prefix and suffix to 
+        parameter names - e.g. you import CSV with columns 'username' and 'activity' but want to have
+        'AD_username' and 'AD_actitivity' for easier recognition. 
+
     .EXAMPLE
-        $inputCSV = "c:\temp\mydata.csv"
-        $header=@('column1','column2')
+        $data = load-csv c:\temp\ADUserActivity.csv
+
+        imports CSV, automatically detecting delimiter 
+
+    .EXAMPLE
+        $inputCSV = "c:\temp\ADUserActivity.csv"
+        $header=@('username','activity')
         $data = load-CSV -header $header -headerIsCritical -delimiter ';' -inputCSV $inputCSV
+
+        above code will load CSV expecting minimum of 'username' and 'activity' columns to be present 
+        (there might be more). 
+        since 'headerIsCritical' flag is added, script will terminate if any of 
+        these columns is missing.
+        delimiter enforces semicolon as CSV delimiter.
+        
+    .EXAMPLE
+        $inputCSV = "c:\temp\ADUserActivity.csv"
+        $header=@('username','activity')
+        $data = load-CSV -header $header -inputCSV $inputCSV -prefix 'AD_'
+
+        above code will import CSV while ensuring that columns 'username' and 'activity' exist. If any 
+        of the column is not found in the CSV, script will ask what to do - add them, terminate or 
+        simply continue.
+        imported data columns/attribute names will be prefixed with 'AD_' - here 'AD_username' and 
+        'AD_activity'.
+        delimiter is detected automatically.
+        
+    .EXAMPLE
+        $inputCSV = "c:\temp\ADUserActivity.csv"
+        $header=@('AD_username','AD_activity')
+        $data = load-CSV -header $header -inputCSV $inputCSV -transformation @{'username' = 'AD_UserName';'password' = 'AD_Password'}
+
+        above code will import CSV while ensuring that columns 'AD_username' and 'AD_activity' are present
+        but not in CSV but AFTER TRANSFORMATION. transformation is processed PRELOADING - beafore header is checked
         
     .LINK
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 210523
+        version 221114
             last changes
+            - 221114 transformation table for column names
+            - 221113 fixes to PS7 - isPresent doesn't work on non-switch parametrs, encoding 
+            - 221112 attribute prefix/suffix while loading
             - 210523 silent mode
             - 210421 exit/return/break tuning
             - 210317 delimiter detection as function
@@ -544,14 +586,12 @@ function import-structuredCSV {
             - 210219 initialized
     
         #TO|DO
-        - add nonCritical header + crit header handling
-        - silent mode
     #>
     param(
         #path to CSV file containing data
         [parameter(mandatory=$true,position=0)]
             [string]$inputCSV,
-        #expected header
+        #expected header to check if this is the CSV you're actually expecting
         [parameter(mandatory=$false,position=1)]
             [string[]]$header,
         #this flag causes exit on load if any column is missing. 
@@ -560,10 +600,24 @@ function import-structuredCSV {
         #CSV delimiter if different then regional settings. auto - tries to detect between comma and semicolon. uses comma if failed.
         [parameter(mandatory=$false,position=3)]
             [string]$delimiter='auto',
-        #silent - no output on screen. my script are in always-verbose logic, so this is opposite to regular PS 
-        [Parameter(mandatory=$false,position=4)]
+        #CSV encoding - deafult vlaue of ansi is breaking diactritics. here UTF8 is chosen, but for Azure outputs it's recommended to use 
+        [parameter(mandatory=$false,position=4)]
+            [validateSet('ansi','ascii','bigendianunicode','bigendianutf32','oem','unicode','utf7','utf8','utf8BOM','utf8NoBOM','utf32')]
+            [string]$encoding='utf8',
+        #add prefix to all column names *after checking the CSV header*
+        [Parameter(mandatory=$false,position=5)]
+            [string]$prefix,
+        #add suffix to all column names *after checking the CSV header*
+        [Parameter(mandatory=$false,position=6)]
+            [string]$suffix,
+        #column name transformation table. transformation is proccessed *before checking the header*
+        [Parameter(mandatory=$false,position=7)]
+            [hashtable]$transformationTable,
+        #silent - no output on screen. my script are in always-verbose logic, so this is opposite to regular PS, 'silent' allows to disable output  
+        [Parameter(mandatory=$false,position=8)]
             [switch]$silent
     )
+
     if($silent.IsPresent) {
         $PSDefaultParameterValues=@{"write-log:silent"=$true}
     }
@@ -573,50 +627,91 @@ function import-structuredCSV {
         return
     }
 
-    if($delimiter='auto') {
-        $delimiter=get-CSVDelimiter -inputCSV $inputCSV
+    if($delimiter -eq 'auto') {
+        $delimiter = get-CSVDelimiter -inputCSV $inputCSV
         if($null -eq $delimiter) {
             return
         }
     }
 
     try {
-        $CSVData=import-csv -path "$inputCSV" -delimiter $delimiter -Encoding UTF8
+        $CSVData = import-csv -path "$inputCSV" -delimiter $delimiter -Encoding $encoding
     } catch {
         Write-log "not able to import $inputCSV. $($_.exception)" -type error 
         return
     }
 
-    $csvHeader=$CSVData|get-Member -MemberType NoteProperty|select-object -ExpandProperty Name
-    $hmiss=@()
-    foreach($el in $header) {
-        if($csvHeader -notcontains $el) {
-            Write-log """$el"" column missing in imported csv" -type warning
-            $hmiss+=$el
-        }
-    }
-    if($hmiss) {
-        if($headerIsCritical) {
-            Write-log "Wrong CSV header. check delimiter used. quitting." -type error
-            return
-        }
-        $ans=Read-Host -Prompt "some columns are missing. type 'add' to add them, 'c' to continue or anything else to cancel"
-        switch($ans) {
-            'add' {
-                foreach($newCol in $hmiss) {
-                    $CSVData|add-member  -MemberType NoteProperty -Name $newCol -value ''
+#region tranformation
+    if($transformationTable) {
+        $CSVData | ForEach-Object {
+            foreach($propertyName in ( ($_.psobject.Properties | ? memberType -eq 'NoteProperty')).name )  {
+                if($transformationTable.ContainsKey($propertyName) ) {
+                    $_ | Add-Member -MemberType NoteProperty -Name $transformationTable[$propertyName] -Value $_.$propertyName
+                    $_.PSObject.Properties.Remove($propertyName)
                 }
-                write-log "header extended" -type info
+            } 
+        }
+    }    
+#endregion transformation
+
+#region header check
+    if($null -ne $header) {
+        $csvHeader = $CSVData | get-Member -MemberType NoteProperty | select-object -ExpandProperty Name
+        $hmiss = @()
+        foreach($el in $header) {
+            if($csvHeader -notcontains $el) {
+                Write-log """$el"" column missing in imported csv" -type warning
+                $hmiss += $el
             }
-            'c' {
-                write-log "continuing without header change" -type info
-            }
-            default {
-                write-log "cancelled. exitting." -type info
+        }
+        if($hmiss) {
+            if($headerIsCritical) {
+                Write-log "Wrong CSV header. check delimiter used. quitting." -type error
                 return
             }
+            $ans = Read-Host -Prompt "some columns are missing. type 'add' to add them, 'c' to continue or anything else to cancel"
+            switch($ans) {
+                'add' {
+                    foreach($newCol in $hmiss) {
+                        write-host "adding $newCol"
+                        $CSVData | add-member  -MemberType NoteProperty -Name $newCol -value ''
+                    }
+                    write-log "header extended" -type info
+                }
+                'c' {
+                    write-log "continuing without header change" -type info
+                }
+                default {
+                    write-log "cancelled. exitting." -type info
+                    return
+                }
+            }
         }
     }
+#endregion header check
+
+#region addPrefix
+    if(-not [string]::isNullOrEmpty($prefix)) {
+        $CSVData | ForEach-Object {
+            foreach($propertyName in ( ($_.psobject.Properties | ? memberType -eq 'NoteProperty')).name )  {
+                $_ | Add-Member -MemberType NoteProperty -Name "$prefix$propertyName" -Value $_.$propertyName
+                $_.PSObject.Properties.Remove($propertyName)
+            } 
+        }
+    }
+#endregion addPrefix
+
+#region addSuffix
+    if(-not [string]::isNullOrEmpty($suffix)) {
+        $CSVData | ForEach-Object {
+            foreach($propertyName in ( ($_.psobject.Properties | ? memberType -eq 'NoteProperty')).name )  {
+                $_ | Add-Member -MemberType NoteProperty -Name "$propertyName$suffix" -Value $_.$propertyName
+                $_.PSObject.Properties.Remove($propertyName)
+            } 
+        }
+    }
+#endregion addSuffix
+
     return $CSVData
 }
 set-alias -Name load-CSV -Value import-structuredCSV
