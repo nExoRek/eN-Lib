@@ -261,6 +261,7 @@ $exportCSVFile = "CombinedReport-{0}.csv" -f (get-date -Format "yyMMdd-hhmm")
 #report should always have all the fields - metafile should be a static schema
 $metaverseUserInfo = @{}
 
+#region reading inputs
 Write-log "loading CSV files.." -type info
 $reports = 0
 if($inputCSVEntraID) {
@@ -268,6 +269,9 @@ if($inputCSVEntraID) {
         -header @('id','displayname','givenname','surname','accountenabled','userprincipalname','mail','userType','Hybrid','givenname','surname','userprincipalname','userType','mail','daysInactive') `
         -headerIsCritical
     $reports++
+    if([string]::isNullOrEmpty($EntraIDData)) {
+        exit
+    }
 }
 if($inputCSVAD) {
     $ADData = load-CSV $inputCSVAD `
@@ -275,6 +279,9 @@ if($inputCSVAD) {
         -headerIsCritical `
         -prefix 'AD_'
     $reports++
+    if([string]::isNullOrEmpty($ADData)) {
+        exit
+    }
 }
 if($inputCSVEXO) {
     $EXOData = load-CSV $inputCSVEXO `
@@ -282,11 +289,15 @@ if($inputCSVEXO) {
         -headerIsCritical `
         -prefix 'EXO_'
     $reports++
+    if([string]::isNullOrEmpty($EXOData)) {
+        exit
+    }
 }
 if($reports -lt 2) {
     Write-Log "at least two reports are required for merge" -type error
     return
 }
+#endregion
 
 #start from populating EntraID
 if($EntraIDData) {
@@ -309,24 +320,18 @@ if($ADData) {
                 displayName       = $ADuser."AD_displayName"
                 mail              = $ADuser."AD_mail"
             }
-            if($entraFound.count -gt 1) {
-                #change behaviour - it's normal that there will be multiple matches script should show propositions to choose from
-                write-verbose "duplicate found"
-                Write-Verbose $entraFound
-                continue
+            #match may be on several attributes for the same object or for several different objects (mvIDs)
+            #so I'm checking how many unique IDs are found
+            if(($entraFound | Select-Object mvID -Unique).count -gt 1) {
+                write-verbose "duplicate found it will be treated as non-match."
             } 
-            if($entraFound.count -eq 1) {
-                foreach($propertyName in ( ($entraFound[0].psobject.Properties | ? memberType -eq 'NoteProperty')).name )  {
-                    if($null -ne $entraFound[0].$propertyName) {
-                        $ADUser.$propertyName = $entraFound[0].$propertyName
-                    }
-                } 
-                #$entraFound."AD_daysInactive" = 23000 
+
+            #$entraFound."AD_daysInactive" = 23000 
+            if(($entraFound | Select-Object mvID -Unique).count -eq 1) { 
+                $matchedEID = $true
                 Write-verbose 'matched-adding'
                 Update-MetaverseData -mv $metaverseUserInfo -dataSource $ADuser -objectID $entraFound[0].mvID
-                $matchedEID = $true
             }
-
         }
         if(-not $matchedEID) {
             Write-verbose 'non-ad-adding'
