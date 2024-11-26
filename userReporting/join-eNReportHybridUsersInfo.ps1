@@ -54,8 +54,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 241112
+    version 241126
         last changes
+        - 241126 massive logic fixes. tested on 3 sources... still lots to be done but starting to work properly
         - 241112 whole logic changed - MetaVerse functions added and whole process is using MV to operate on data
         - 240718 initiated as a bigger project, extended with Exchange checking
         - 240627 add displayname as matching attribute. forceHybrid is for now default and parameter doesn't do anything
@@ -68,7 +69,7 @@
     * edge scenarios - eg. the same UPN on both sides, but account is not hybrid; maybe some other i did not expect?
     * change hybrid user detection / currently matching is ONLY in forced hybrid... which should not be the case
     * change time values to represent the same 'never' value
-    * 
+    
 #>
 #requires -module eNLib
 [CmdletBinding()]
@@ -169,7 +170,7 @@ function Search-MetaverseData {
         @{
             mvID = $mvKey
             elementProperty = $elementKey
-            elementValue = $element[$elementKey]
+            elementValue = $mvElement[$elementKey]
         }
     .LINK
         https://w-files.pl
@@ -214,9 +215,11 @@ function Search-MetaverseData {
 
     $foundMatches = @()
     foreach ($mvKey in $mv.Keys) {
-        $element = $mv[$mvKey]
+        $mvElement = $mv[$mvKey]
+
+        #NEED FIX FOR 'ANY' - no lookupTable exists
         foreach($lookupColumn in $lookupTable.Keys) {
-            if(-not $element.ContainsKey($lookupColumn)) { #key exists check
+            if(-not $mvElement.ContainsKey($lookupColumn)) { #key exists check
                 #TODO ADD SOME warning - verbose option
                 continue
             } 
@@ -226,22 +229,22 @@ function Search-MetaverseData {
                 continue 
             }
             if($PSCmdlet.ParameterSetName -eq 'any') {
-                foreach($lookupColumn in ($element.psobject.Properties | ? memberType -eq 'NoteProperty').name) {
-                    if ($element[$lookupColumn] -match $lookupvalue) {
+                foreach($lookupMVColumn in ($mvElement.psobject.Properties | ? memberType -eq 'NoteProperty').name) {
+                    if ($mvElement[$lookupMVColumn] -match $lookupvalue) {
                         $returnedResult = @{
                             mvID = $mvKey
-                            elementProperty = $lookupColumn
-                            elementValue = $element[$lookupColumn]
+                            elementProperty = $lookupMVColumn
+                            elementValue = $mvElement[$lookupMVColumn]
                         }
                         [array]$foundMatches += $returnedResult
                     }
                 }
             } else {            
-                if ($element[$lookupColumn] -match $lookupvalue) {
+                if ($mvElement[$lookupColumn] -match $lookupvalue) {
                     $returnedResult = @{
                         mvID = $mvKey
                         elementProperty = $lookupColumn
-                        elementValue = $element[$lookupColumn]
+                        elementValue = $mvElement[$lookupColumn]
                     }
                     [array]$foundMatches += $returnedResult
                     #FIX - it should just add a mach, but do not allow to make a dupe. for now - first match exist
@@ -257,6 +260,9 @@ function Search-MetaverseData {
 
 #$VerbosePreference = 'Continue'
 $exportCSVFile = "CombinedReport-{0}.csv" -f (get-date -Format "yyMMdd-hhmm")
+$headerEntraID = @('id','displayname','givenname','surname','accountenabled','userprincipalname','mail','userType','Hybrid','givenname','surname','userprincipalname','userType','mail','daysInactive')
+$headerAD = @('samaccountname','userPrincipalName','enabled','givenName','surname','displayName','mail','description','daysInactive')
+$headerEXO =  @('RecipientType','RecipientTypeDetails','emails','WhenMailboxCreated','LastInteractionTime','LastUserActionTime','TotalItemSize','ExchangeObjectId')
 
 #report should always have all the fields - metafile should be a static schema
 $metaverseUserInfo = @{}
@@ -266,7 +272,7 @@ Write-log "loading CSV files.." -type info
 $reports = 0
 if($inputCSVEntraID) {
     $EntraIDData = load-CSV $inputCSVEntraID `
-        -header @('id','displayname','givenname','surname','accountenabled','userprincipalname','mail','userType','Hybrid','givenname','surname','userprincipalname','userType','mail','daysInactive') `
+        -header $headerEntraID `
         -headerIsCritical
     $reports++
     if([string]::isNullOrEmpty($EntraIDData)) {
@@ -275,7 +281,7 @@ if($inputCSVEntraID) {
 }
 if($inputCSVAD) {
     $ADData = load-CSV $inputCSVAD `
-        -header @('samaccountname','userPrincipalName','enabled','givenName','surname','displayName','mail','description','daysInactive') `
+        -header $headerAD `
         -headerIsCritical `
         -prefix 'AD_'
     $reports++
@@ -285,7 +291,7 @@ if($inputCSVAD) {
 }
 if($inputCSVEXO) {
     $EXOData = load-CSV $inputCSVEXO `
-        -header @('RecipientType','RecipientTypeDetails','emails','WhenMailboxCreated','LastInteractionTime','LastUserActionTime','TotalItemSize','ExchangeObjectId') `
+        -header $headerEXO `
         -headerIsCritical `
         -prefix 'EXO_'
     $reports++
@@ -343,18 +349,27 @@ if($ADData) {
 
 #EXO
 foreach($recipient in $EXOData) {
-    if($recipient.userPrincipalName) { #only mailboxes have UPNs
-        $metaverseUserInfo | ? userPrincipalName -eq $recipient.userPrincipalName | %{ #locate entry by UPN 
-            foreach($propertyName in ( ($recipient.psobject.Properties | ? memberType -eq 'NoteProperty')).name )  {
-                if($propertyName -notmatch 'userPrincipalName|Identity|DisplayName|FirstName|LastName|enabled') { #skip dupes
-                    $_."EXO_$propertyName" = $recipient.$propertyName
-                }
-            } 
+    $userFound = $false
+    if($recipient.EXO_userPrincipalName) { #only mailboxes have UPNs
+        [array]$exoFound = Search-MetaverseData -mv $metaverseUserInfo -lookupTable @{ 
+            userPrincipalName = $recipient."EXO_userPrincipalName"
+            AD_userPrincipalName = $recipient."EXO_userPrincipalName"
+        }
+        if($exoFound.Count -gt 0) {
+            $userFound = $true
+            if($exoFound.Count -gt 1) {
+                write-verbose "dupe records - unfinished handler"
+            }
+            Update-MetaverseData -mv $metaverseUserInfo -dataSource $recipient -objectID $exoFound[0].mvID
         } 
+    }
+    if(!$userFound) {
+        Add-MetaverseData -mv $metaverseUserInfo -dataSource $recipient
     }
 }
 
 #export all results, extending with Hybrid_daysInactive attribute being lower of the comparison between EID and AD
+#FIXME - build dynamically based on what was actually used...
 $metaverseUserInfo.Keys | %{ 
     $metaverseUserInfo[$_] |
         Select-Object "AD_samaccountname","AD_userPrincipalName","AD_enabled","AD_givenName","AD_surname","AD_displayName","AD_mail","AD_description","AD_lastLogonDate","AD_daysInactive","AD_PasswordLastSet","AD_distinguishedname","AD_parentOU",
