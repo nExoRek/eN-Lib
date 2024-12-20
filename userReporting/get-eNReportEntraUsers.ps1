@@ -181,7 +181,7 @@ if(!$skipConnect) {
     try {
         Disconnect-MgGraph -ErrorAction Stop
     } catch {
-        write-host 'testing error'
+        #write-host 'testing error'
         write-verbose $_.Exception
         $_.ErrorDetails
     }
@@ -204,7 +204,11 @@ if($ctx.Scopes -notcontains 'User.Read.All' -or $ctx.Scopes -notcontains 'AuditL
     throw "you need to connect using connect-mgGraph -Scopes User.Read.All,AuditLog.Read.All,Domain.Read.All","UserAuthenticationMethod.Read.All"
 } else {
 }
-$tenantDomain = (get-MgDomain|? isdefault).id
+try {
+    $tenantDomain = (get-MgDomain -ErrorAction Stop | ? isdefault).id
+} catch {
+    throw "error getting tenant information. $($_.Exception)"
+}
 $exportCSVFile = "EntraUsers-{0}-{1}.csv" -f $tenantDomain,(get-date -Format "yyMMdd-hhmm")
 [System.Collections.ArrayList]$userQuery = @('id','displayname','givenname','surname','accountenabled','userprincipalname','mail','signInActivity','userType','OnPremisesSyncEnabled')
 $AADP1 = $true

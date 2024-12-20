@@ -534,6 +534,8 @@ function get-CSVDelimiter {
     $delims=@(",",";","`t")
     $current = ','
     $maxCount = 0
+    #there is a problem if a header has a more columns and contains empty column on the end
+    #so when FL and SL are zeros - it should give a try to less obvious choice...
     foreach($delimiter in $delims) {
         $fl = $FirstLines[0].split($delimiter).Length - 1
         $sl = $FirstLines[1].split($delimiter).Length - 1

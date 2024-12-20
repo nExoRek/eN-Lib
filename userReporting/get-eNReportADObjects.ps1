@@ -45,6 +45,7 @@ $VerbosePreference = 'Continue'
 
 #check for admin priviledges. there is this strange bug [or feature (; ] that if you run console without
 #admin, some account do report 'enabled' attribute, some are not. so it's suggested to run as admin.
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 $isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if(-not $isAdmin) {
     Write-Warning "It's recommended to run script as administrator for full attribute visibility"

@@ -1,12 +1,20 @@
 <#
 .SYNOPSIS
-    draft script for Exchange stats - it will be part of several script gathering statistics about user accounts.
-    to be used for reporting - useful for migration or cleanup projects.
+    script for Exchange stats for reciepients and mailboxes. it is a part of a wider 'eNReport' package and may be used as a part of 
+    general account audit or separately.
+    script is useful for reporting supporting migration or cleanup projects.
 .DESCRIPTION
-    here be dragons
+    script by default is making all type of checks: finds actual user UPN, gets detailed mailbox statistics and checks for delegated permissions.
+    you can disable certain steps by using switches.
 .EXAMPLE
-    .\get-eNReportMailboxes.ps1
+    .\get-eNReportMailboxes.ps1 
 
+    by default it will ask you to authenticate with a web browser and then will get all mailboxes and recipient in the tenant and provide some basic stats.
+.EXAMPLE
+    .\get-eNReportMailboxes.ps1 -skipConnect -inputFile .\tmp_recipients.csv -skipUPNs -skipMbxStats -skipDelegations
+
+    this is a refresher for a chosen mailboxes from a previous run. it will skip connection to EXO using current session, load data from a file, skip UPN check, 
+    mailbox statistics and permissions check.
 .INPUTS
     None.
 .OUTPUTS
@@ -15,9 +23,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 240811
+    version 241220
         last changes
-        - added delegated permissions to understand shared mailboxes (and security check),
+        - 241220 cleanup option, a bit of description
+        - 240811 added delegated permissions to understand shared mailboxes (and security check),
             dived on steps, data refresh
             fixed mailbox type check
             other fixes
@@ -26,7 +35,6 @@
 
     #TO|DO
     * proper file description
-    * instead of pickUp - provide file name and work as a 'refresh' to update on particular steps
 #>
 #requires -Modules ExchangeOnlineManagement
 [CmdletBinding()]
@@ -45,7 +53,10 @@ param (
         [switch]$skipMbxStats,
     #skip delegation permissions
     [Parameter(mandatory=$false,position=4)]
-        [switch]$skipDelegations
+        [switch]$skipDelegations,
+    #do not remove partial tmp files (for debug)
+    [Parameter(mandatory=$false,position=5)]
+        [switch]$noCleanup
     
 )
 $VerbosePreference = 'Continue'
@@ -80,7 +91,7 @@ if($inputFile) {
 } else { #read from EXO
     write-log "getting general recipients stats..." -type info
     $recipients = get-recipient |
-        Select-Object Identity,userPrincipalName,enabled,DisplayName,FirstName,LastName,RecipientType,RecipientTypeDetails,`
+        Select-Object Identity,userPrincipalName,PrimarySmtpAddress,enabled,DisplayName,FirstName,LastName,RecipientType,RecipientTypeDetails,`
             @{L='emails';E={$_.EmailAddresses -join ';'}},delegations, `
             WhenMailboxCreated,LastInteractionTime,LastUserActionTime,TotalItemSize,ExchangeObjectId
     #save current step
@@ -151,9 +162,13 @@ if(!$skipDelegations) {
 #final results export
 $recipients | Sort-Object RecipientTypeDetails,identity | Export-Csv -nti -Encoding unicode -Path $outfile
 
-write-log "clean up..." -type info
-Remove-Item tmp_recipients.csv -ErrorAction SilentlyContinue
-Remove-Item tmp_UPNs.csv -ErrorAction SilentlyContinue
-Remove-Item tmp_mbxStats.csv -ErrorAction SilentlyContinue
+If(-not $noCleanup) {
+    write-log "clean up..." -type info
+    Remove-Item tmp_recipients.csv -ErrorAction SilentlyContinue
+    Remove-Item tmp_UPNs.csv -ErrorAction SilentlyContinue
+    Remove-Item tmp_mbxStats.csv -ErrorAction SilentlyContinue
+} else {
+    write-log "partial files kept. look for 'tmp_*.csv' files." -type info
+}
 
 write-log "$outfile written." -type ok

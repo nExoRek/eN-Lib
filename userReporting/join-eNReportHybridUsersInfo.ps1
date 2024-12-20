@@ -29,7 +29,7 @@
     UPN: givenname1.surname1@company.com
 
     it's very difficult to findout pairs to verify how to amend/fix user object. analysing is quite time extensive. 
-    this script allows you to create a unified view matchin on different attributes. you may create several reports
+    this script allows you to create a unified view matching on different attributes. you may create several reports
     (aka views) by matching by different attributes or 'any' match allowing to find matches on different attributes 
     - e.g. on example above AD.mail - match EntraID.UPN . 
 
@@ -54,8 +54,10 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 241126
+    version 241220
         last changes
+        - 241220 'any' fixed, lots of changes to matching and sorting, export only for chosen files... 
+        - 241210 mutliple fixes to output, daysinactive, dupe detection. dupes are still not matched entirely properly.. that will require some additional logic
         - 241126 massive logic fixes. tested on 3 sources... still lots to be done but starting to work properly
         - 241112 whole logic changed - MetaVerse functions added and whole process is using MV to operate on data
         - 240718 initiated as a bigger project, extended with Exchange checking
@@ -63,12 +65,17 @@
         - 240520 initialized
 
     #TO|DO
-    * BUILD SCHEMA - currently it's static
+    ** dups handling - this is difficult one, how to create a proper logic to match...
+    ** BUILD SCHEMA - currently it's static
       * ability to choose between static and dynamic schema... or simply intorduce 'views' known from DBs - output 
         should be a 'view' from entire MetaVerse while now it's the same
     * edge scenarios - eg. the same UPN on both sides, but account is not hybrid; maybe some other i did not expect?
     * change hybrid user detection / currently matching is ONLY in forced hybrid... which should not be the case
     * change time values to represent the same 'never' value
+    * what is 'identity' attribute? it's not being populated
+    *Idea so it works exactly like MV - all tables are kept separately until the very export. each table should be expanded with a reference column
+      pointing to an object from other table. then implement 'view' or 'export' that is creating one single file with different options
+      such as 'only matched', 'all', etc. 
     
 #>
 #requires -module eNLib
@@ -85,7 +92,7 @@ param (
         [string]$inputCSVEXO,
     #force match for non-hybrid users - low accuracy... key attribute to match the users, default userPrincipalName
     [Parameter(mandatory=$false,position=2)]
-        [validateSet('userPrincipalName','mail','displayName','all')]
+        [validateSet('userPrincipalName','mail','displayName','AD_userPrincipalName','AD_mail','AD_displayName','all')]
         [string]$matchBy = 'userPrincipalName'
 )
 
@@ -112,7 +119,7 @@ function Update-MetaverseData {
     foreach ($propertyName in ( ($dataSource.psobject.Properties | ? memberType -eq 'NoteProperty')).name) {
         $mv[$objectID][$propertyName] = $dataSource.$propertyName
     }
-    Write-Verbose "metaverse object $objectID has been updated"
+    Write-debug "metaverse object $objectID has been updated"
 }
 
 function Add-MetaverseData {
@@ -138,9 +145,9 @@ function Add-MetaverseData {
     $mv[$newID] = @{} #initialise a new entry
     #FIX change to externally defined object schema
     $newEntry = @{
-        "AD_samaccountname"="";"AD_userPrincipalName"="";"AD_enabled"="";"AD_givenName"="";"AD_surname"="";"AD_displayName"="";"AD_mail"="";"AD_description"="";"AD_lastLogonDate"="";"AD_daysInactive"="";"AD_PasswordLastSet"="";"AD_distinguishedname"="";"AD_parentOU"="";
-        "DisplayName"="";"UserType"="";"AccountEnabled"="";"GivenName"="";"Surname"="";"UserPrincipalName"="";"Mail"="";"MFAStatus"="";"Hybrid"="";"LastLogonDate"="";"LastNILogonDate"="";"licenses"="";"Id"="";"daysInactive"="";
-        "Identity"="";"EXO_DisplayName"="";"EXO_FirstName"="";"EXO_LastName"="";"EXO_RecipientType"="";"EXO_RecipientTypeDetails"="";"EXO_emails"="";"EXO_WhenMailboxCreated"="";"EXO_userPrincipalName"="";"EXO_enabled"="";"EXO_LastInteractionTime"="";"EXO_LastUserActionTime"="";"EXO_TotalItemSize"="";"EXO_ExchangeObjectId"=""    
+        "AD_samaccountname"="";"AD_userPrincipalName"="";"AD_enabled"="";"AD_givenName"="";"AD_surname"="";"AD_displayName"="";"AD_mail"="";"AD_description"="";"AD_lastLogonDate"="";"AD_daysInactive"=23000;"AD_PasswordLastSet"="";"AD_distinguishedname"="";"AD_parentOU"="";
+        "DisplayName"="";"UserType"="";"AccountEnabled"="";"GivenName"="";"Surname"="";"UserPrincipalName"="";"Mail"="";"MFAStatus"="";"Hybrid"="";"LastLogonDate"="";"LastNILogonDate"="";"licenses"="";"Id"="";"daysInactive"=23000;
+        "EXO_Identity"="";"EXO_DisplayName"="";"EXO_FirstName"="";"EXO_LastName"="";"EXO_RecipientType"="";"EXO_RecipientTypeDetails"="";"EXO_emails"="";"EXO_WhenMailboxCreated"="";"EXO_userPrincipalName"="";"EXO_enabled"="";"EXO_LastInteractionTime"="";"EXO_LastUserActionTime"="";"EXO_TotalItemSize"="";"EXO_ExchangeObjectId"=""    
     } 
     # prepare new entry rewriting object property values to hashtable 
     foreach ($propertyName in ( ($dataSource.psobject.Properties | ? memberType -eq 'NoteProperty')).name) {
@@ -149,7 +156,7 @@ function Add-MetaverseData {
         $newEntry.$propertyName = $dataSource.$propertyName
     }
     $mv[$newID] = $newEntry
-    Write-Verbose "metaverse object ID $newID has been added to MV table"
+    Write-debug "metaverse object ID $newID has been added to MV table"
 }
 
 # Function to search the metaverse for a specific key-value match
@@ -184,7 +191,6 @@ function Search-MetaverseData {
         - description
         - different types of varaibles [int/string]
         - lookup for substring and whole words
-        - currently using 'first match' - should return an array for numerous matches
     #>
     [CmdletBinding(DefaultParameterSetName = 'any')]
     param (
@@ -217,30 +223,29 @@ function Search-MetaverseData {
     foreach ($mvKey in $mv.Keys) {
         $mvElement = $mv[$mvKey]
 
-        #NEED FIX FOR 'ANY' - no lookupTable exists
-        foreach($lookupColumn in $lookupTable.Keys) {
-            if(-not $mvElement.ContainsKey($lookupColumn)) { #key exists check
-                #TODO ADD SOME warning - verbose option
-                continue
-            } 
-            $lookupValue = $lookupTable[$lookupColumn]
-            if([string]::isNullOrEmpty($lookupValue)) { #lookup value must not be null
-                #maybe some warning info here?
-                continue 
-            }
-            if($PSCmdlet.ParameterSetName -eq 'any') {
-                foreach($lookupMVColumn in ($mvElement.psobject.Properties | ? memberType -eq 'NoteProperty').name) {
-                    if ($mvElement[$lookupMVColumn] -match $lookupvalue) {
-                        $returnedResult = @{
-                            mvID = $mvKey
-                            elementProperty = $lookupMVColumn
-                            elementValue = $mvElement[$lookupMVColumn]
-                        }
-                        [array]$foundMatches += $returnedResult
+        if($PSCmdlet.ParameterSetName -eq 'any') {
+            foreach($lookupMVColumn in $mvElement.Keys) {
+                if ($mvElement[$lookupMVColumn] -eq $lookupvalue) {
+                    $returnedResult = @{
+                        mvID = $mvKey
+                        elementProperty = $lookupMVColumn
+                        elementValue = $mvElement[$lookupMVColumn]
                     }
+                    [array]$foundMatches += $returnedResult
                 }
-            } else {            
-                if ($mvElement[$lookupColumn] -match $lookupvalue) {
+            }
+        } else {            
+            foreach($lookupColumn in $lookupTable.Keys) {
+                if(-not $mvElement.ContainsKey($lookupColumn)) { #key exists check
+                    Write-Debug "WARNING. column not found: $lookupColumn"
+                    continue
+                } 
+                $lookupValue = $lookupTable[$lookupColumn]
+                if([string]::isNullOrEmpty($lookupValue)) { #lookup value must not be null
+                    #maybe some warning info here?
+                    continue 
+                }
+                if ($mvElement[$lookupColumn] -eq $lookupvalue) {
                     $returnedResult = @{
                         mvID = $mvKey
                         elementProperty = $lookupColumn
@@ -260,6 +265,7 @@ function Search-MetaverseData {
 
 #$VerbosePreference = 'Continue'
 $exportCSVFile = "CombinedReport-{0}.csv" -f (get-date -Format "yyMMdd-hhmm")
+#this headers are to enforce strict header check during import. it could be safely minimized leaving only part of the columns ... but then the final export will have empty values
 $headerEntraID = @('id','displayname','givenname','surname','accountenabled','userprincipalname','mail','userType','Hybrid','givenname','surname','userprincipalname','userType','mail','daysInactive')
 $headerAD = @('samaccountname','userPrincipalName','enabled','givenName','surname','displayName','mail','description','daysInactive')
 $headerEXO =  @('RecipientType','RecipientTypeDetails','emails','WhenMailboxCreated','LastInteractionTime','LastUserActionTime','TotalItemSize','ExchangeObjectId')
@@ -305,14 +311,16 @@ if($reports -lt 2) {
 }
 #endregion
 
-#start from populating EntraID
+#region start from populating EntraID
 if($EntraIDData) {
     Write-Verbose "filling EntraID user info..."
     foreach($entraIDEntry in $EntraIDData) {
         Add-MetaverseData -mv $metaverseUserInfo -dataSource $entraIDEntry
     }
 }
+#endregion
 
+#region populate AD data
 if($ADData) {
     Write-Verbose "adding AD user info..."
     foreach($ADuser in $ADData) {
@@ -329,25 +337,26 @@ if($ADData) {
             #match may be on several attributes for the same object or for several different objects (mvIDs)
             #so I'm checking how many unique IDs are found
             if(($entraFound | Select-Object mvID -Unique).count -gt 1) {
-                write-verbose "duplicate found it will be treated as non-match."
+                write-verbose "AD: $($entraFound[0].elementValue): duplicate found it will be treated as non-match."
             } 
 
             #$entraFound."AD_daysInactive" = 23000 
             if(($entraFound | Select-Object mvID -Unique).count -eq 1) { 
                 $matchedEID = $true
-                Write-verbose 'matched-adding'
+                Write-debug 'matched-adding'
                 Update-MetaverseData -mv $metaverseUserInfo -dataSource $ADuser -objectID $entraFound[0].mvID
             }
         }
         if(-not $matchedEID) {
-            Write-verbose 'non-ad-adding'
+            Write-debug 'non-ad-adding'
             Add-MetaverseData -mv $metaverseUserInfo -dataSource $ADuser
         }
     }
 }
+#endregion
 
-
-#EXO
+#region populate EXO data
+Write-Verbose "adding EXO mailboxes info..."
 foreach($recipient in $EXOData) {
     $userFound = $false
     if($recipient.EXO_userPrincipalName) { #only mailboxes have UPNs
@@ -358,7 +367,7 @@ foreach($recipient in $EXOData) {
         if($exoFound.Count -gt 0) {
             $userFound = $true
             if($exoFound.Count -gt 1) {
-                write-verbose "dupe records - unfinished handler"
+                write-verbose "EXO: $($exoFound[0].elementValue): duplicate records for EXO matching"
             }
             Update-MetaverseData -mv $metaverseUserInfo -dataSource $recipient -objectID $exoFound[0].mvID
         } 
@@ -367,17 +376,33 @@ foreach($recipient in $EXOData) {
         Add-MetaverseData -mv $metaverseUserInfo -dataSource $recipient
     }
 }
+#endregion
+
+#Search-MetaverseData -mv $metaverseUserInfo -columnName AD_userprincipalname -lookupValue 'warranty@ca.local' 
+Search-MetaverseData -mv $metaverseUserInfo -lookupValue 'warranty@ca.local' 
+
 
 #export all results, extending with Hybrid_daysInactive attribute being lower of the comparison between EID and AD
-#FIXME - build dynamically based on what was actually used...
+#select is enforced as I want the parameters provided in a given order
+$finalHeader = @()
+if($EntraIDData) { 
+    $finalHeader += @("DisplayName","UserType","AccountEnabled","GivenName","Surname","UserPrincipalName","Mail","MFAStatus","Hybrid","LastLogonDate","LastNILogonDate","licenses","Id","daysInactive") 
+}
+if($ADData) { 
+    $finalHeader += @("AD_samaccountname","AD_userPrincipalName","AD_enabled","AD_givenName","AD_surname","AD_displayName","AD_mail","AD_description","AD_lastLogonDate","AD_daysInactive","AD_PasswordLastSet","AD_distinguishedname","AD_parentOU")
+}
+if($EXOData) { 
+    $finalHeader += @("EXO_PrimarySMTPAddress","EXO_DisplayName","EXO_FirstName","EXO_LastName","EXO_RecipientType","EXO_RecipientTypeDetails","EXO_emails","EXO_WhenMailboxCreated","EXO_userPrincipalName","EXO_enabled","EXO_Identity","EXO_LastInteractionTime","EXO_LastUserActionTime","EXO_TotalItemSize","EXO_ExchangeObjectId")
+}
+
 $metaverseUserInfo.Keys | %{ 
     $metaverseUserInfo[$_] |
-        Select-Object "AD_samaccountname","AD_userPrincipalName","AD_enabled","AD_givenName","AD_surname","AD_displayName","AD_mail","AD_description","AD_lastLogonDate","AD_daysInactive","AD_PasswordLastSet","AD_distinguishedname","AD_parentOU",
-        "DisplayName","UserType","AccountEnabled","GivenName","Surname","UserPrincipalName","Mail","MFAStatus","Hybrid","LastLogonDate","LastNILogonDate","licenses","Id","daysInactive",
-        "Identity","EXO_DisplayName","EXO_FirstName","EXO_LastName","EXO_RecipientType","EXO_RecipientTypeDetails","EXO_emails","EXO_WhenMailboxCreated","EXO_userPrincipalName","EXO_enabled","EXO_LastInteractionTime","EXO_LastUserActionTime","EXO_TotalItemSize","EXO_ExchangeObjectId",@{L='Hybrid_daysInactive';E={($_.daysInactive,$_.AD_daysInactive|Measure-Object -Minimum).minimum}}
+        Select-Object $finalHeader |
+        Select-Object *,@{L='Hybrid_daysInactive';E={($_.daysInactive,$_.AD_daysInactive|Measure-Object -Minimum).minimum}} |
+        Sort-Object Hybrid_daysInactive,displayName,AD_displayName,EXO_DisplayName -Descending
  } | Export-Csv -Encoding unicode -NoTypeInformation $exportCSVFile
 
 Write-Log "merged report saved to '$exportCSVFile'." -type ok
 write-log "converting..."
-&(convert-CSV2XLS $exportCSVFile)
+&(convert-CSV2XLS $exportCSVFile -run)
 write-log "done." -type ok
