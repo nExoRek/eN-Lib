@@ -56,7 +56,7 @@
     nExoR ::))o-
     version 241223
         last changes
-        - 241223 matching for guest accounts
+        - 241223 matching for guest accounts, better AD-EID matching (dupes handling)
         - 241220 'any' fixed, lots of changes to matching and sorting, export only for chosen files... 
         - 241210 mutliple fixes to output, daysinactive, dupe detection. dupes are still not matched entirely properly.. that will require some additional logic
         - 241126 massive logic fixes. tested on 3 sources... still lots to be done but starting to work properly
@@ -101,7 +101,7 @@ param (
         [switch]$openOnConversion = $true
     
 )
-
+$VerbosePreference = 'Continue'
 # Function to update information from different data sources
 function Update-MetaverseData {
     param (
@@ -343,10 +343,17 @@ if($ADData) {
             #match may be on several attributes for the same object or for several different objects (mvIDs)
             #so I'm checking how many unique IDs are found
             if(($entraFound | Select-Object mvID -Unique).count -gt 1) {
-                write-verbose "AD: $($entraFound[0].elementValue): duplicate found it will be treated as non-match."
+                write-verbose "AD: $($entraFound[0].elementValue): duplicate found on $($entraFound.elementProperty -join ',') attributes."
+                if($entraFound|? elementproperty -eq 'userPrincipalName') { #difficult to choose, but UPN matching is imho the strongest. then mail. displyname is rather a 'soft match'
+                    $matchedEID = $true
+                    Update-MetaverseData -mv $metaverseUserInfo -dataSource $ADuser -objectID ($entraFound |? elementProperty -eq 'userPrincipalName').mvID
+                }elseif($entraFound|? elementproperty -eq 'mail') {
+                    #DUPE RISK
+                    $matchedEID = $true
+                    Update-MetaverseData -mv $metaverseUserInfo -dataSource $ADuser -objectID ($entraFound |? elementProperty -eq 'mail').mvID
+                }
             } 
 
-            #$entraFound."AD_daysInactive" = 23000 
             if(($entraFound | Select-Object mvID -Unique).count -eq 1) { 
                 $matchedEID = $true
                 Write-debug 'matched-adding'
