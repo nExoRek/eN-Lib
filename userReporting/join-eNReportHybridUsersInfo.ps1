@@ -54,8 +54,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 241220
+    version 241223
         last changes
+        - 241223 matching for guest accounts
         - 241220 'any' fixed, lots of changes to matching and sorting, export only for chosen files... 
         - 241210 mutliple fixes to output, daysinactive, dupe detection. dupes are still not matched entirely properly.. that will require some additional logic
         - 241126 massive logic fixes. tested on 3 sources... still lots to be done but starting to work properly
@@ -88,12 +89,17 @@ param (
     [Parameter(mandatory=$false,position=1)]
         [string]$inputCSVEntraID,
     #output file from Exchange Online 
-    [Parameter(mandatory=$false,position=3)]
+    [Parameter(mandatory=$false,position=2)]
         [string]$inputCSVEXO,
     #force match for non-hybrid users - low accuracy... key attribute to match the users, default userPrincipalName
-    [Parameter(mandatory=$false,position=2)]
+    [Parameter(mandatory=$false,position=3)]
         [validateSet('userPrincipalName','mail','displayName','AD_userPrincipalName','AD_mail','AD_displayName','all')]
-        [string]$matchBy = 'userPrincipalName'
+        [string]$matchBy = 'all',
+    #open file after conversion
+    [Parameter(mandatory=$false,position=4)]
+        [alias('run')]
+        [switch]$openOnConversion = $true
+    
 )
 
 # Function to update information from different data sources
@@ -359,28 +365,28 @@ if($ADData) {
 Write-Verbose "adding EXO mailboxes info..."
 foreach($recipient in $EXOData) {
     $userFound = $false
-    if($recipient.EXO_userPrincipalName) { #only mailboxes have UPNs
+#    if($recipient.EXO_userPrincipalName) { #only mailboxes have UPNs - user mailboxes
         [array]$exoFound = Search-MetaverseData -mv $metaverseUserInfo -lookupTable @{ 
-            userPrincipalName = $recipient."EXO_userPrincipalName"
-            AD_userPrincipalName = $recipient."EXO_userPrincipalName"
+            userPrincipalName = $recipient."EXO_userPrincipalName"      #regular user
+            mail = $recipient."EXO_PrimarySMTPAddress"                  #guest users
+            AD_userPrincipalName = $recipient."EXO_userPrincipalName"   #ad synced users
         }
         if($exoFound.Count -gt 0) {
             $userFound = $true
-            if($exoFound.Count -gt 1) {
+            if(($exoFound | Select-Object mvID -Unique).Count -gt 1) {
                 write-verbose "EXO: $($exoFound[0].elementValue): duplicate records for EXO matching"
             }
+            #in case duplicate was found - it will overwrite the first found entry - this must be improved
             Update-MetaverseData -mv $metaverseUserInfo -dataSource $recipient -objectID $exoFound[0].mvID
         } 
-    }
+#    } else { #match guest accounts
+
+#    }
     if(!$userFound) {
         Add-MetaverseData -mv $metaverseUserInfo -dataSource $recipient
     }
 }
 #endregion
-
-#Search-MetaverseData -mv $metaverseUserInfo -columnName AD_userprincipalname -lookupValue 'warranty@ca.local' 
-Search-MetaverseData -mv $metaverseUserInfo -lookupValue 'warranty@ca.local' 
-
 
 #export all results, extending with Hybrid_daysInactive attribute being lower of the comparison between EID and AD
 #select is enforced as I want the parameters provided in a given order
@@ -403,6 +409,12 @@ $metaverseUserInfo.Keys | %{
  } | Export-Csv -Encoding unicode -NoTypeInformation $exportCSVFile
 
 Write-Log "merged report saved to '$exportCSVFile'." -type ok
-write-log "converting..."
-&(convert-CSV2XLS $exportCSVFile -run)
+if($openOnConversion) {
+    $params = @{
+        CSVfileName = $exportCSVFile
+        openOnConversion = $true
+    }
+    write-log "converting..."
+    &(convert-CSV2XLS @params)
+}
 write-log "done." -type ok
