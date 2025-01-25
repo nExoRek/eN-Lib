@@ -190,7 +190,7 @@ if(!$skipConnect) {
     #"email" comes from get-mgDomain - and was double-requesting the authentication without this option
     #Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All","Domain.Read.All","email"
     try {
-        Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Domain.Read.All","email","UserAuthenticationMethod.Read.All"
+        Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile" -ErrorAction Stop
     } catch {
         throw "error connecting. $($_.Exception)"
         return
@@ -199,7 +199,6 @@ if(!$skipConnect) {
 Write-Verbose "getting connection info..."
 $ctx = Get-MgContext
 Write-Verbose "connected as '$($ctx.Account)'"
-#if($ctx.Scopes -notcontains 'User.Read.All' -or $ctx.Scopes -notcontains 'AuditLog.Read.All' -or $ctx.Scopes -notcontains 'Domain.Read.All' -or $ctx.Scopes -notcontains 'Directory.Read.All') {
 if($ctx.Scopes -notcontains 'User.Read.All' -or $ctx.Scopes -notcontains 'AuditLog.Read.All' -or $ctx.Scopes -notcontains 'Domain.Read.All' -or $ctx.Scopes -notcontains 'UserAuthenticationMethod.Read.All') {
     throw "you need to connect using connect-mgGraph -Scopes User.Read.All,AuditLog.Read.All,Domain.Read.All","UserAuthenticationMethod.Read.All"
 } else {

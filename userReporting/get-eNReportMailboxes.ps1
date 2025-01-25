@@ -75,7 +75,7 @@ if(!$skipConnect) {
 #get some domain information 
 $domain = (Get-AcceptedDomain|? Default -eq $true).domainName
 Write-log "connected to $domain" -type info
-$outfile = "mbxstats-$domain-$(get-date -Format "yyMMdd-hhmm").csv"
+$outfile = "mbxStats-$domain-$(get-date -Format "yyMMdd-hhmm").csv"
 
 #'Recipients' is much wider, providing additional object infomration, thus starting from a getting all 'emails' in the tenant
 #load from file...
@@ -92,7 +92,7 @@ if($inputFile) {
     write-log "getting general recipients stats..." -type info
     $recipients = get-recipient |
         Select-Object Identity,userPrincipalName,PrimarySmtpAddress,enabled,DisplayName,FirstName,LastName,RecipientType,RecipientTypeDetails,`
-            @{L='emails';E={$_.EmailAddresses -join ';'}},delegations, `
+            @{L='emails';E={$_.EmailAddresses -join ';'}},delegations, ForwardingAddress, ForwardingSmtpAddress, `
             WhenMailboxCreated,LastInteractionTime,LastUserActionTime,TotalItemSize,ExchangeObjectId
     #save current step
     $recipients | export-csv -nti -Encoding unicode tmp_recipients.csv
@@ -124,6 +124,8 @@ if(!$skipUPNs) {
         $mbx = Get-mailbox -identity $_.ExchangeObjectId
         $_.userPrincipalName = $mbx.userPrincipalName
         $_.enabled = -not $mbx.AccountDisabled
+        $_.ForwardingAddress = $mbx.ForwardingAddress
+        $_.ForwardingSmtpAddress = $mbx.ForwardingSmtpAddress
     }
     #save current step
     $recipients | export-csv -nti -Encoding unicode tmp_UPNs.csv

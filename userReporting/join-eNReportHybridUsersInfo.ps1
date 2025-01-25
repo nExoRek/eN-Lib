@@ -33,6 +33,12 @@
     (aka views) by matching by different attributes or 'any' match allowing to find matches on different attributes 
     - e.g. on example above AD.mail - match EntraID.UPN . 
 
+    MATCHING
+    EXO objects are easy to match as every recipient has an EID object so there is no confusion.
+    actual challenge is with matching AD and EID objects - especially when there is no actual hybrid sync. Users
+    may have duplicates, different names, parcial information etc. that is why the script is trying to use different 
+    set of attributes to find a match even if they are not really on sync.
+
     *****
     although other functions from the package are independed, this one is using eNLib. no one is going to use this
     script anyways, and it's so much easier for me to reuse these functions. actually I had to extend some lib functions
@@ -77,6 +83,8 @@
     *Idea so it works exactly like MV - all tables are kept separately until the very export. each table should be expanded with a reference column
       pointing to an object from other table. then implement 'view' or 'export' that is creating one single file with different options
       such as 'only matched', 'all', etc. 
+    * auto-fix UPN suffix for soft matching (domain.local to domain.com) - to enforce pseudo-hybrid matching
+    * some fileds are non-mandatory while executing - such as EXO delegations - but mandatory here. should allow for flexibility
     
 #>
 #requires -module eNLib
@@ -93,7 +101,7 @@ param (
         [string]$inputCSVEXO,
     #force match for non-hybrid users - low accuracy... key attribute to match the users, default userPrincipalName
     [Parameter(mandatory=$false,position=3)]
-        [validateSet('userPrincipalName','mail','displayName','AD_userPrincipalName','AD_mail','AD_displayName','all')]
+        [validateSet('userPrincipalName','mail','displayName','all','hybridOnly')]
         [string]$matchBy = 'all',
     #open file after conversion
     [Parameter(mandatory=$false,position=4)]
@@ -153,7 +161,7 @@ function Add-MetaverseData {
     $newEntry = @{
         "AD_samaccountname"="";"AD_userPrincipalName"="";"AD_enabled"="";"AD_givenName"="";"AD_surname"="";"AD_displayName"="";"AD_mail"="";"AD_description"="";"AD_lastLogonDate"="";"AD_daysInactive"=23000;"AD_PasswordLastSet"="";"AD_distinguishedname"="";"AD_parentOU"="";
         "DisplayName"="";"UserType"="";"AccountEnabled"="";"GivenName"="";"Surname"="";"UserPrincipalName"="";"Mail"="";"MFAStatus"="";"Hybrid"="";"LastLogonDate"="";"LastNILogonDate"="";"licenses"="";"Id"="";"daysInactive"=23000;
-        "EXO_Identity"="";"EXO_DisplayName"="";"EXO_FirstName"="";"EXO_LastName"="";"EXO_RecipientType"="";"EXO_RecipientTypeDetails"="";"EXO_emails"="";"EXO_WhenMailboxCreated"="";"EXO_userPrincipalName"="";"EXO_enabled"="";"EXO_LastInteractionTime"="";"EXO_LastUserActionTime"="";"EXO_TotalItemSize"="";"EXO_ExchangeObjectId"=""    
+        "EXO_Identity"="";"EXO_DisplayName"="";"EXO_FirstName"="";"EXO_LastName"="";"EXO_RecipientType"="";"EXO_RecipientTypeDetails"="";"EXO_emails"="";"EXO_WhenMailboxCreated"="";"EXO_userPrincipalName"="";"EXO_enabled"="";"EXO_delegations"="";"EXO_LastInteractionTime"="";"EXO_LastUserActionTime"="";"EXO_TotalItemSize"="";"EXO_ExchangeObjectId"=""
     } 
     # prepare new entry rewriting object property values to hashtable 
     foreach ($propertyName in ( ($dataSource.psobject.Properties | ? memberType -eq 'NoteProperty')).name) {
@@ -274,7 +282,7 @@ $exportCSVFile = "CombinedReport-{0}.csv" -f (get-date -Format "yyMMdd-hhmm")
 #this headers are to enforce strict header check during import. it could be safely minimized leaving only part of the columns ... but then the final export will have empty values
 $headerEntraID = @('id','displayname','givenname','surname','accountenabled','userprincipalname','mail','userType','Hybrid','givenname','surname','userprincipalname','userType','mail','daysInactive')
 $headerAD = @('samaccountname','userPrincipalName','enabled','givenName','surname','displayName','mail','description','daysInactive')
-$headerEXO =  @('RecipientType','RecipientTypeDetails','emails','WhenMailboxCreated','LastInteractionTime','LastUserActionTime','TotalItemSize','ExchangeObjectId')
+$headerEXO =  @('RecipientType','RecipientTypeDetails','emails','delegations','WhenMailboxCreated','LastInteractionTime','LastUserActionTime','TotalItemSize','ExchangeObjectId')
 
 #report should always have all the fields - metafile should be a static schema
 $metaverseUserInfo = @{}
@@ -333,9 +341,9 @@ if($ADData) {
         #check if user already exists from Entra source
         $matchedEID = $false
         if($EntraIDData) {
-            #$entraFound = Search-MetaverseData -mv $metaverseUserInfo -lookupValue $AD_ADuser."AD_$matchBy" -columnName $matchBy
+#if 'hybrid' flag - check onpremisessid to match 
+
             [array]$entraFound = Search-MetaverseData -mv $metaverseUserInfo -lookupTable @{ 
-                #$matchBy = $AD_ADuser."AD_$matchBy" 
                 userPrincipalName = $ADuser."AD_userPrincipalName"
                 displayName       = $ADuser."AD_displayName"
                 mail              = $ADuser."AD_mail"
@@ -344,11 +352,11 @@ if($ADData) {
             #so I'm checking how many unique IDs are found
             if(($entraFound | Select-Object mvID -Unique).count -gt 1) {
                 write-verbose "AD: $($entraFound[0].elementValue): duplicate found on $($entraFound.elementProperty -join ',') attributes."
-                if($entraFound|? elementproperty -eq 'userPrincipalName') { #difficult to choose, but UPN matching is imho the strongest. then mail. displyname is rather a 'soft match'
+                if($entraFound|? elementproperty -eq 'userPrincipalName') { #difficult to choose, but UPN matching is imho the strongest. then mail. displyname is rather a 'soft match'and may have many duplicates
                     $matchedEID = $true
                     Update-MetaverseData -mv $metaverseUserInfo -dataSource $ADuser -objectID ($entraFound |? elementProperty -eq 'userPrincipalName').mvID
-                }elseif($entraFound|? elementproperty -eq 'mail') {
-                    #DUPE RISK
+                }elseif($entraFound|? elementProperty -eq 'mail') {
+                    #DUPE RISK - with guest accounts
                     $matchedEID = $true
                     Update-MetaverseData -mv $metaverseUserInfo -dataSource $ADuser -objectID ($entraFound |? elementProperty -eq 'mail').mvID
                 }
@@ -405,7 +413,7 @@ if($ADData) {
     $finalHeader += @("AD_samaccountname","AD_userPrincipalName","AD_enabled","AD_givenName","AD_surname","AD_displayName","AD_mail","AD_description","AD_lastLogonDate","AD_daysInactive","AD_PasswordLastSet","AD_distinguishedname","AD_parentOU")
 }
 if($EXOData) { 
-    $finalHeader += @("EXO_PrimarySMTPAddress","EXO_DisplayName","EXO_FirstName","EXO_LastName","EXO_RecipientType","EXO_RecipientTypeDetails","EXO_emails","EXO_WhenMailboxCreated","EXO_userPrincipalName","EXO_enabled","EXO_Identity","EXO_LastInteractionTime","EXO_LastUserActionTime","EXO_TotalItemSize","EXO_ExchangeObjectId")
+    $finalHeader += @("EXO_PrimarySMTPAddress","EXO_DisplayName","EXO_FirstName","EXO_LastName","EXO_RecipientType","EXO_RecipientTypeDetails","EXO_emails","EXO_delegations","EXO_ForwardingAddress", "EXO_ForwardingSmtpAddress","EXO_WhenMailboxCreated","EXO_userPrincipalName","EXO_enabled","EXO_Identity","EXO_LastInteractionTime","EXO_LastUserActionTime","EXO_TotalItemSize","EXO_ExchangeObjectId")
 }
 
 $metaverseUserInfo.Keys | %{ 
