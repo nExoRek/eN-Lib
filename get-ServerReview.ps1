@@ -14,8 +14,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250108
+    version 250131
         last changes
+        - 250131 changed logging to unattended mode, sfc checks and disk checks changed, app and system logs splited
         - 250108 initialized
 
     #TO|DO
@@ -35,11 +36,12 @@ param (
         [switch]$noEventLogCheck
     
 )
+$VerbosePreference = 'Continue'
 $logList = @()
 $runDate = [string](Get-Date -Format yyMMddHHmm)
 
 if(-not $noDiskScan) {
-    write-host -ForegroundColor DarkGreen "STEP 1 - DISK CHECKS"
+    write-verbose "STEP 1 - DISK CHECKS"
 
     $volumes = Get-Volume|? {$_.drivetype -eq 'Fixed' -and $_.driveletter}
     $outFile = "c:\temp\{0}-{1}-diskChecks.log" -f $runDate,$Env:COMPUTERNAME
@@ -51,7 +53,7 @@ if(-not $noDiskScan) {
 } 
 
 if(-not $noSFC) {
-    write-host -ForegroundColor DarkGreen "STEP 2 - OS consistency check"
+    write-verbose "STEP 2 - OS consistency check"
     $outFile = "c:\temp\{0}-{1}-consistency.log" -f $runDate,$Env:COMPUTERNAME
     $logList += $outFile
     $scanResult = &sfc /scannow
@@ -64,7 +66,7 @@ if(-not $noSFC) {
 }
 
 if(-not $noEventLogCheck) {
-    write-host -ForegroundColor DarkGreen "STEP 3 - EventLog dump"
+    write-verbose "STEP 3 - EventLog dump"
     $days = 60
     # Calculate the start date (60 days ago)
     $startDate = (Get-Date).AddDays(-$days)
@@ -72,15 +74,19 @@ if(-not $noEventLogCheck) {
 
     # Get the event logs from the Application log
     # Filter for events with levels: Warning (2), Error (1), and Critical (0)
-    write-host "getting application logs for the last $days days"
-    $outFile = "C:\temp\{0}-{1}-EventLogs.csv" -f $runDate,$Env:COMPUTERNAME
+    write-verbose "getting application logs for the last $days days"
+    $outFile = "C:\temp\{0}-{1}-EventLogs-Application.csv" -f $runDate,$Env:COMPUTERNAME
     $logList += $outFile
     $eventLogs += Get-WinEvent -FilterHashtable @{ 
         LogName = "Application"
         StartTime =  $startDate
         Level = @(1, 2, 3)  # 1 = Error, 2 = Warning, 3 = Critical
     } | Select-Object LogName,TimeCreated, LevelDisplayName, Id, Message
-    write-host "getting system logs for the last $days days"
+    $eventLogs | Export-Csv -Path $outFile -NoTypeInformation -Force
+
+    $outFile = "C:\temp\{0}-{1}-EventLogs-System.csv" -f $runDate,$Env:COMPUTERNAME
+    $logList += $outFile
+    write-verbose "getting system logs for the last $days days"
     $eventLogs += Get-WinEvent -FilterHashtable @{ 
         LogName = "System"
         StartTime =  $startDate
@@ -91,6 +97,6 @@ if(-not $noEventLogCheck) {
     $eventLogs | Export-Csv -Path $outFile -NoTypeInformation -Force
 }
 
-Write-Host "logs exported:"
+write-verbose "logs exported:"
 $logList
-write-host -ForegroundColor Green "done"
+write-verbose "done"
