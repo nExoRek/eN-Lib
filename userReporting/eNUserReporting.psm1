@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Short description
+    set of function for auditing and reporting on accounts in AD, EID and EXO mailboxes. abilty to generate provileged users report,
+    merge data to have a big picture on the accounts for migrations, cleanups or regular audits.
 .DESCRIPTION
     here be dragons
 
@@ -8,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250125
+    version 250131
         last changes
+        - 250131 isAdmin for AD added... not sure if join function will handle it... 
         - 250125 initialized
 
     #TO|DO
@@ -294,8 +296,9 @@ function get-eNReportADObjects {
         http://www.selfadsi.org/ads-attributes/user-userAccountControl.htm
     .NOTES
         nExoR ::))o-
-        version 240718
+        version 250131
             last changes
+            - 250131 added isAdmin check - that required to also add 'memberOf' field.
             - 240718 initiated as a wider project eNReport
             - 240519 initialized
 
@@ -313,35 +316,6 @@ function get-eNReportADObjects {
             [int]$DaysInactive = 0 #by default make a full report   
     )
     $VerbosePreference = 'Continue'
-
-    $wellKnownAdminSids = @("S-1-5-32-547","S-1-5-32-553","S-1-5-32-577","S-1-5-32-544","S-1-5-32-582","S-1-5-32-560","S-1-5-32-581","S-1-5-32-551",`
-        "S-1-5-32-556","S-1-5-32-561","S-1-5-32-578","S-1-5-32-548","S-1-5-32-575","S-1-5-32-550","S-1-5-32-579","S-1-5-32-557","S-1-5-32-549","S-1-5-32-573","S-1-5-32-569","S-1-5-32-576",`
-        "$domainSID-498","$domainSID-512","$domainSID-516","$domainSID-517","$domainSID-518","$domainSID-519","$domainSID-520","$domainSID-521","$domainSID-522","$domainSID-525","$domainSID-526","$domainSID-527")
-    $dynamicAdminSIDgroups = @(
-        "DnsAdmins",
-            #EXCHANGE
-        "Organization Management",
-        "Recipient Management",
-        "View-Only Organization Management",
-        "Public Folder Management",
-        "UM Management",
-        "Help Desk",
-        "Records Management",
-        "Discovery Management",
-        "Server Management",
-        "Delegated Setup",
-        "Hygiene Management",
-        "Compliance Management",
-        "Security Reader",
-        "Security Administrator",
-        "Exchange Servers",
-        "Exchange Trusted Subsystem",
-        "Managed Availability Servers",
-        "Exchange Windows Permissions",
-        "ExchangeLegacyInterop",
-        "Exchange Install Domain Servers"
-    )
-
     #check for admin priviledges. there is this strange bug [or feature (; ] that if you run console without
     #admin, some account do report 'enabled' attribute, some are not. so it's suggested to run as admin.
     $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -349,6 +323,29 @@ function get-eNReportADObjects {
     if(-not $isAdmin) {
         Write-Warning "It's recommended to run script as administrator for full attribute visibility"
     }
+
+    #can't add requires as it would count for a whole module... I don't want that.
+    $ADmodulePresent =  get-module ActiveDirectory -ListAvailable
+    if($null -eq $ADmodulePresent) { 
+        Write-Error "ActiveDirectory module not present. please install RSAT tools. you sure it's DC?"
+        return
+    } 
+    try {
+        $domainSID = (Get-ADDomain).domainSID
+    } catch {
+        Write-Error "error getting domain SID. are you sure you're connected to the domain?"
+        return
+    }
+    $wellKnownAdminSids = @("S-1-5-32-547","S-1-5-32-553","S-1-5-32-577","S-1-5-32-544","S-1-5-32-582","S-1-5-32-560","S-1-5-32-581","S-1-5-32-551",`
+        "S-1-5-32-556","S-1-5-32-561","S-1-5-32-578","S-1-5-32-548","S-1-5-32-575","S-1-5-32-550","S-1-5-32-579","S-1-5-32-557","S-1-5-32-549","S-1-5-32-573","S-1-5-32-569","S-1-5-32-576",`
+        "$domainSID-498","$domainSID-512","$domainSID-516","$domainSID-517","$domainSID-518","$domainSID-519","$domainSID-520","$domainSID-521","$domainSID-522","$domainSID-525","$domainSID-526","$domainSID-527")
+    #these are dynamic, possible to query but too niche to make an effort. sorry.
+    $adminGroupNames = @("DnsAdmins","Organization Management","Recipient Management","View-Only Organization Management","Public Folder Management",`
+        "UM Management","Help Desk","Records Management","Discovery Management","Server Management","Delegated Setup","Hygiene Management","Compliance Management",`
+        "Security Reader","Security Administrator","Exchange Servers","Exchange Trusted Subsystem","Managed Availability Servers","Exchange Windows Permissions",`
+        "ExchangeLegacyInterop","Exchange Install Domain Servers"
+    )
+    foreach($sid in $wellKnownAdminSids) { $adminGroupNames += (Get-ADObject -Filter "ObjectSID -eq '$sid'").distinguishedname }
 
     Write-Verbose "searching '$objectType' objects inactive for $DaysInactive days"
 
@@ -360,26 +357,19 @@ function get-eNReportADObjects {
     [regex]$rxParentOU = 'CN=.*?,(.*$)'
     $exportCSVFile = "AD{0}s-{1}-{2}.csv" -f $objectType,(Get-ADDomain).DNSRoot,(get-date -Format "yyMMdd-hhmm")
 
-
     $DaysInactiveStr = (get-date).addDays(-$DaysInactive)
     if($objectType -eq 'User') {
         $ADObjects = get-ADuser `
             -Filter {(lastlogondate -notlike "*" -OR lastlogondate -le $DaysInactiveStr)} `
-            -Properties enabled,userPrincipalName,mail,distinguishedname,givenName,surname,samaccountname,displayName,description,lastLogonDate,PasswordLastSet
+            -Properties enabled,userPrincipalName,mail,distinguishedname,givenName,surname,samaccountname,displayName,description,lastLogonDate,PasswordLastSet,memberOf
         Write-Verbose "found $(($ADObjects|Measure-Object).count) objects"
         $ADObjects = $ADObjects | select-object samaccountname,userPrincipalName,enabled,givenName,surname,displayName,mail,description,`
             lastLogonDate,@{L='daysInactive';E={if($_.LastLogonDate) {$lld=$_.LastLogonDate} else {$lld="1/1/1970"} ;(New-TimeSpan -End (get-date) -Start $lld).Days}},PasswordLastSet,`
-            distinguishedname,@{L='parentOU';E={$rxParentOU.Match($_.distinguishedName).groups[1].value}}, @{L='isAdmin';E={$false}}
+            distinguishedname,@{L='parentOU';E={$rxParentOU.Match($_.distinguishedName).groups[1].value}}, @{L='isAdmin';E={$false}},@{L="memberOf";E={$_.memberOf -join ';'}}
         #add check if user belongs to any privileged group
         foreach($ADuser in $ADObjects) {
-            foreach($group in $wellKnownAdminSids.keys) {
-                if($ADuser.memberOf -contains $wellKnownAdminSids[$group]) {
-                    $ADuser.isAdmin = $true
-                    break
-                }
-            }
-            foreach($group in $dynamicAdminSIDgroups) {
-                if($ADuser.memberOf -contains $group) {
+            foreach($membership in ($ADuser.memberOf -split ';')) {
+                if($adminGroupNames -contains $membership) {
                     $ADuser.isAdmin = $true
                     break
                 }
