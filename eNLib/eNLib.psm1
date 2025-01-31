@@ -954,6 +954,8 @@ function convert-CSVtoXLS {
             - 201123 initialized
         
         TO|DO
+        * support for multiline entries in CSV
+        * when 'less then 2 lines' error occurs - it does't exit. fix.
     #>
     [CmdletBinding()]
     param (
@@ -1140,6 +1142,7 @@ function convert-CSVtoXLS {
     }
 }
 Set-Alias -Name convert-CSV2XLS -Value convert-CSVtoXLS
+Set-Alias -Name csv2xls -Value convert-CSVtoXLS
 function import-XLS {
     <#
     .SYNOPSIS

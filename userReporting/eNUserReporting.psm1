@@ -248,7 +248,13 @@ function get-eNEntraIDPrivilegedUsers {
         }
     } 
 
-    $sortedMemebersList = ($sortBy -eq 'Role') ? ($RoleMemebersList | Sort-Object RoleName) : ($RoleMemebersList | Select-Object userName,userID,enabled,RoleName,roleID | Sort-Object userName)
+    #unsupported in PS 5.1
+    #$sortedMemebersList = ($sortBy -eq 'Role') ? ($RoleMemebersList | Sort-Object RoleName) : ($RoleMemebersList | Select-Object userName,userID,enabled,RoleName,roleID | Sort-Object userName)
+    if($sortBy -eq 'Role') {
+        $sortedMemebersList = $RoleMemebersList | Sort-Object RoleName
+    } else {
+        $sortedMemebersList = $RoleMemebersList | Select-Object userName,userID,enabled,RoleName,roleID | Sort-Object userName
+    }
 
     $exportParam = @{
         NoTypeInformation = $true
@@ -308,6 +314,34 @@ function get-eNReportADObjects {
     )
     $VerbosePreference = 'Continue'
 
+    $wellKnownAdminSids = @("S-1-5-32-547","S-1-5-32-553","S-1-5-32-577","S-1-5-32-544","S-1-5-32-582","S-1-5-32-560","S-1-5-32-581","S-1-5-32-551",`
+        "S-1-5-32-556","S-1-5-32-561","S-1-5-32-578","S-1-5-32-548","S-1-5-32-575","S-1-5-32-550","S-1-5-32-579","S-1-5-32-557","S-1-5-32-549","S-1-5-32-573","S-1-5-32-569","S-1-5-32-576",`
+        "$domainSID-498","$domainSID-512","$domainSID-516","$domainSID-517","$domainSID-518","$domainSID-519","$domainSID-520","$domainSID-521","$domainSID-522","$domainSID-525","$domainSID-526","$domainSID-527")
+    $dynamicAdminSIDgroups = @(
+        "DnsAdmins",
+            #EXCHANGE
+        "Organization Management",
+        "Recipient Management",
+        "View-Only Organization Management",
+        "Public Folder Management",
+        "UM Management",
+        "Help Desk",
+        "Records Management",
+        "Discovery Management",
+        "Server Management",
+        "Delegated Setup",
+        "Hygiene Management",
+        "Compliance Management",
+        "Security Reader",
+        "Security Administrator",
+        "Exchange Servers",
+        "Exchange Trusted Subsystem",
+        "Managed Availability Servers",
+        "Exchange Windows Permissions",
+        "ExchangeLegacyInterop",
+        "Exchange Install Domain Servers"
+    )
+
     #check for admin priviledges. there is this strange bug [or feature (; ] that if you run console without
     #admin, some account do report 'enabled' attribute, some are not. so it's suggested to run as admin.
     $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -329,22 +363,36 @@ function get-eNReportADObjects {
 
     $DaysInactiveStr = (get-date).addDays(-$DaysInactive)
     if($objectType -eq 'User') {
-        $inactiveObjects = get-ADuser `
+        $ADObjects = get-ADuser `
             -Filter {(lastlogondate -notlike "*" -OR lastlogondate -le $DaysInactiveStr)} `
             -Properties enabled,userPrincipalName,mail,distinguishedname,givenName,surname,samaccountname,displayName,description,lastLogonDate,PasswordLastSet
-        Write-Verbose "found $(($inactiveObjects|Measure-Object).count) objects"
-        $inactiveObjects |
-            select-object samaccountname,userPrincipalName,enabled,givenName,surname,displayName,mail,description,`
-                lastLogonDate,@{L='daysInactive';E={if($_.LastLogonDate) {$lld=$_.LastLogonDate} else {$lld="1/1/1970"} ;(New-TimeSpan -End (get-date) -Start $lld).Days}},PasswordLastSet,`
-                distinguishedname,@{L='parentOU';E={$rxParentOU.Match($_.distinguishedName).groups[1].value}} | 
-            Sort-Object daysInactive,parentOU |
-            Export-csv $exportCSVFile -NoTypeInformation -Encoding utf8
+        Write-Verbose "found $(($ADObjects|Measure-Object).count) objects"
+        $ADObjects = $ADObjects | select-object samaccountname,userPrincipalName,enabled,givenName,surname,displayName,mail,description,`
+            lastLogonDate,@{L='daysInactive';E={if($_.LastLogonDate) {$lld=$_.LastLogonDate} else {$lld="1/1/1970"} ;(New-TimeSpan -End (get-date) -Start $lld).Days}},PasswordLastSet,`
+            distinguishedname,@{L='parentOU';E={$rxParentOU.Match($_.distinguishedName).groups[1].value}}, @{L='isAdmin';E={$false}}
+        #add check if user belongs to any privileged group
+        foreach($ADuser in $ADObjects) {
+            foreach($group in $wellKnownAdminSids.keys) {
+                if($ADuser.memberOf -contains $wellKnownAdminSids[$group]) {
+                    $ADuser.isAdmin = $true
+                    break
+                }
+            }
+            foreach($group in $dynamicAdminSIDgroups) {
+                if($ADuser.memberOf -contains $group) {
+                    $ADuser.isAdmin = $true
+                    break
+                }
+            }
+        }
+        #final sorting and export
+        $ADObjects | Sort-Object daysInactive,parentOU | Export-csv $exportCSVFile -NoTypeInformation -Encoding utf8
     } else {
-        $inactiveObjects = get-ADComputer `
+        $ADObjects = get-ADComputer `
             -Filter {(lastlogondate -notlike "*" -OR lastlogondate -le $DaysInactiveStr)} `
             -Properties enabled,distinguishedname,samaccountname,displayName,description,lastLogonDate,PasswordLastSet
-        Write-Verbose "found $(($inactiveObjects|Measure-Object).count) objects"
-        $inactiveObjects |
+        Write-Verbose "found $(($ADObjects|Measure-Object).count) objects"
+        $ADObjects |
             select-object samaccountname,enabled,displayName,description,`
                 lastLogonDate,@{L='daysInactive';E={if($_.LastLogonDate) {$lld=$_.LastLogonDate} else {$lld="1/1/1970"} ;(New-TimeSpan -End (get-date) -Start $lld).Days}},PasswordLastSet,`
                 distinguishedname,@{L='parentOU';E={$rxParentOU.Match($_.distinguishedName).groups[1].value}} | 
