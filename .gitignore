@@ -7,8 +7,7 @@
 !/AzPseudoGUI/
 !/PSCmdletTest/
 !/inactiveUsers/
-!/userReporting/
-!/userReporting/Archive/
+!/eNUserReporting/
 #...except PS
 !*.ps1
 !*.psm1

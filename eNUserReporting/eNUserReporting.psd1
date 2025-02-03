@@ -30,7 +30,7 @@ CompanyName = 'LogicUnion'
 Copyright = '(MIT) 2o25 nExoR ::))o-'
 
 # Description of the functionality provided by this module
-Description = 'Audit and reporting functions for hybrid and pseudo-hybrid environments for Identity reviews. Contains reporting for AD, EntraID and Exchange Online.'
+Description = 'Audit and reporting functions for hybrid and pseudo-hybrid environments for Identity reviews. Contains reporting for AD, EntraID and Exchange Online. General stats and provileged accounts.'
 
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '5.0'

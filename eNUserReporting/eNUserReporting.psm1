@@ -2,8 +2,86 @@
 .SYNOPSIS
     set of function for auditing and reporting on accounts in AD, EID and EXO mailboxes. abilty to generate provileged users report,
     merge data to have a big picture on the accounts for migrations, cleanups or regular audits.
+
+    eNLib is required for CSV-XLS conversions.
 .DESCRIPTION
-    here be dragons
+    There are three main functions to generate reports from three different sources:
+        - get-eNReportADObjects - for AD objects
+        - get-eNReportEntraUsers - for EntraID
+        - get-eNReportEXOMailboxes - for Exchange Online mailboxes
+    after getting results from two or three sources, there is a function to merge data and generate a report.
+        - join-eNReportHybridUserInfo
+
+    join-eNReportHybridUsersInfo -inputCSVAD .\ADUsers-w-files.pl-250124-1239.csv -inputCSVEntraID .\EntraUsers-w-files.pl-250124-0254.csv -inputCSVEXO .\mbxstats-w-files.pl-250124-0256.csv
+    command will join all three reports and generate a final one, containing combined data. 
+
+    Analysing data
+    All the rest is setting up proper filters in Excel file. Below some hints and explanations to columns and file structure (assuming all 3 sources were used). Because of vast number of 
+    scenarios and queries it is impossible to describe all combinations. Below are hints and suggestions – we need to define some set of default queries to be reported leaving some space 
+    for creativity for extra information.
+    Many columns have value as a confirmation if matching was proper, there are no discrepancies in naming or if you need to use value for further investigation – all names, display names 
+    and IDs. These columns may be hidden when creating some final report to minimize complexity of the view.
+
+    General
+    •	Columns with no prefix comes from EntraID
+    •	Columns with AD_ prefix comes from AD
+    •	Columns with EXO_ prefix comes from Exchange Online
+    •	Value ‘23000’ in ‘daysInactive’ is filled by script for empty values for easiness of sorting later in Excel and basically means ‘no value’
+    •	Values similar to ‘1970-01-01’ or ‘1600-12-31’ or ‘20112’ comes from Microsoft way or providing timestamps in systems and are equivalent of my ‘23000’
+        meaning that timestamp has never been set (never used)
+    •	Matching the names is set to automatic – meaning that it doesn’t matter which scenario is valid for customer, it will try to find corresponding object 
+        between AD and EID (Exchange mailboxes will always have EID user). Script it trying to match by UserPrincipalName, email and displayName . If any of the attributes 
+        does not match, you will find the same user twice (for AD and EID) 
+    
+    EntraID Columns
+    UserType:	there are two types – guest and member. It’s a main filter to use dependently on type of account for review.
+        It’s good to take a look on guest accounts in the tenant to see if there are any anomalies – e.g. unexpectedly big amount of guest may be a signal of oversharing, 
+        accounts not used for a long time could be cleaned out. 
+        When filter is enabled for member accounts it will allow to review all user-related queries such as unused accounts, licenses, mailbox sizes, accounts that are 
+        not synced etc.
+    AccountEnabled:	good filter to use in combination with licensing and activity – e.g. ‘disabled accounts with licenses’ are potentially good way to optimise licenses 
+        assignment and ‘enabled account not used for <number> of days’ is a good way to detect unused accounts. Similarly ‘enabled accounts with MFA status disabled’ allow to fish out unsecure accounts.
+    UserPrincipalName:	useful to detect incorrect UPNs, especially in tenants with numerous domain suffixes configured
+    MFAStatus:	main column allowing to fish unsecured accounts – good to combine with AccountEnabled. Mind that EAM MFA is undetectable (Microsoft bug I reported to support.
+        EAM is in preview, only us and FNTC has it configured as for the date of this document).
+    LastLogonData, LastNILogonDate, daysInactive:	there are two types of logon dates reported – Interactive and Non-Interactive. Dates are useful for some heavy 
+        troubleshooting when trying to establish what is going on with the account. In regular report both columns may be hidden and ‘daysInactive’ is calculated value of days
+        the account reported any kind of activity on any of the logon type. Similar fields exist for AD_ allowing to detect situations such as:
+        ‘account not used in AD but is synchronized, and used in EID, so it can not be disabled’
+        ‘account is used in AD but not in EID, so maybe license is not necessary’
+    Licenses:	all assigned licenses – allows to quickly prepare license report, good to combine with ‘AccountEnabled’
+    Hybrid:	‘TRUE’ means that account is synchronized from AD. Allows to detect improper synchronization – accounts that exist on both sides but are not synced.
+    
+    AD Columns
+    AD_UserPrincipalName:	allows to detect incorrect UPN values – good during preparation to migration, to fix UPNs to tenant domain
+    AD_enabled:	great in combination with other columns allowing to query:
+        unused accounts but enabled
+        improper location of disabled accounts 
+        account enabled on one side (AD/EID) 
+    AD_lastLogonDate, AD_daysInactive:	actual date and calculated value in number of days till now for activity queries
+    AD_passwordLastSet:	for queries allowing to understand when password has been set for the user for the last time. Most interesting is empty value as it means
+        that account has never been used.
+    AD_parentOU	useful for sorting view by the location and to quickly detect location anomalies for accounts. Useful for general cleanup and in scenarios where 
+        synchronization is filtered to particular OUs – moving account out of sync scope will unsync account.
+    
+    Exchange Online columns
+    EXO_RecipientTypeDetails:	by default report is showing all recipients, not only mailboxes. It may be used to filter view to:
+        see how many contacts or groups are in the tenant
+        check resources (RoomMailbox,EquipementMailbox)
+        limit view only to mailboxes (UserMailbox)
+        detect all mailboxes that are configured as shared on are user mailboxes but used as shared – combination of UserMailbox and SharedMailbox views
+    EXO_emails:	all aliases on the mailbox – very useful in migration or synchronization projects
+    EXO_delegations:	useful for investigations on shared mailboxes. E.g. UserMailbox with numerous delegations is probably a SharedMailbox which may allow for 
+        conversion and removal of the license. Other way around – SharedMailbox with no delegations may mean that mailbox is unused.
+    EXO_forwardingAddress, EXOforwardingSMTPAddress:	may help detect leakage of corporate emails – if all emails are forwarded on external address. Currently 
+        it is reported also by Office Defender, but good to check periodically.
+    EXO_enabled:	this is a very difficult as there are numerous scenarios when account status and mailbox status may differ. Can’t explain these anomalies 
+        at the moment, but these are interesting scenarios that may be helpful in rare investigations.
+    EXO_lastInteractionTime, EXO_lastUserActionTime:	there is no simple definition of ‘unused mailbox’ as some mailboxes may be archives, forwarders or very rarely
+        used in certain situations (e.g. some event once a year). In combination with other columns may be useful in investigations during migration projects to detect unused mailboxes but these pretty much always require consulting with customer.
+    
+    Other
+    Hybrid_daysInactive:	is lower value of daysInactive from EID and AD_daysInactive from AD. Allows to quickly filter totally unused accounts.
 
 .LINK
     https://w-files.pl
