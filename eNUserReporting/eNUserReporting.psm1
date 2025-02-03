@@ -93,6 +93,8 @@
         - 250125 initialized
 
     #TO|DO
+    * seperate MFA function
+    * EntraID isAdmin
 #>
 function get-eNADPrivilegedUsers {
     <#
@@ -661,7 +663,7 @@ function get-eNReportEntraUsers {
         #"email" comes from get-mgDomain - and was double-requesting the authentication without this option
         #Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All","Domain.Read.All","email"
         try {
-            Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile" -ErrorAction Stop
+            Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile","openid","offline_acces" -ErrorAction Stop
         } catch {
             throw "error connecting. $($_.Exception)"
             return

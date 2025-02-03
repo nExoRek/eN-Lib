@@ -52,21 +52,8 @@ if(-not $noDiskScan) {
     }
 } 
 
-if(-not $noSFC) {
-    write-verbose "STEP 2 - OS consistency check"
-    $outFile = "c:\temp\{0}-{1}-consistency.log" -f $runDate,$Env:COMPUTERNAME
-    $logList += $outFile
-    $scanResult = &sfc /scannow
-    $scanResult | out-file $outFile
-
-    #although it's not 1oo% the same as SFC it's very close and can be used as a workaround and for better reporting and automation:
-    #Repair-WindowsImage -Online -ScanHealth | out-file $outFile
-    #may also be automated on error with:
-    #Repair-WindowsImage -Online -RestoreHealth
-}
-
 if(-not $noEventLogCheck) {
-    write-verbose "STEP 3 - EventLog dump"
+    write-verbose "STEP 2 - EventLog dump"
     $days = 60
     # Calculate the start date (60 days ago)
     $startDate = (Get-Date).AddDays(-$days)
@@ -95,6 +82,18 @@ if(-not $noEventLogCheck) {
 
     # Export the filtered logs to a CSV file
     $eventLogs | Export-Csv -Path $outFile -NoTypeInformation -Force
+}
+if(-not $noSFC) {
+    write-verbose "STEP 3 - OS consistency check"
+    $outFile = "c:\temp\{0}-{1}-consistency.log" -f $runDate,$Env:COMPUTERNAME
+    $logList += $outFile
+    $scanResult = &"c:\windows\system32\sfc.exe" /scannow
+    $scanResult | out-file $outFile
+
+    #although it's not 1oo% the same as SFC it's very close and can be used as a workaround and for better reporting and automation:
+    #Repair-WindowsImage -Online -ScanHealth | out-file $outFile
+    #may also be automated on error with:
+    #Repair-WindowsImage -Online -RestoreHealth
 }
 
 write-verbose "logs exported:"
