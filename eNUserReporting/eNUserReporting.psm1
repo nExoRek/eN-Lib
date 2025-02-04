@@ -87,15 +87,126 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250131
+    version 250203
         last changes
+        - 250203 isAdmin for EID, some optmization for MFA check
         - 250131 isAdmin for AD added... not sure if join function will handle it... 
         - 250125 initialized
 
     #TO|DO
-    * seperate MFA function
-    * EntraID isAdmin
+    * MFA report function
+    * make functions global
+    * code optimization
+    * ent-size tenant queries (currently unsupported)
+    * PS version check functions to replace missing #requires
+    * join must handle all attributes by default (no static list)
 #>
+Function Get-MFAMethods {
+    <#
+    .SYNOPSIS
+        Get the MFA status of the user
+    #>
+    param(
+        [Parameter(Mandatory, Position = 0)] 
+            [string]$userId,
+        [parameter(Mandatory = $false, Position = 1)]
+            [switch]$onlyStatus
+    )
+    process {
+        # Create MFA details object
+        $mfaMethods  = [PSCustomObject][Ordered]@{
+            status            = "disabled"
+            authApp           = "-"
+            phoneAuth         = "-"
+            fido              = "-"
+            helloForBusiness  = "-"
+            helloForBusinessCount = 0
+            emailAuth         = "-"
+            tempPass          = "-"
+            passwordLess      = "-"
+            softwareAuth      = "-"
+            authDevice        = ""
+            authPhoneNr       = "-"
+            SSPREmail         = "-"
+        }
+        # Get MFA details for each user
+        try {
+            [array]$mfaData = Get-MgUserAuthenticationMethod -UserId $userId -ErrorAction Stop
+        } catch {
+            $mfaMethods.status = 'error'
+            return $mfaMethods
+        }
+        if($onlyStatus) {
+            if($mfaData[0].AdditionalProperties["@odata.type"] -eq "#microsoft.graph.passwordAuthenticationMethod" -and $mfaData.Count -eq 1) {
+                return "disabled"
+            } elseif($mfaData.Count -gt 1) {
+                return "enabled"
+            } else {
+                return "error"
+            }
+        }
+        ForEach ($method in $mfaData) {
+            Switch ($method.AdditionalProperties["@odata.type"]) {
+<#                "#microsoft.graph.passwordAuthenticationMethod"                { 
+                    # Password
+                    # When only the password is set, then MFA is disabled.
+                    if ($mfaMethods.status -ne "enabled") {$mfaMethods.status = "disabled"}
+                }
+#>
+                "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod"  { 
+                    # Microsoft Authenticator App
+                    $mfaMethods.authApp = $true
+                    $mfaMethods.authDevice += $method.AdditionalProperties["displayName"] 
+                    $mfaMethods.status = "enabled"
+                } 
+                "#microsoft.graph.phoneAuthenticationMethod"                  { 
+                    # Phone authentication
+                    $mfaMethods.phoneAuth = $true
+                    $mfaMethods.authPhoneNr = $method.AdditionalProperties["phoneType", "phoneNumber"] -join ' '
+                    $mfaMethods.status = "enabled"
+                } 
+                "#microsoft.graph.fido2AuthenticationMethod"                   { 
+                    # FIDO2 key
+                    $mfaMethods.fido = $true
+                    $fifoDetails = $method.AdditionalProperties["model"]
+                    $mfaMethods.status = "enabled"
+                } 
+                "#microsoft.graph.windowsHelloForBusinessAuthenticationMethod" { 
+                    # Windows Hello
+                    $mfaMethods.helloForBusiness = $true
+                    $helloForBusinessDetails = $method.AdditionalProperties["displayName"]
+                    $mfaMethods.status = "enabled"
+                    $mfaMethods.helloForBusinessCount++
+                } 
+                "#microsoft.graph.emailAuthenticationMethod"                   { 
+                    # Email Authentication
+                    $mfaMethods.emailAuth =  $true
+                    $mfaMethods.SSPREmail = $method.AdditionalProperties["emailAddress"] 
+                    $mfaMethods.status = "enabled"
+                }               
+                "microsoft.graph.temporaryAccessPassAuthenticationMethod"    { 
+                    # Temporary Access pass
+                    $mfaMethods.tempPass = $true
+                    $tempPassDetails = $method.AdditionalProperties["lifetimeInMinutes"]
+                    $mfaMethods.status = "enabled"
+                }
+                "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod" { 
+                    # Passwordless
+                    $mfaMethods.passwordLess = $true
+                    $passwordLessDetails = $method.AdditionalProperties["displayName"]
+                    $mfaMethods.status = "enabled"
+                }
+                "#microsoft.graph.softwareOathAuthenticationMethod" { 
+                    # ThirdPartyAuthenticator
+                    $mfaMethods.softwareAuth = $true
+                    $mfaMethods.status = "enabled"
+                }
+            }
+        }
+        #Write-Verbose "$userID -> $($mfaMethods.status)"
+        Return $mfaMethods
+    }
+}
 function get-eNADPrivilegedUsers {
     <#
     .SYNOPSIS
@@ -498,8 +609,9 @@ function get-eNReportEntraUsers {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 240718
+        version 250203
             last changes
+            - 250203 isAdmin for EID, some optmization for MFA check, additional parameters and attributes, some optimisations
             - 240718 initiated as a more generalized project, service plans display names check up, segmentation
             - 240627 MFA - for now only general status, AADP1 error handling
             - 240520 initialized
@@ -522,106 +634,14 @@ function get-eNReportEntraUsers {
         #skip getting user licenses information
         [Parameter(mandatory=$false,position=2)]
             [switch]$skipLicenseCheck,
-        #automatically generate XLSX report using eNLib 
         [Parameter(mandatory=$false,position=3)]
+            [switch]$skipIsAdminCheck,
+        #automatically generate XLSX report using eNLib 
+        [Parameter(mandatory=$false,position=4)]
             [switch]$xlsxReport
         
     )
     $VerbosePreference = 'Continue'
-
-    Function Get-MFAMethods {
-        <#
-        .SYNOPSIS
-            Get the MFA status of the user
-        #>
-        param(
-        [Parameter(Mandatory = $true)] $userId
-        )
-        process{
-        # Create MFA details object
-        $mfaMethods  = [PSCustomObject][Ordered]@{
-            status            = "-"
-            authApp           = "-"
-            phoneAuth         = "-"
-            fido              = "-"
-            helloForBusiness  = "-"
-            helloForBusinessCount = 0
-            emailAuth         = "-"
-            tempPass          = "-"
-            passwordLess      = "-"
-            softwareAuth      = "-"
-            authDevice        = ""
-            authPhoneNr       = "-"
-            SSPREmail         = "-"
-        }
-        # Get MFA details for each user
-        try {
-            [array]$mfaData = Get-MgUserAuthenticationMethod -UserId $userId -ErrorAction Stop
-        } catch {
-            $mfaMethods.status = 'error'
-            return $mfaMethods
-        }
-        ForEach ($method in $mfaData) {
-            Switch ($method.AdditionalProperties["@odata.type"]) {
-                "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod"  { 
-                # Microsoft Authenticator App
-                $mfaMethods.authApp = $true
-                $mfaMethods.authDevice += $method.AdditionalProperties["displayName"] 
-                $mfaMethods.status = "enabled"
-                } 
-                "#microsoft.graph.phoneAuthenticationMethod"                  { 
-                # Phone authentication
-                $mfaMethods.phoneAuth = $true
-                $mfaMethods.authPhoneNr = $method.AdditionalProperties["phoneType", "phoneNumber"] -join ' '
-                $mfaMethods.status = "enabled"
-                } 
-                "#microsoft.graph.fido2AuthenticationMethod"                   { 
-                # FIDO2 key
-                $mfaMethods.fido = $true
-                $fifoDetails = $method.AdditionalProperties["model"]
-                $mfaMethods.status = "enabled"
-                } 
-                "#microsoft.graph.passwordAuthenticationMethod"                { 
-                # Password
-                # When only the password is set, then MFA is disabled.
-                if ($mfaMethods.status -ne "enabled") {$mfaMethods.status = "disabled"}
-                }
-                "#microsoft.graph.windowsHelloForBusinessAuthenticationMethod" { 
-                # Windows Hello
-                $mfaMethods.helloForBusiness = $true
-                $helloForBusinessDetails = $method.AdditionalProperties["displayName"]
-                $mfaMethods.status = "enabled"
-                $mfaMethods.helloForBusinessCount++
-                } 
-                "#microsoft.graph.emailAuthenticationMethod"                   { 
-                # Email Authentication
-                $mfaMethods.emailAuth =  $true
-                $mfaMethods.SSPREmail = $method.AdditionalProperties["emailAddress"] 
-                $mfaMethods.status = "enabled"
-                }               
-                "microsoft.graph.temporaryAccessPassAuthenticationMethod"    { 
-                # Temporary Access pass
-                $mfaMethods.tempPass = $true
-                $tempPassDetails = $method.AdditionalProperties["lifetimeInMinutes"]
-                $mfaMethods.status = "enabled"
-                }
-                "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod" { 
-                # Passwordless
-                $mfaMethods.passwordLess = $true
-                $passwordLessDetails = $method.AdditionalProperties["displayName"]
-                $mfaMethods.status = "enabled"
-                }
-                "#microsoft.graph.softwareOathAuthenticationMethod" { 
-                # ThirdPartyAuthenticator
-                $mfaMethods.softwareAuth = $true
-                $mfaMethods.status = "enabled"
-                }
-            }
-        }
-        #Write-Verbose "$userID -> $($mfaMethods.status)"
-        Return $mfaMethods
-        }
-    }
 
     function convert-SKUCodeToDisplayName {
     param([string]$SKUname)
@@ -629,25 +649,25 @@ function get-eNReportEntraUsers {
     $ServicePlan = $spInfo | Where-Object { $_.psobject.Properties.value -contains $SKUname }
     if($ServicePlan) {
         if($ServicePlan -is [array]) { $ServicePlan = $ServicePlan[0] }
-        $property = ($ServicePlan.psobject.Properties| Where-Object value -eq $SKUname).name
-        switch($property) {
-            'Service_Plan_Name' {
-                return $ServicePlan.'Service_Plans_Included_Friendly_Names'
+            $property = ($ServicePlan.psobject.Properties| Where-Object value -eq $SKUname).name
+            switch($property) {
+                'Service_Plan_Name' {
+                    return $ServicePlan.'Service_Plans_Included_Friendly_Names'
+                }
+                'Service_Plans_Included_Friendly_Names' {
+                    return $ServicePlan.'Service_Plan_Name'
+                }
+                'Product_Display_Name' {
+                    return $ServicePlan.'String_Id'
+                }
+                'String_Id' {
+                    return $ServicePlan.'Product_Display_Name'
+                }
+                default { return $null }
             }
-            'Service_Plans_Included_Friendly_Names' {
-                return $ServicePlan.'Service_Plan_Name'
-            }
-            'Product_Display_Name' {
-                return $ServicePlan.'String_Id'
-            }
-            'String_Id' {
-                return $ServicePlan.'Product_Display_Name'
-            }
-            default { return $null }
+        } else {
+            return $SKUname
         }
-    } else {
-        return $SKUname
-    }
     }
 
     if(!$skipConnect) {
@@ -663,7 +683,7 @@ function get-eNReportEntraUsers {
         #"email" comes from get-mgDomain - and was double-requesting the authentication without this option
         #Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All","Domain.Read.All","email"
         try {
-            Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile","openid","offline_acces" -ErrorAction Stop
+            Connect-MgGraph -Scopes "RoleManagement.Read.Directory","User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile","openid" -ErrorAction Stop
         } catch {
             throw "error connecting. $($_.Exception)"
             return
@@ -672,8 +692,9 @@ function get-eNReportEntraUsers {
     Write-Verbose "getting connection info..."
     $ctx = Get-MgContext
     Write-Verbose "connected as '$($ctx.Account)'"
-    if($ctx.Scopes -notcontains 'User.Read.All' -or $ctx.Scopes -notcontains 'AuditLog.Read.All' -or $ctx.Scopes -notcontains 'Domain.Read.All' -or $ctx.Scopes -notcontains 'UserAuthenticationMethod.Read.All') {
-        throw "you need to connect using connect-mgGraph -Scopes User.Read.All,AuditLog.Read.All,Domain.Read.All","UserAuthenticationMethod.Read.All"
+    if($ctx.Scopes -notcontains 'User.Read.All' -or $ctx.Scopes -notcontains 'AuditLog.Read.All' -or $ctx.Scopes -notcontains 'Domain.Read.All' -or $ctx.Scopes -notcontains 'UserAuthenticationMethod.Read.All' `
+        -or $ctx.Scopes -notcontains 'RoleManagement.Read.Directory') {
+        throw "you need to connect using connect-mgGraph -Scopes User.Read.All,AuditLog.Read.All,Domain.Read.All,UserAuthenticationMethod.Read.All,RoleManagement.Read.Directory"
     } else {
     }
     try {
@@ -710,17 +731,16 @@ function get-eNReportEntraUsers {
     }
 
     if(!$skipMFACheck) {
-        Write-Verbose "getting the per-user MFA info on accounts..."
-        $EntraUsers = $EntraUsers | Select-Object *,MFAStatus 
-        $EntraUsers | %{ $_.MFAStatus = (Get-MFAMethods $_.id).status }
+        Write-Verbose "getting the MFA info on accounts..."
+        $EntraUsers = $EntraUsers | Select-Object *,@{L='MFAStatus';E={ Get-MFAMethods $_.id -onlyStatus }}
     } else {
-        Write-Verbose "skipping the per-user MFA check..."
+        Write-Verbose "skipping the MFA check..."
     }
 
     Write-Verbose "some output tuning..."
     if($AADP1) {
-    $entraUsers = $entraUsers |
-        select-object displayname,userType,accountenabled,givenname,surname,userprincipalname,mail,MFAStatus,`
+        $entraUsers = $entraUsers |
+            select-object displayname,userType,accountenabled,isAdmin,givenname,surname,userprincipalname,mail,MFAStatus,`
             @{L='Hybrid';E={if($_.OnPremisesSyncEnabled) {$_.OnPremisesSyncEnabled} else {"FALSE"} }},`
             @{L='LastLogonDate';E={if($_.SignInActivity.LastSignInDateTime) { $_.SignInActivity.LastSignInDateTime } else { get-date "1/1/1970"} }},`
             @{L='LastNILogonDate';E={if($_.SignInActivity.LastNonInteractiveSignInDateTime) { $_.SignInActivity.LastNonInteractiveSignInDateTime } else { get-date "1/1/1970"} }},`
@@ -739,6 +759,17 @@ function get-eNReportEntraUsers {
             @{L='daysInactive';E={'NO AADP1'}}
     }
 
+    if(!$skipIsAdminCheck) {
+        #get all priviledged user IDs
+        $pids = Get-MgRoleManagementDirectoryRoleAssignment | select-object -ExpandProperty principalId -Unique
+        foreach($eidU in $entraUsers) {
+            if($pids -contains $eidU.id) {
+                $eidU.isAdmin = $true
+            } else {
+                $eidU.isAdmin = $false
+            }
+        }
+    }
     if(!$skipLicenseCheck) {
         Write-Verbose "getting License info..."
         $spFile = ".\servicePlans.csv"
