@@ -40,49 +40,38 @@
     #TO|DO
     - header check
 #>
-[CmdletBinding(DefaultParameterSetName='default')]
+[CmdletBinding(DefaultParameterSetName='lookupName')]
 param (
-    #resolve Service Plan or License name 
-    [Parameter(ParameterSetName='resolveNames',mandatory=$true,position=0)]
-        [string]$resolveName,
-    #display all licenses containing given SP
-    [Parameter(ParameterSetName='listLicenses',mandatory=$true,position=0)]
-        [string]$showProducts,
+    #lookup the name (internal, displayname) and shows details. you can use partial name of the license
+    [Parameter(ParameterSetName='lookupName',mandatory=$true,position=0)]
+        [string]$lookupName,
+    #display all licenses (boundles) containing given Service Plan - to quickly find boundles with searched feature
+    [Parameter(ParameterSetName='findPlan',mandatory=$true,position=0)]
+        [string]$findPlan,
     #show SPs for given license type
     [Parameter(ParameterSetName='listServicePlans',mandatory=$true,position=0)]
         [string]$productName    
 )
 
-function resolveNames {
+function lookupName {
     param([string]$name)
 
-    $ServicePlan = $spInfo | Where-Object { $_.psobject.Properties.value -contains $name }
+    $ServicePlan = $spInfo | Where-Object { $_.Product_Display_Name -match $name -or $_.Service_Plan_Name -match $name }
     if($ServicePlan) {
-        if($ServicePlan -is [array]) { $ServicePlan = $ServicePlan[0] }
-        $property = ($ServicePlan.psobject.Properties| Where-Object value -eq $name).name
-        switch($property) {
-            'Service_Plan_Name' {
-                return $ServicePlan.'Service_Plans_Included_Friendly_Names'
-            }
-            'Service_Plans_Included_Friendly_Names' {
-                return $ServicePlan.'Service_Plan_Name'
-            }
-            'Product_Display_Name' {
-                return $ServicePlan.'String_Id'
-            }
-            'String_Id' {
-                return $ServicePlan.'Product_Display_Name'
-            }
-            default { return $null }
-        }
+        return $ServicePlan|Select-Object Product_Display_Name,String_Id,GUID -Unique
     } else {
         return $null
     }
 }
 
-function listLicenses {
+function findPlan {
     param([string]$name)
-    return ($spInfo | Where-Object {$_.Service_Plan_Name -eq $name -or $_.Service_Plans_Included_Friendly_Names -eq $name} | Select-Object @{L="products containing $name";E={$_.Product_Display_Name}})
+    return (
+        $spInfo | 
+        Where-Object {$_.Service_Plans_Included_Friendly_Names -match $name -or $_.Service_Plan_Name -match $name} |
+        select-object  Service_Plan_Name,Service_Plans_Included_Friendly_Names,Service_Plan_Id,Product_Display_Name,String_Id,GUID -unique | 
+        Sort-object Service_Plan_Name
+    )
 
 }
 
@@ -90,8 +79,8 @@ function listServicePlans {
     param([string]$name)
     return (
         $spInfo | 
-        Where-Object {$_.Product_Display_Name -eq $name -or $_.'String_Id' -eq $name} | 
-        Select-Object @{L='SKU';E={$_.Service_Plan_Name}},@{L='Firendly Name';E={$_.Service_Plans_Included_Friendly_Names}}
+        Where-Object {$_.Product_Display_Name -eq $name -or $_.String_Id -eq $name} | 
+        Select-Object @{L='SKU';E={$_.Service_Plan_Name}},@{L='Firendly Name';E={$_.Service_Plans_Included_Friendly_Names}},Service_Plan_Id
     )
 }
 
