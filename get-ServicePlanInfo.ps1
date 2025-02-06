@@ -15,7 +15,7 @@
     
     shows all licenses/products and service plans
 .EXAMPLE
-    .\get-ServicePlanInfo.ps1 -resolveName EOP_ENTERPRISE_PREMIUM 
+    .\get-ServicePlanInfo.ps1 -lookupName EOP_ENTERPRISE_PREMIUM 
     
     shows friednly name of EOP_ENTERPRISE_PREMIUM. works for both - Service Plans and License names
 .EXAMPLE
@@ -32,8 +32,9 @@
     https://docs.microsoft.com/en-us/azure/active-directory/enterprise-users/licensing-service-plan-reference
 .NOTES
     nExoR ::))o-
-    version 220331
+    version 250205
         last changes
+        - 250205 overhaul - parameter names fixed and values more intiutive
         - 220331 MS fixed CSV ... changing column name /:
         - 220315 initialized
 
@@ -56,7 +57,7 @@ param (
 function lookupName {
     param([string]$name)
 
-    $ServicePlan = $spInfo | Where-Object { $_.Product_Display_Name -match $name -or $_.Service_Plan_Name -match $name }
+    $ServicePlan = $spInfo | Where-Object { $_.Product_Display_Name -match $name -or $_.Service_Plan_Name -match $name -or $_.String_Id -match $name }
     if($ServicePlan) {
         return $ServicePlan|Select-Object Product_Display_Name,String_Id,GUID -Unique
     } else {

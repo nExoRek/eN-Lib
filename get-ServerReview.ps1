@@ -87,13 +87,17 @@ if(-not $noSFC) {
     write-verbose "STEP 3 - OS consistency check"
     $outFile = "c:\temp\{0}-{1}-consistency.log" -f $runDate,$Env:COMPUTERNAME
     $logList += $outFile
-    $scanResult = &"c:\windows\system32\sfc.exe" /scannow
-    $scanResult | out-file $outFile
-
     #although it's not 1oo% the same as SFC it's very close and can be used as a workaround and for better reporting and automation:
     #Repair-WindowsImage -Online -ScanHealth | out-file $outFile
     #may also be automated on error with:
-    #Repair-WindowsImage -Online -RestoreHealth
+    Repair-WindowsImage -Online -RestoreHealth | out-file $outFile
+    try {
+        $scanResult = &"c:\windows\system32\sfc.exe" /scannow
+        $scanResult | out-file $outFile -Append
+    } catch {
+        $_|Out-File $outFile -Append
+    }
+
 }
 
 write-verbose "logs exported:"

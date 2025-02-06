@@ -115,25 +115,28 @@ Function Get-MFAMethods {
     process {
         # Create MFA details object
         $mfaMethods  = [PSCustomObject][Ordered]@{
-            status            = "disabled"
-            authApp           = "-"
-            phoneAuth         = "-"
-            fido              = "-"
-            helloForBusiness  = "-"
-            helloForBusinessCount = 0
-            emailAuth         = "-"
-            tempPass          = "-"
-            passwordLess      = "-"
-            softwareAuth      = "-"
-            authDevice        = ""
-            authPhoneNr       = "-"
-            SSPREmail         = "-"
+            MFAstatus = "disabled"
+            softwareAuth = $false
+            authApp = $false
+            authDevice = ""
+            phoneAuth = $false
+            authPhoneNr = ""
+            fido = $false
+            fidoDetails = ""
+            helloForBusiness = $false
+            helloForBusinessDetails = ""
+            emailAuth = $false
+            SSPREmail = ""
+            tempPass = $false
+            tempPassDetails = ""
+            passwordLess = $false
+            passwordLessDetails = ""
         }
         # Get MFA details for each user
         try {
             [array]$mfaData = Get-MgUserAuthenticationMethod -UserId $userId -ErrorAction Stop
         } catch {
-            $mfaMethods.status = 'error'
+            $mfaMethods.MFAstatus = 'error'
             return $mfaMethods
         }
         if($onlyStatus) {
@@ -147,65 +150,140 @@ Function Get-MFAMethods {
         }
         ForEach ($method in $mfaData) {
             Switch ($method.AdditionalProperties["@odata.type"]) {
-<#                "#microsoft.graph.passwordAuthenticationMethod"                { 
+<#                "#microsoft.graph.passwordAuthenticationMethod" { 
                     # Password
                     # When only the password is set, then MFA is disabled.
-                    if ($mfaMethods.status -ne "enabled") {$mfaMethods.status = "disabled"}
+                    if ($mfaMethods.MFAstatus -ne "enabled") {$mfaMethods.MFAstatus = "disabled"}
                 }
 #>
-                "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod"  { 
+                "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" { 
                     # Microsoft Authenticator App
                     $mfaMethods.authApp = $true
-                    $mfaMethods.authDevice += $method.AdditionalProperties["displayName"] 
-                    $mfaMethods.status = "enabled"
+                    $mfaMethods.authDevice += "[{0}]" -f $method.AdditionalProperties["displayName"] 
+                    $mfaMethods.MFAstatus = "enabled"
                 } 
-                "#microsoft.graph.phoneAuthenticationMethod"                  { 
+                "#microsoft.graph.phoneAuthenticationMethod" { 
                     # Phone authentication
                     $mfaMethods.phoneAuth = $true
-                    $mfaMethods.authPhoneNr = $method.AdditionalProperties["phoneType", "phoneNumber"] -join ' '
-                    $mfaMethods.status = "enabled"
+                    $mfaMethods.authPhoneNr += "[{0}]" -f ($method.AdditionalProperties["phoneType", "phoneNumber"] -join ' ')
+                    $mfaMethods.MFAstatus = "enabled"
                 } 
-                "#microsoft.graph.fido2AuthenticationMethod"                   { 
+                "#microsoft.graph.fido2AuthenticationMethod" { 
                     # FIDO2 key
                     $mfaMethods.fido = $true
-                    $fifoDetails = $method.AdditionalProperties["model"]
-                    $mfaMethods.status = "enabled"
+                    $mfaMethods.fidoDetails += "[{0}]" -f $method.AdditionalProperties["model"]
+                    $mfaMethods.MFAstatus = "enabled"
                 } 
                 "#microsoft.graph.windowsHelloForBusinessAuthenticationMethod" { 
                     # Windows Hello
                     $mfaMethods.helloForBusiness = $true
-                    $helloForBusinessDetails = $method.AdditionalProperties["displayName"]
-                    $mfaMethods.status = "enabled"
-                    $mfaMethods.helloForBusinessCount++
+                    $mfaMethods.helloForBusinessDetails += "[{0}]" -f $method.AdditionalProperties["displayName"]
+                    $mfaMethods.MFAstatus = "enabled"
                 } 
                 "#microsoft.graph.emailAuthenticationMethod"                   { 
                     # Email Authentication
-                    $mfaMethods.emailAuth =  $true
-                    $mfaMethods.SSPREmail = $method.AdditionalProperties["emailAddress"] 
-                    $mfaMethods.status = "enabled"
+                    $mfaMethods.emailAuth = $true
+                    $mfaMethods.SSPREmail += "[{0}]" -f $method.AdditionalProperties["emailAddress"] 
+                    $mfaMethods.MFAstatus = "enabled"
                 }               
                 "microsoft.graph.temporaryAccessPassAuthenticationMethod"    { 
                     # Temporary Access pass
                     $mfaMethods.tempPass = $true
-                    $tempPassDetails = $method.AdditionalProperties["lifetimeInMinutes"]
-                    $mfaMethods.status = "enabled"
+                    $mfaMethods.tempPassDetails += "[{0}]" -f $method.AdditionalProperties["lifetimeInMinutes"]
+                    $mfaMethods.MFAstatus = "enabled"
                 }
                 "#microsoft.graph.passwordlessMicrosoftAuthenticatorAuthenticationMethod" { 
                     # Passwordless
                     $mfaMethods.passwordLess = $true
-                    $passwordLessDetails = $method.AdditionalProperties["displayName"]
-                    $mfaMethods.status = "enabled"
+                    $mfaMethods.passwordLessDetails += "[{0}]" -f $method.AdditionalProperties["displayName"]
+                    $mfaMethods.MFAstatus = "enabled"
                 }
                 "#microsoft.graph.softwareOathAuthenticationMethod" { 
                     # ThirdPartyAuthenticator
                     $mfaMethods.softwareAuth = $true
-                    $mfaMethods.status = "enabled"
+                    $mfaMethods.MFAstatus = "enabled"
                 }
             }
         }
-        #Write-Verbose "$userID -> $($mfaMethods.status)"
         Return $mfaMethods
     }
+}
+function get-eNMFAReport {
+    <#
+    .SYNOPSIS
+        Get the MFA status of a particular user or all users in the tenant
+    .DESCRIPTION
+        Get-MgReportAuthenticationMethodUserRegistrationDetail is providing a nice report but lacking some actual details.
+        get-MFAMethods is not providing default 2FA configured. 
+
+        two different reports /:
+        This function is a wrapper for Get-MFAMethods function. It will get the MFA status of the user and return it as a string.
+    .EXAMPLE
+        get-eNMFAReport -userId 
+    #>
+    [CmdletBinding(DefaultParameterSetName='default')]
+    param (
+        #username provided as ID
+        [Parameter(mandatory=$false,position=0,ParameterSetName='uID')]
+            [string]$userId,    
+        #username provided as UPN
+        [Parameter(mandatory=$false,position=0,ParameterSetName='upn')]
+            [string]$userPrincipalName,
+        #no username - check for all users
+        [Parameter(mandatory=$false,position=0,ParameterSetName='default')]
+            [switch]$all=$true
+    )
+
+    $VerbosePreference = "continue"
+    try {
+        $ctx = Get-MgContext -ErrorAction Stop
+    } catch {
+        $_.Exception
+        return
+    }
+    Write-Verbose "connected as $($ctx.account)."
+    if(-not $ctx) {
+        try { 
+            Connect-MgGraph -Scopes "User.Read.All","UserAuthenticationMethod.Read.All","openid","profile" -ErrorAction Stop
+        } catch {
+            $_.Exception
+            return
+        }
+    }
+
+    if($PSCmdlet.ParameterSetName -eq 'uID') {
+        $EIDuser += Get-MgUser -userId $userId -Property accountEnabled,userPrincipalName,Id -ErrorAction SilentlyContinue
+        if(-not $EIDUser) {
+            Write-Verbose "no user(s) found."
+            return
+        }
+        Write-Verbose $($EIDuser.userPrincipalName)
+        $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue
+        return $mfaStatus | select-object @{L='AccountEnabled';E={$EIDuser.AccountEnabled}},*
+        
+    }
+    if($PSCmdlet.ParameterSetName -eq 'upn') {
+        Write-Debug "checking for $userPrincipalName"
+        $EIDuser += Get-MgUser -Filter "userPrincipalName eq '$userPrincipalName'" -Property accountEnabled,userPrincipalName,Id -ErrorAction SilentlyContinue
+        if(-not $EIDUser) {
+            Write-Verbose "no user(s) found."
+            return
+        }
+        Write-Debug $($EIDuser.userPrincipalName)
+        $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue
+        return $mfaStatus | select-object @{L='AccountEnabled';E={$EIDuser.AccountEnabled}},*
+    }
+    #Write-Verbose "$($EIDUsers.count) users found. gathering MFA status..."
+    $outFile = "eNMFAReport-"+(get-date -Format 'yyMMdd-HHmmss')+'.csv'
+    Write-Verbose "gathering data for report..."
+    Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "usertype eq 'member'" | `
+        Select-Object UserDisplayName,UserPrincipalName,Id,@{L='AccountEnabled';E={ (Get-MgUser -userId $_.Id -Property AccountEnabled).AccountEnabled}},IsAdmin, `
+        IsMfaCapable,IsMfaRegistered,IsPasswordlessCapable,IsSsprCapable,IsSsprEnabled,IsSsprRegistered,IsSystemPreferredAuthenticationMethodEnabled, `
+        LastUpdatedDateTime,@{L='MethodsRegistered';E={$_.MethodsRegistered -join ','}},@{L='SystemPreferredAuthenticationMethods';E={$_.SystemPreferredAuthenticationMethods -join ','}}, `
+        UserPreferredMethodForSecondaryAuthentication, @{L='AdditionalProperties';E={$_.AdditionalProperties}} | `
+        Export-Csv -Path $outFile -NoTypeInformation
+    
+    Write-Verbose "results saved as $outFile."
 }
 function get-eNADPrivilegedUsers {
     <#
