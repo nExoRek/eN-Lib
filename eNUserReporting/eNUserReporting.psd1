@@ -12,7 +12,7 @@
 RootModule = 'eNUserReporting.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.91'
+ModuleVersion = '0.92'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -30,7 +30,8 @@ CompanyName = 'LogicUnion'
 Copyright = '(MIT) 2o25 nExoR ::))o-'
 
 # Description of the functionality provided by this module
-Description = 'Audit and reporting functions for hybrid and pseudo-hybrid environments for Identity reviews. Contains reporting for AD, EntraID and Exchange Online. General stats and provileged accounts.'
+Description = 'Audit and reporting functions for Native Cloud, hybrid and pseudo-hybrid environments for Identity reviews. Contains reporting for AD, EntraID and Exchange Online. 
+Additionaly otherfunctions supporting auditing, migrations andproviding general stats and provileged accounts infromation.'
 
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '5.0'
@@ -69,7 +70,7 @@ RequiredModules = @('eNLib')
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = @('get-eNADPrivilegedUsers','get-eNMFAReport','get-eNEntraIDPrivilegedUsers','get-eNReportADObjects','get-eNReportEntraUsers','get-eNReportMailboxes','join-eNReportHybridUsersInfo')
+FunctionsToExport = @('get-ServicePlanInfo','get-ADPrivilegedUsers','get-MFAReport','get-EntraIDPrivilegedUsers','get-ReportADObjects','get-ReportEntraUsers','get-ReportMailboxes','join-ReportHybridUsersInfo')
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
@@ -126,7 +127,7 @@ PrivateData = @{
 # HelpInfoURI = ''
 
 # Default prefix for commands exported from this module. Override the default prefix using Import-Module -Prefix.
-# DefaultCommandPrefix = ''
+DefaultCommandPrefix = 'eN'
 
 }
 

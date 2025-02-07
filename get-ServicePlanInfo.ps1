@@ -11,21 +11,46 @@
     this is very simple script - if you want to refresh SKU names (e.g. new CSV appeard on the docs) simply remove 
     'servicePlans.csv' file.
 .EXAMPLE
-    .\get-ServicePlanInfo.ps1
-    
-    shows all licenses/products and service plans
-.EXAMPLE
     .\get-ServicePlanInfo.ps1 -lookupName EOP_ENTERPRISE_PREMIUM 
     
-    shows friednly name of EOP_ENTERPRISE_PREMIUM. works for both - Service Plans and License names
+    shows friendly name of EOP_ENTERPRISE_PREMIUM. works for both - Service Plans and License names, may be partial.
 .EXAMPLE
-    .\get-ServicePlanInfo.ps1 -showProducts 'INTUNE_O365'
+    .\get-ServicePlanInfo.ps1 -lookupName 'Business Standard' 
     
-    shows all licenses/products that include INTUNE_O365 service plan. you can use either SKU name or Firendly name
+    looks up for all licenses containing 'Business Standard' in their name. here - friendly name will match. may be partial.
 .EXAMPLE
-    .\get-ServicePlanInfo.ps1 -productName 'Microsoft 365 F3'
+    .\get-ServicePlanInfo.ps1 -findPlan 'INTUNE'
     
-    shows all service plans included in 'Microsoft 365 F3' license. you can use either code name or friendly name.
+    shows all licenses/products that include any service plan containing 'INTUNE' in the name. you can use either 
+    SKU name or Firendly name for plans. may be partial. 
+.EXAMPLE
+    .\get-ServicePlanInfo.ps1 -lookupName 'business basic'
+
+Product_Display_Name                        String_Id                                   GUID
+--------------------                        ---------                                   ----
+Microsoft 365 Business Basic                O365_BUSINESS_ESSENTIALS                    3b555118-da6a-4418-894f-7df1e2096870
+Microsoft 365 Business Basic                SMB_BUSINESS_ESSENTIALS                     dab7782a-93b1-4074-8bb1-0e61318bea0b
+Microsoft 365 Business Basic EEA (no Teams) Microsoft_365_Business_Basic_EEA_(no_Teams) b1f3042b-a390-4b56-ab61-b88e7e767a97
+    .\get-ServicePlanInfo.ps1 -productServicePlans O365_BUSINESS_ESSENTIALS
+
+SKU                       Firendly Name                      Service_Plan_Id
+---                       -------------                      ---------------
+BPOS_S_TODO_1             To-Do (Plan 1)                     5e62787c-c316-451f-b873-1d05acd4d12c
+EXCHANGE_S_STANDARD       EXCHANGE ONLINE (PLAN 1)           9aaf7827-d63c-4b61-89c3-182f06f82e5c
+FLOW_O365_P1              FLOW FOR OFFICE 365                0f9b09cb-62d1-4ff4-9129-43f4996f83f4
+FORMS_PLAN_E1             MICROSOFT FORMS (PLAN E1)          159f4cd6-e380-449f-a816-af1a9ef76344
+MCOSTANDARD               SKYPE FOR BUSINESS ONLINE (PLAN 2) 0feaeb32-d00e-4d66-bd5a-43b5b83db82c
+OFFICEMOBILE_SUBSCRIPTION OFFICEMOBILE_SUBSCRIPTION          c63d4d19-e8cb-460e-b37c-4d6c34603745
+POWERAPPS_O365_P1         POWERAPPS FOR OFFICE 365           92f7a6f3-b89b-4bbd-8c30-809e6da5ad1c
+PROJECTWORKMANAGEMENT     MICROSOFT PLANNE                   b737dad2-2f6c-4c65-90e3-ca563267e8b9
+SHAREPOINTSTANDARD        SHAREPOINTSTANDARD                 c7699d2e-19aa-44de-8edf-1736da088ca1
+SHAREPOINTWAC             OFFICE ONLINE                      e95bec33-7c88-4a70-8e19-b10bd9d0c014
+SWAY                      SWAY                               a23b959c-7ce8-4e57-9140-b90eb88a9e97
+TEAMS1                    TEAMS1                             57ff2da0-773e-42df-b2af-ffb7a2317929
+YAMMER_ENTERPRISE         YAMMER_ENTERPRISE                  7547a3fe-08ee-4ccb-b430-5077c5041653
+    
+    productServicePlans require an exact name to limit the output, so in the first step lookUp function was used to find
+    proper license name, then it was provided for productServicePlans to show all Service Plans included in the license.
 .LINK
     https://w-files.pl
 .LINK
@@ -49,9 +74,9 @@ param (
     #display all licenses (boundles) containing given Service Plan - to quickly find boundles with searched feature
     [Parameter(ParameterSetName='findPlan',mandatory=$true,position=0)]
         [string]$findPlan,
-    #show SPs for given license type
-    [Parameter(ParameterSetName='listServicePlans',mandatory=$true,position=0)]
-        [string]$productName    
+    #show Service Plans for given license type. product name can be either SKU or friendly name but must be exact
+    [Parameter(ParameterSetName='productServicePlans',mandatory=$true,position=0)]
+        [string]$productServicePlans    
 )
 
 function lookupName {
@@ -76,7 +101,7 @@ function findPlan {
 
 }
 
-function listServicePlans {
+function productServicePlans {
     param([string]$name)
     return (
         $spInfo | 
@@ -85,16 +110,17 @@ function listServicePlans {
     )
 }
 
-function default {
-    return $spInfo
-}
-
 $spFile = ".\servicePlans.csv"
 
 if(!(test-path $spFile)) {
     Write-Verbose "file containing plans list not found - downloading..."
-    [System.Uri]$url = "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
-    Invoke-WebRequest $url -OutFile $spFile
+    try {
+        [System.Uri]$url = "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
+        Invoke-WebRequest $url -OutFile $spFile
+    } catch {
+        Write-Error "cannot download definitions the file."
+        return
+    }
 } 
 $spInfo = import-csv $spFile -Delimiter ','
 
