@@ -91,6 +91,7 @@ if(-not $noSFC) {
     #Repair-WindowsImage -Online -ScanHealth | out-file $outFile
     #may also be automated on error with:
     Repair-WindowsImage -Online -RestoreHealth | out-file $outFile
+    "starting sfc..."| out-file $outFile -Append
     try {
         $scanResult = &"c:\windows\system32\sfc.exe" /scannow
         $scanResult | out-file $outFile -Append
@@ -99,7 +100,6 @@ if(-not $noSFC) {
     }
 
 }
-
 write-verbose "logs exported:"
 $logList
-write-verbose "done"
+"done"|Tee-Object -FilePath 'done.log'
