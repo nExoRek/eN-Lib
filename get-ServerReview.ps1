@@ -14,8 +14,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250131
+    version 250207
         last changes
+        - 250207 fixes to scan disk - at last worked with CWA
         - 250131 changed logging to unattended mode, sfc checks and disk checks changed, app and system logs splited
         - 250108 initialized
 
