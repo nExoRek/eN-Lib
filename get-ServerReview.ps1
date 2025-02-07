@@ -57,14 +57,13 @@ if(-not $noEventLogCheck) {
     $days = 60
     # Calculate the start date (60 days ago)
     $startDate = (Get-Date).AddDays(-$days)
-    $eventLogs = @()
 
     # Get the event logs from the Application log
     # Filter for events with levels: Warning (2), Error (1), and Critical (0)
     write-verbose "getting application logs for the last $days days"
     $outFile = "C:\temp\{0}-{1}-EventLogs-Application.csv" -f $runDate,$Env:COMPUTERNAME
     $logList += $outFile
-    $eventLogs += Get-WinEvent -FilterHashtable @{ 
+    $eventLogs = Get-WinEvent -FilterHashtable @{ 
         LogName = "Application"
         StartTime =  $startDate
         Level = @(1, 2, 3)  # 1 = Error, 2 = Warning, 3 = Critical
@@ -74,7 +73,7 @@ if(-not $noEventLogCheck) {
     $outFile = "C:\temp\{0}-{1}-EventLogs-System.csv" -f $runDate,$Env:COMPUTERNAME
     $logList += $outFile
     write-verbose "getting system logs for the last $days days"
-    $eventLogs += Get-WinEvent -FilterHashtable @{ 
+    $eventLogs = Get-WinEvent -FilterHashtable @{ 
         LogName = "System"
         StartTime =  $startDate
         Level = @(1, 2, 3)  # 1 = Error, 2 = Warning, 3 = Critical
@@ -90,7 +89,13 @@ if(-not $noSFC) {
     #although it's not 1oo% the same as SFC it's very close and can be used as a workaround and for better reporting and automation:
     #Repair-WindowsImage -Online -ScanHealth | out-file $outFile
     #may also be automated on error with:
-    Repair-WindowsImage -Online -RestoreHealth | out-file $outFile
+    "image repair..."| out-file $outFile 
+    try {
+        $res = Repair-WindowsImage -Online -RestoreHealth 
+        $res | out-file $outFile -Append
+    } catch {
+        $_|Out-File $outFile -Append
+    }
     "starting sfc..."| out-file $outFile -Append
     try {
         $scanResult = &"c:\windows\system32\sfc.exe" /scannow
@@ -101,5 +106,4 @@ if(-not $noSFC) {
 
 }
 write-verbose "logs exported:"
-$logList
-"done"|Tee-Object -FilePath 'done.log'
+$logList | Tee-Object -FilePath 'c:\temp\done.log'
