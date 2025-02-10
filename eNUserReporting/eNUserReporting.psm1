@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-    set of function for auditing and reporting on accounts in AD, EID and EXO mailboxes. abilty to generate provileged users report,
+    set of functions for auditing and reporting on accounts in AD, EID and EXO mailboxes. abilty to generate provileged users report,
     merge data to have a big picture on the accounts for migrations, cleanups or regular audits.
+    privileged accounts reports, service plans loookup, MFA report and other functions are included. 
 
     eNLib is required for CSV-XLS conversions.
 .DESCRIPTION
@@ -90,8 +91,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250203
+    version 250209
         last changes
+        - 250209 fixed join-report, MFAreport extended to get full info from two commandlets, other fixes
         - 250206 included get-eNServicePlanInfo, module definition amendmend, MFA report function added
         - 250203 isAdmin for EID, some optmization for MFA check
         - 250131 isAdmin for AD added... not sure if join function will handle it... 
@@ -120,20 +122,20 @@ function get-ServicePlanInfo {
         this is very simple script - if you want to refresh SKU names (e.g. new CSV appeard on the docs) simply remove 
         'servicePlans.csv' file.
     .EXAMPLE
-        .\get-ServicePlanInfo.ps1 -lookupName EOP_ENTERPRISE_PREMIUM 
+        get-ServicePlanInfo -lookupName EOP_ENTERPRISE_PREMIUM 
         
         shows friendly name of EOP_ENTERPRISE_PREMIUM. works for both - Service Plans and License names, may be partial.
     .EXAMPLE
-        .\get-ServicePlanInfo.ps1 -lookupName 'Business Standard' 
+        get-ServicePlanInfo -lookupName 'Business Standard' 
         
         looks up for all licenses containing 'Business Standard' in their name. here - friendly name will match. may be partial.
     .EXAMPLE
-        .\get-ServicePlanInfo.ps1 -findPlan 'INTUNE'
+        get-ServicePlanInfo -findPlan 'INTUNE'
         
         shows all licenses/products that include any service plan containing 'INTUNE' in the name. you can use either 
         SKU name or Firendly name for plans. may be partial. 
     .EXAMPLE
-        .\get-ServicePlanInfo.ps1 -lookupName 'business basic'
+        get-ServicePlanInfo -lookupName 'business basic'
 
     Product_Display_Name                        String_Id                                   GUID
     --------------------                        ---------                                   ----
@@ -166,8 +168,9 @@ function get-ServicePlanInfo {
         https://docs.microsoft.com/en-us/azure/active-directory/enterprise-users/licensing-service-plan-reference
     .NOTES
         nExoR ::))o-
-        version 250205
+        version 250209
             last changes
+            - 250209 servicePlanInfo file created in temp folder
             - 250205 overhaul - parameter names fixed and values more intiutive
             - 220331 MS fixed CSV ... changing column name /:
             - 220315 initialized
@@ -218,8 +221,9 @@ function get-ServicePlanInfo {
             Select-Object @{L='SKU';E={$_.Service_Plan_Name}},@{L='Firendly Name';E={$_.Service_Plans_Included_Friendly_Names}},Service_Plan_Id
         )
     }
-
-    $spFile = ".\servicePlans.csv"
+    $VerbosePreference = 'Continue'
+    $TempFolder = [System.IO.Path]::GetTempPath()
+    $spFile = "$TempFolder\servicePlans.csv"
 
     if(!(test-path $spFile)) {
         Write-Verbose "file containing plans list not found - downloading..."
@@ -240,7 +244,12 @@ function get-ServicePlanInfo {
 Function Get-MFAMethods {
     <#
     .SYNOPSIS
-        Get the MFA status of the user
+        Get the details on configured MFA methods of the user
+    .NOTES
+        nExoR ::))o-
+        version 250209
+            last changes
+            - 250209 module-verified 
     #>
     param(
         [Parameter(Mandatory, Position = 0)] 
@@ -248,7 +257,19 @@ Function Get-MFAMethods {
         [parameter(Mandatory = $false, Position = 1)]
             [switch]$onlyStatus
     )
+
     process {
+
+        if($onlyStatus) {
+            if($mfaData[0].AdditionalProperties["@odata.type"] -eq "#microsoft.graph.passwordAuthenticationMethod" -and $mfaData.Count -eq 1) {
+                return "disabled"
+            } elseif($mfaData.Count -gt 1) {
+                return "enabled"
+            } else {
+                return "error"
+            }
+        }
+
         # Create MFA details object
         $mfaMethods  = [PSCustomObject][Ordered]@{
             MFAstatus = "disabled"
@@ -268,21 +289,12 @@ Function Get-MFAMethods {
             passwordLess = $false
             passwordLessDetails = ""
         }
-        # Get MFA details for each user
+
         try {
             [array]$mfaData = Get-MgUserAuthenticationMethod -UserId $userId -ErrorAction Stop
         } catch {
             $mfaMethods.MFAstatus = 'error'
             return $mfaMethods
-        }
-        if($onlyStatus) {
-            if($mfaData[0].AdditionalProperties["@odata.type"] -eq "#microsoft.graph.passwordAuthenticationMethod" -and $mfaData.Count -eq 1) {
-                return "disabled"
-            } elseif($mfaData.Count -gt 1) {
-                return "enabled"
-            } else {
-                return "error"
-            }
         }
         ForEach ($method in $mfaData) {
             Switch ($method.AdditionalProperties["@odata.type"]) {
@@ -349,10 +361,10 @@ function get-MFAReport {
     .SYNOPSIS
         Get the MFA status of a particular user or all users in the tenant
     .DESCRIPTION
-        Get-MgReportAuthenticationMethodUserRegistrationDetail is providing a nice report but lacking some actual details.
-        get-MFAMethods is not providing default 2FA configured. 
+        Get-MgReportAuthenticationMethodUserRegistrationDetail is providing a nice report but lacking some actual details and works only for 
+        enabled users. Get-MgUserAuthenticationMethod is not providing default 2FA configured.
+        so the only way to have everything is to combine both methods.
 
-        two different reports /:
         This function is a wrapper for Get-MFAMethods function. It will get the MFA status of the user and return it as a string.
     .EXAMPLE
         get-eNMFAReport
@@ -366,6 +378,11 @@ function get-MFAReport {
         get-eNMFAReport -userPrincipalName nexor@w-files.pl
 
         prepares a report for a user with a UPN nexor@w-files.pl
+    .NOTES
+        nExoR ::))o-
+        version 250209
+            last changes
+            - 250209 extended report from both commandlets
     #>
     [CmdletBinding(DefaultParameterSetName='default')]
     param (
@@ -377,7 +394,15 @@ function get-MFAReport {
             [string]$userPrincipalName,
         #no username - check for all users
         [Parameter(mandatory=$false,position=0,ParameterSetName='default')]
-            [switch]$all=$true
+            [switch]$all = $true,
+        #extended MFA information
+        [Parameter(mandatory=$false,position=1,ParameterSetName='uID')]
+        [Parameter(mandatory=$false,position=1,ParameterSetName='upn')]
+        [Parameter(mandatory=$false,position=1,ParameterSetName='default')]
+            [switch]$extendedMFAInformation,
+        #automatically convert to Excel and open
+        [Parameter(mandatory=$false,position=2,ParameterSetName='default')]
+            [switch]$run
     )
 
     $VerbosePreference = "continue"
@@ -403,10 +428,6 @@ function get-MFAReport {
             Write-Verbose "no user(s) found."
             return
         }
-        Write-Verbose $($EIDuser.userPrincipalName)
-        $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue
-        return $mfaStatus | select-object @{L='AccountEnabled';E={$EIDuser.AccountEnabled}},*
-        
     }
     if($PSCmdlet.ParameterSetName -eq 'upn') {
         Write-Debug "checking for $userPrincipalName"
@@ -415,21 +436,82 @@ function get-MFAReport {
             Write-Verbose "no user(s) found."
             return
         }
-        Write-Debug $($EIDuser.userPrincipalName)
-        $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue
+    }
+    if($PSCmdlet.ParameterSetName -eq 'upn' -or $PSCmdlet.ParameterSetName -eq 'uID') {
+        Write-Verbose $($EIDuser.userPrincipalName)
+        try {
+            $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue    
+        } catch {
+            Write-Verbose $_.Exception
+            return
+        }
+        $mfaDetails = Get-MFAMethods -userId $userId
+        if($extendedMFAInformation) {
+            foreach($prop in $mfaDetails.PSObject.Properties) {
+                $mfaStatus | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value
+            }
+        }
         return $mfaStatus | select-object @{L='AccountEnabled';E={$EIDuser.AccountEnabled}},*
     }
-    #Write-Verbose "$($EIDUsers.count) users found. gathering MFA status..."
+    #default : all users report 
     $outFile = "eNMFAReport-"+(get-date -Format 'yyMMdd-HHmmss')+'.csv'
-    Write-Verbose "gathering data for report..."
-    Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "usertype eq 'member'" | `
-        Select-Object UserDisplayName,UserPrincipalName,Id,@{L='AccountEnabled';E={ (Get-MgUser -userId $_.Id -Property AccountEnabled).AccountEnabled}},IsAdmin, `
-        IsMfaCapable,IsMfaRegistered,IsPasswordlessCapable,IsSsprCapable,IsSsprEnabled,IsSsprRegistered,IsSystemPreferredAuthenticationMethodEnabled, `
-        LastUpdatedDateTime,@{L='MethodsRegistered';E={$_.MethodsRegistered -join ','}},@{L='SystemPreferredAuthenticationMethods';E={$_.SystemPreferredAuthenticationMethods -join ','}}, `
-        UserPreferredMethodForSecondaryAuthentication, @{L='AdditionalProperties';E={$_.AdditionalProperties}} | `
-        Export-Csv -Path $outFile -NoTypeInformation
-    
+    $MFAReport = @()
+    try {
+        $EIDUsers = Get-MgUser -Filter "usertype eq 'member'" -All -Property userPrincipalName,Id,AccountEnabled -ErrorAction SilentlyContinue
+    } catch {
+        Write-Verbose $_.Exception
+        return
+    }
+    $nrOfEIDUsers = $EIDUsers.count
+    Write-Verbose "$nrOfEIDUsers member users found. gathering MFA status..."
+    $current = 0
+    foreach($EIDuser in $EIDUsers) {
+        write-progress -activity "getting MFA status" -status "processing $($EIDuser.userPrincipalName)" -percentComplete (($current/$nrOfEIDUsers)*100)
+        if($EIDuser.AccountEnabled -eq $false) {
+            #Get-MgReportAuthenticationMethodUserRegistrationDetail doesn't work for disabled accounts
+            $mfaStatus = [PSCustomObject]@{
+                UserDisplayName = $EIDuser.userPrincipalName
+                UserPrincipalName = $EIDuser.userPrincipalName
+                Id = $EIDuser.Id
+                AccountEnabled = $EIDUser.AccountEnabled
+                IsAdmin = ''
+                IsMfaCapable = ''
+                IsMfaRegistered = ''
+                IsPasswordlessCapable = ''
+                IsSsprCapable = ''
+                IsSsprEnabled = ''
+                IsSsprRegistered = ''
+                LastUpdatedDateTime = ''
+                MethodsRegistered = ''
+                IsSystemPreferredAuthenticationMethodEnabled = ''
+                SystemPreferredAuthenticationMethods = ''
+                UserPreferredMethodForSecondaryAuthentication = ''
+                AdditionalProperties = 0
+            }
+        } else {
+            $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue | `
+                Select-Object UserDisplayName,UserPrincipalName,Id,@{L='AccountEnabled';E={ $EIDUser.AccountEnabled}},IsAdmin, `
+                    IsMfaCapable,IsMfaRegistered,IsPasswordlessCapable,IsSsprCapable,IsSsprEnabled,IsSsprRegistered,LastUpdatedDateTime, `
+                    @{L='MethodsRegistered';E={$_.MethodsRegistered -join ','}},IsSystemPreferredAuthenticationMethodEnabled, `
+                    @{L='SystemPreferredAuthenticationMethods';E={$_.SystemPreferredAuthenticationMethods -join ','}}, `
+                    UserPreferredMethodForSecondaryAuthentication, @{L='AdditionalProperties';E={$_.AdditionalProperties.Count}}
+        }
+        if($extendedMFAInformation) {
+            $mfaDetails = Get-MFAMethods -userId $EIDuser.Id
+            foreach($prop in $mfaDetails.PSObject.Properties) {
+                $mfaStatus | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value
+            }
+        }
+        $MFAReport += $mfaStatus
+    }
+
+    $MFAReport | Export-Csv -Path $outFile -NoTypeInformation
     Write-Verbose "results saved as $outFile."
+    if($run) {
+        $xlsFile = convert-CSV2XLS -CSVfileName $outFile
+        Start-Process $xlsFile
+    }
+    Write-Host 'done.' -ForegroundColor Green
 }
 function get-ADPrivilegedUsers {
     <#
@@ -833,8 +915,9 @@ function get-ReportEntraUsers {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 250203
+        version 250209
             last changes
+            - 250209 servicePlans created/saved in temp folder
             - 250203 isAdmin for EID, some optmization for MFA check, additional parameters and attributes, some optimisations
             - 240718 initiated as a more generalized project, service plans display names check up, segmentation
             - 240627 MFA - for now only general status, AADP1 error handling
@@ -996,7 +1079,8 @@ function get-ReportEntraUsers {
     }
     if(!$skipLicenseCheck) {
         Write-Verbose "getting License info..."
-        $spFile = ".\servicePlans.csv"
+        $TempFolder = [System.IO.Path]::GetTempPath()
+        $spFile = "$TempFolder\servicePlans.csv"
 
         if(!(test-path $spFile)) {
             Write-Verbose "file containing plans list not found - downloading..."
@@ -1087,7 +1171,6 @@ function get-ReportMailboxes {
             [switch]$noCleanup
         
     )
-    $VerbosePreference = 'Continue'
 
     if(!$skipConnect) {
         Disconnect-ExchangeOnline -confirm:$false -ErrorAction SilentlyContinue
@@ -1099,6 +1182,7 @@ function get-ReportMailboxes {
             return
         }
     }
+    $VerbosePreference = 'Continue'
 
     #get some domain information 
     $domain = (Get-AcceptedDomain|? Default -eq $true).domainName
@@ -1267,8 +1351,9 @@ function join-ReportHybridUsersInfo {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 241223
+        version 250209
             last changes
+            - 250209 properties in reports will now be dynamically added - if report contains more attributes, they will be added to the final output
             - 241223 matching for guest accounts, better AD-EID matching (dupes handling)
             - 241220 'any' fixed, lots of changes to matching and sorting, export only for chosen files... 
             - 241210 mutliple fixes to output, daysinactive, dupe detection. dupes are still not matched entirely properly.. that will require some additional logic
@@ -1291,7 +1376,6 @@ function join-ReportHybridUsersInfo {
         pointing to an object from other table. then implement 'view' or 'export' that is creating one single file with different options
         such as 'only matched', 'all', etc. 
         * auto-fix UPN suffix for soft matching (domain.local to domain.com) - to enforce pseudo-hybrid matching
-        * some fileds are non-mandatory while executing - such as EXO delegations - but mandatory here. should allow for flexibility
         
     #>
     [CmdletBinding()]
@@ -1558,7 +1642,7 @@ function join-ReportHybridUsersInfo {
                 #so I'm checking how many unique IDs are found
                 if(($entraFound | Select-Object mvID -Unique).count -gt 1) {
                     write-verbose "AD: $($entraFound[0].elementValue): duplicate found on $($entraFound.elementProperty -join ',') attributes."
-                    if($entraFound|? elementproperty -eq 'userPrincipalName') { #difficult to choose, but UPN matching is imho the strongest. then mail. displyname is rather a 'soft match'and may have many duplicates
+                    if($entraFound|? elementproperty -eq 'userPrincipalName') { #difficult to choose, but UPN matching is the strongest. then mail. displyname is rather a 'soft match'and may have many duplicates
                         $matchedEID = $true
                         Update-MetaverseData -mv $metaverseUserInfo -dataSource $ADuser -objectID ($entraFound |? elementProperty -eq 'userPrincipalName').mvID
                     }elseif($entraFound|? elementProperty -eq 'mail') {
@@ -1611,15 +1695,36 @@ function join-ReportHybridUsersInfo {
 
     #export all results, extending with Hybrid_daysInactive attribute being lower of the comparison between EID and AD
     #select is enforced as I want the parameters provided in a given order
-    $finalHeader = @()
+    $finalHeader = New-Object System.Collections.ArrayList
     if($EntraIDData) { 
-        $finalHeader += @("DisplayName","UserType","AccountEnabled","GivenName","Surname","UserPrincipalName","Mail","MFAStatus","Hybrid","LastLogonDate","LastNILogonDate","licenses","Id","daysInactive") 
+        foreach($el in @("DisplayName","UserType","AccountEnabled","GivenName","Surname","UserPrincipalName","Mail","MFAStatus","Hybrid","LastLogonDate","LastNILogonDate","licenses","Id","daysInactive") ) {
+            $finalHeader.Add($el) | Out-Null
+        }
+        foreach($prop in $EntraIDData[0].psobject.Properties) {
+            if($prop.Name -notin $finalHeader) {
+                $finalHeader.Add($prop.Name) | Out-Null
+            }
+        }
     }
     if($ADData) { 
-        $finalHeader += @("AD_samaccountname","AD_userPrincipalName","AD_enabled","AD_givenName","AD_surname","AD_displayName","AD_mail","AD_description","AD_lastLogonDate","AD_daysInactive","AD_PasswordLastSet","AD_distinguishedname","AD_parentOU")
+        foreach($el in @("AD_samaccountname","AD_userPrincipalName","AD_enabled","AD_givenName","AD_surname","AD_displayName","AD_mail","AD_description","AD_lastLogonDate","AD_daysInactive","AD_PasswordLastSet","AD_distinguishedname","AD_parentOU") ) {
+            $finalHeader.Add($el) | Out-Null
+        }
+        foreach($prop in $ADData[0].psobject.Properties) {
+            if($prop.Name -notin $finalHeader) {
+                $finalHeader.Add($prop.Name) | Out-Null
+            }
+        }
     }
     if($EXOData) { 
-        $finalHeader += @("EXO_PrimarySMTPAddress","EXO_DisplayName","EXO_FirstName","EXO_LastName","EXO_RecipientType","EXO_RecipientTypeDetails","EXO_emails","EXO_delegations","EXO_ForwardingAddress", "EXO_ForwardingSmtpAddress","EXO_WhenMailboxCreated","EXO_userPrincipalName","EXO_enabled","EXO_Identity","EXO_LastInteractionTime","EXO_LastUserActionTime","EXO_TotalItemSize","EXO_ExchangeObjectId")
+        foreach($el in @("EXO_PrimarySMTPAddress","EXO_DisplayName","EXO_FirstName","EXO_LastName","EXO_RecipientType","EXO_RecipientTypeDetails","EXO_emails","EXO_delegations","EXO_ForwardingAddress", "EXO_ForwardingSmtpAddress","EXO_WhenMailboxCreated","EXO_userPrincipalName","EXO_enabled","EXO_Identity","EXO_LastInteractionTime","EXO_LastUserActionTime","EXO_TotalItemSize","EXO_ExchangeObjectId") ) {
+            $finalHeader.Add($el) | Out-Null
+        }
+        foreach($prop in $EXOData[0].psobject.Properties) {
+            if($prop.Name -notin $finalHeader) {
+                $finalHeader.Add($prop.Name) | Out-Null
+            }
+        }
     }
 
     $metaverseUserInfo.Keys | %{ 

@@ -12,7 +12,7 @@
 RootModule = 'eNUserReporting.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.92'
+ModuleVersion = '0.93'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
