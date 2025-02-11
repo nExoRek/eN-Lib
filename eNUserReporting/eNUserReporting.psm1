@@ -259,17 +259,6 @@ Function Get-MFAMethods {
     )
 
     process {
-
-        if($onlyStatus) {
-            if($mfaData[0].AdditionalProperties["@odata.type"] -eq "#microsoft.graph.passwordAuthenticationMethod" -and $mfaData.Count -eq 1) {
-                return "disabled"
-            } elseif($mfaData.Count -gt 1) {
-                return "enabled"
-            } else {
-                return "error"
-            }
-        }
-
         # Create MFA details object
         $mfaMethods  = [PSCustomObject][Ordered]@{
             MFAstatus = "disabled"
@@ -290,12 +279,23 @@ Function Get-MFAMethods {
             passwordLessDetails = ""
         }
 
+        write-debug "MFA Methods - Get-MgUserAuthenticationMethod"
         try {
             [array]$mfaData = Get-MgUserAuthenticationMethod -UserId $userId -ErrorAction Stop
         } catch {
             $mfaMethods.MFAstatus = 'error'
             return $mfaMethods
         }
+        if($onlyStatus) {
+            Write-Debug "MFAMethods - only status"
+            if($mfaData[0].AdditionalProperties["@odata.type"] -eq "#microsoft.graph.passwordAuthenticationMethod" -and $mfaData.Count -eq 1) {
+                return "disabled"
+            } elseif($mfaData.Count -gt 1) {
+                return "enabled"
+            } else {
+                return "error"
+            }
+        }        
         ForEach ($method in $mfaData) {
             Switch ($method.AdditionalProperties["@odata.type"]) {
 <#                "#microsoft.graph.passwordAuthenticationMethod" { 
@@ -380,8 +380,9 @@ function get-MFAReport {
         prepares a report for a user with a UPN nexor@w-files.pl
     .NOTES
         nExoR ::))o-
-        version 250209
+        version 250211
             last changes
+            - 250211 as it turned out, reportdetails is not working for accounts lacking license, not disabled.. that had conseqences.
             - 250209 extended report from both commandlets
     #>
     [CmdletBinding(DefaultParameterSetName='default')]
@@ -422,53 +423,31 @@ function get-MFAReport {
         }
     }
 
-    if($PSCmdlet.ParameterSetName -eq 'uID') {
-        $EIDuser += Get-MgUser -userId $userId -Property accountEnabled,userPrincipalName,Id -ErrorAction SilentlyContinue
+    if($PSCmdlet.ParameterSetName -eq 'uID') { #single check - by uID
+        $EIDuser += Get-MgUser -userId $userId -Property accountEnabled,userPrincipalName,Id,LicenseAssignmentStates -ErrorAction Stop
         if(-not $EIDUser) {
             Write-Verbose "no user(s) found."
             return
         }
     }
-    if($PSCmdlet.ParameterSetName -eq 'upn') {
+    if($PSCmdlet.ParameterSetName -eq 'upn') { #single check - by UPN
         Write-Debug "checking for $userPrincipalName"
-        $EIDuser += Get-MgUser -Filter "userPrincipalName eq '$userPrincipalName'" -Property accountEnabled,userPrincipalName,Id -ErrorAction SilentlyContinue
+        $EIDuser += Get-MgUser -Filter "userPrincipalName eq '$userPrincipalName'" -Property accountEnabled,userPrincipalName,Id,LicenseAssignmentStates -ErrorAction Stop
         if(-not $EIDUser) {
-            Write-Verbose "no user(s) found."
+            Write-Verbose "no '$userPrincipalName' found."
             return
         }
     }
     if($PSCmdlet.ParameterSetName -eq 'upn' -or $PSCmdlet.ParameterSetName -eq 'uID') {
-        Write-Verbose $($EIDuser.userPrincipalName)
-        try {
-            $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue    
-        } catch {
-            Write-Verbose $_.Exception
-            return
-        }
-        $mfaDetails = Get-MFAMethods -userId $userId
-        if($extendedMFAInformation) {
-            foreach($prop in $mfaDetails.PSObject.Properties) {
-                $mfaStatus | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value
+        Write-Verbose "getting basic details for '$($EIDuser.userPrincipalName)'"
+        if($EIDuser.LicenseAssignmentStates) {
+            try {
+                $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue    
+            } catch {
+                Write-Verbose $_.Exception
+                return
             }
-        }
-        return $mfaStatus | select-object @{L='AccountEnabled';E={$EIDuser.AccountEnabled}},*
-    }
-    #default : all users report 
-    $outFile = "eNMFAReport-"+(get-date -Format 'yyMMdd-HHmmss')+'.csv'
-    $MFAReport = @()
-    try {
-        $EIDUsers = Get-MgUser -Filter "usertype eq 'member'" -All -Property userPrincipalName,Id,AccountEnabled -ErrorAction SilentlyContinue
-    } catch {
-        Write-Verbose $_.Exception
-        return
-    }
-    $nrOfEIDUsers = $EIDUsers.count
-    Write-Verbose "$nrOfEIDUsers member users found. gathering MFA status..."
-    $current = 0
-    foreach($EIDuser in $EIDUsers) {
-        write-progress -activity "getting MFA status" -status "processing $($EIDuser.userPrincipalName)" -percentComplete (($current/$nrOfEIDUsers)*100)
-        if($EIDuser.AccountEnabled -eq $false) {
-            #Get-MgReportAuthenticationMethodUserRegistrationDetail doesn't work for disabled accounts
+        } else {
             $mfaStatus = [PSCustomObject]@{
                 UserDisplayName = $EIDuser.userPrincipalName
                 UserPrincipalName = $EIDuser.userPrincipalName
@@ -488,13 +467,62 @@ function get-MFAReport {
                 UserPreferredMethodForSecondaryAuthentication = ''
                 AdditionalProperties = 0
             }
-        } else {
+        }
+        $mfaDetails = Get-MFAMethods -userId $EIDuser.Id
+        if($extendedMFAInformation) {
+            foreach($prop in $mfaDetails.PSObject.Properties) {
+                $mfaStatus | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value
+            }
+        }
+        return $mfaStatus | select-object @{L='AccountEnabled';E={$EIDuser.AccountEnabled}},*
+    }
+
+    #default : all users report 
+    $outFile = "eNMFAReport-"+(get-date -Format 'yyMMdd-HHmmss')+'.csv'
+    $MFAReport = @()
+    try {
+        $EIDUsers = Get-MgUser -Filter "usertype eq 'member'" -All -Property userPrincipalName,Id,AccountEnabled,LicenseAssignmentStates -ErrorAction SilentlyContinue
+    } catch {
+        Write-Verbose $_.Exception
+        return
+    }
+    $nrOfEIDUsers = $EIDUsers.count
+    Write-Verbose "$nrOfEIDUsers member users found. gathering MFA status..."
+    $current = 0
+    foreach($EIDuser in $EIDUsers) {
+        write-progress -activity "getting MFA status" -status "processing $($EIDuser.userPrincipalName)" -percentComplete (($current/$nrOfEIDUsers)*100)
+        $current++
+        $mfaStatus = $null
+        #Get-MgReportAuthenticationMethodUserRegistrationDetail doesn't work for unlicensed accounts
+        if(-not [string]::isNullOrEmpty($EIDuser.LicenseAssignmentStates)) {
             $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue | `
                 Select-Object UserDisplayName,UserPrincipalName,Id,@{L='AccountEnabled';E={ $EIDUser.AccountEnabled}},IsAdmin, `
                     IsMfaCapable,IsMfaRegistered,IsPasswordlessCapable,IsSsprCapable,IsSsprEnabled,IsSsprRegistered,LastUpdatedDateTime, `
                     @{L='MethodsRegistered';E={$_.MethodsRegistered -join ','}},IsSystemPreferredAuthenticationMethodEnabled, `
                     @{L='SystemPreferredAuthenticationMethods';E={$_.SystemPreferredAuthenticationMethods -join ','}}, `
                     UserPreferredMethodForSecondaryAuthentication, @{L='AdditionalProperties';E={$_.AdditionalProperties.Count}}
+        }
+        if([string]::isNullOrEmpty($mfaStatus)) {
+            $mfaStatus = [PSCustomObject]@{
+                UserDisplayName = $EIDuser.userPrincipalName
+                UserPrincipalName = $EIDuser.userPrincipalName
+                Id = $EIDuser.Id
+                AccountEnabled = $EIDUser.AccountEnabled
+                IsAdmin = ''
+                IsMfaCapable = ''
+                IsMfaRegistered = ''
+                IsPasswordlessCapable = ''
+                IsSsprCapable = ''
+                IsSsprEnabled = ''
+                IsSsprRegistered = ''
+                LastUpdatedDateTime = ''
+                MethodsRegistered = ''
+                IsSystemPreferredAuthenticationMethodEnabled = ''
+                SystemPreferredAuthenticationMethods = ''
+                UserPreferredMethodForSecondaryAuthentication = ''
+                AdditionalProperties = 0
+            }
+            #continue
         }
         if($extendedMFAInformation) {
             $mfaDetails = Get-MFAMethods -userId $EIDuser.Id
@@ -505,7 +533,7 @@ function get-MFAReport {
         $MFAReport += $mfaStatus
     }
 
-    $MFAReport | Export-Csv -Path $outFile -NoTypeInformation
+    $MFAReport | Sort-Object UserDisplayName | Export-Csv -Path $outFile -NoTypeInformation
     Write-Verbose "results saved as $outFile."
     if($run) {
         $xlsFile = convert-CSV2XLS -CSVfileName $outFile
