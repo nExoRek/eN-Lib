@@ -1086,7 +1086,7 @@ function get-ReportEntraUsers {
                 Sort-Object daysInactive,DisplayName 
     } else {
         $entraUsers = $entraUsers |
-            select-object displayname,userType,accountenabled,givenname,surname,userprincipalname,mail,MFAStatus,`
+            select-object displayname,userType,accountenabled,isAdmin,givenname,surname,userprincipalname,mail,MFAStatus,`
             @{L='Hybrid';E={if($_.OnPremisesSyncEnabled) {$_.OnPremisesSyncEnabled} else {"FALSE"} }},`
             @{L='LastLogonDate';E={'NO AADP1'}},`
             @{L='LastNILogonDate';E={'NO AADP1'}},`

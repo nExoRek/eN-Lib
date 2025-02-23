@@ -12,7 +12,7 @@
 RootModule = 'eNAuditor.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.900'
+ModuleVersion = '0.901'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
