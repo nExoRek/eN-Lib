@@ -2820,7 +2820,6 @@ function connect-Azure {
         #confirm the connection
         [Parameter(mandatory=$false,position=1)]
             [switch]$Confirm
-        
     )
     Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 

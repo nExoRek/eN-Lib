@@ -9,17 +9,18 @@
     module is in early stages - there is some mess with functions and reporting, lack of unification. some parameters and behaviour may change before 
     mature version is ready.
 
-    There are three main functions to generate reports from three different sources:
+    module contains several auditing functions and each of them may be useful to gather some interesting data. yet there are three main functions to 
+    generate reports from three different sources about the identities:
         - get-eNReportADObjects - for AD objects
         - get-eNReportEntraUsers - for EntraID
         - get-eNReportEXOMailboxes - for Exchange Online mailboxes
-    after getting results from two or three sources, there is a function to merge data and generate a report.
+    after getting results from two or three of above sources, there is a function to merge data and generate a combined report:
         - join-eNReportHybridUserInfo
 
     join-eNReportHybridUsersInfo -inputCSVAD .\ADUsers-w-files.pl-250124-1239.csv -inputCSVEntraID .\EntraUsers-w-files.pl-250124-0254.csv -inputCSVEXO .\mbxstats-w-files.pl-250124-0256.csv
     command will join all three reports and generate a final one, containing combined data. 
 
-    Analysing data
+    Analysing data in combined report
     All the rest is setting up proper filters in Excel file. Below some hints and explanations to columns and file structure (assuming all 3 sources were used). Because of vast number of 
     scenarios and queries it is impossible to describe all combinations. Below are hints and suggestions – we need to define some set of default queries to be reported leaving some space 
     for creativity for extra information.
@@ -1614,7 +1615,7 @@ function join-ReportHybridUsersInfo {
             -headerIsCritical
         $reports++
         if([string]::isNullOrEmpty($EntraIDData)) {
-            exit
+            return
         }
     }
     if($inputCSVAD) {
@@ -1624,7 +1625,7 @@ function join-ReportHybridUsersInfo {
             -prefix 'AD_'
         $reports++
         if([string]::isNullOrEmpty($ADData)) {
-            exit
+            return
         }
     }
     if($inputCSVEXO) {
@@ -1634,7 +1635,7 @@ function join-ReportHybridUsersInfo {
             -prefix 'EXO_'
         $reports++
         if([string]::isNullOrEmpty($EXOData)) {
-            exit
+            return
         }
     }
     if($reports -lt 2) {
@@ -1755,12 +1756,21 @@ function join-ReportHybridUsersInfo {
         }
     }
 
-    $metaverseUserInfo.Keys | %{ 
+    $finalResults = $metaverseUserInfo.Keys | %{ 
         $metaverseUserInfo[$_] |
             Select-Object $finalHeader |
-            Select-Object *,@{L='Hybrid_daysInactive';E={($_.daysInactive,$_.AD_daysInactive|Measure-Object -Minimum).minimum}} |
-            Sort-Object Hybrid_daysInactive,displayName,AD_displayName,EXO_DisplayName -Descending
-    } | Export-Csv -Encoding unicode -NoTypeInformation $exportCSVFile
+            Select-Object *,@{L='Hybrid_daysInactive';E={($_.daysInactive,$_.AD_daysInactive|Measure-Object -Minimum).minimum}} 
+    } #,Hybrid_daysInactive,displayName,AD_displayName,EXO_DisplayName
+    $finalResults | 
+        Sort-Object { 
+            $flag = if([string]::isNullOrEmpty($_.isAdmin) ) { 'Z' } else { 'A' }
+            $flag2 = if([string]::isNullOrEmpty($_.AD_isAdmin) ) { 'Z' } else { 'A' }
+            $p1 = $_.isAdmin
+            $p2 = $_.AD_isAdmin
+            $p3 = $_.Hybrid_daysInactive
+            @($flag,$flag2,$p1,$p2,$p3)
+        } | 
+        Export-Csv -Encoding unicode -NoTypeInformation $exportCSVFile
 
     Write-Log "merged report saved to '$exportCSVFile'." -type ok
     if($openOnConversion) {
