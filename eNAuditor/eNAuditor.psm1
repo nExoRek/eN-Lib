@@ -92,8 +92,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250209
+    version 250329
         last changes
+        - 250329 service plan info removed -> new library eNGBL created
         - 250209 fixed join-report, MFAreport extended to get full info from two commandlets, other fixes
         - 250206 included get-eNServicePlanInfo, module definition amendmend, MFA report function added
         - 250203 isAdmin for EID, some optmization for MFA check
@@ -108,150 +109,16 @@
     * PS version check functions to replace missing #requires
     * join must handle all attributes by default (no static list)
 #>
-
-function get-ServicePlanInfo {
-<#
-    .SYNOPSIS
-        display information on Service Plans
-    .DESCRIPTION
-        constant problems I encounter with licenses (called 'products') are:
-        - does this or that license contain some service plan?
-        - what is given SKU - since I have technical output and interace shows different name?
-        - which service plans are included in given licence?
-        this script addresses exactly these question. it downloads current SKU name listing from Microsoft doc and
-        lookup the names.
-        this is very simple script - if you want to refresh SKU names (e.g. new CSV appeard on the docs) simply remove 
-        'servicePlans.csv' file.
-    .EXAMPLE
-        get-ServicePlanInfo -lookupName EOP_ENTERPRISE_PREMIUM 
-        
-        shows friendly name of EOP_ENTERPRISE_PREMIUM. works for both - Service Plans and License names, may be partial.
-    .EXAMPLE
-        get-ServicePlanInfo -lookupName 'Business Standard' 
-        
-        looks up for all licenses containing 'Business Standard' in their name. here - friendly name will match. may be partial.
-    .EXAMPLE
-        get-ServicePlanInfo -findPlan 'INTUNE'
-        
-        shows all licenses/products that include any service plan containing 'INTUNE' in the name. you can use either 
-        SKU name or Firendly name for plans. may be partial. 
-    .EXAMPLE
-        get-ServicePlanInfo -lookupName 'business basic'
-
-    Product_Display_Name                        String_Id                                   GUID
-    --------------------                        ---------                                   ----
-    Microsoft 365 Business Basic                O365_BUSINESS_ESSENTIALS                    3b555118-da6a-4418-894f-7df1e2096870
-    Microsoft 365 Business Basic                SMB_BUSINESS_ESSENTIALS                     dab7782a-93b1-4074-8bb1-0e61318bea0b
-    Microsoft 365 Business Basic EEA (no Teams) Microsoft_365_Business_Basic_EEA_(no_Teams) b1f3042b-a390-4b56-ab61-b88e7e767a97
-        .\get-ServicePlanInfo.ps1 -productServicePlans O365_BUSINESS_ESSENTIALS
-
-    SKU                       Firendly Name                      Service_Plan_Id
-    ---                       -------------                      ---------------
-    BPOS_S_TODO_1             To-Do (Plan 1)                     5e62787c-c316-451f-b873-1d05acd4d12c
-    EXCHANGE_S_STANDARD       EXCHANGE ONLINE (PLAN 1)           9aaf7827-d63c-4b61-89c3-182f06f82e5c
-    FLOW_O365_P1              FLOW FOR OFFICE 365                0f9b09cb-62d1-4ff4-9129-43f4996f83f4
-    FORMS_PLAN_E1             MICROSOFT FORMS (PLAN E1)          159f4cd6-e380-449f-a816-af1a9ef76344
-    MCOSTANDARD               SKYPE FOR BUSINESS ONLINE (PLAN 2) 0feaeb32-d00e-4d66-bd5a-43b5b83db82c
-    OFFICEMOBILE_SUBSCRIPTION OFFICEMOBILE_SUBSCRIPTION          c63d4d19-e8cb-460e-b37c-4d6c34603745
-    POWERAPPS_O365_P1         POWERAPPS FOR OFFICE 365           92f7a6f3-b89b-4bbd-8c30-809e6da5ad1c
-    PROJECTWORKMANAGEMENT     MICROSOFT PLANNE                   b737dad2-2f6c-4c65-90e3-ca563267e8b9
-    SHAREPOINTSTANDARD        SHAREPOINTSTANDARD                 c7699d2e-19aa-44de-8edf-1736da088ca1
-    SHAREPOINTWAC             OFFICE ONLINE                      e95bec33-7c88-4a70-8e19-b10bd9d0c014
-    SWAY                      SWAY                               a23b959c-7ce8-4e57-9140-b90eb88a9e97
-    TEAMS1                    TEAMS1                             57ff2da0-773e-42df-b2af-ffb7a2317929
-    YAMMER_ENTERPRISE         YAMMER_ENTERPRISE                  7547a3fe-08ee-4ccb-b430-5077c5041653
-        
-        productServicePlans require an exact name to limit the output, so in the first step lookUp function was used to find
-        proper license name, then it was provided for productServicePlans to show all Service Plans included in the license.
-    .LINK
-        https://w-files.pl
-    .LINK
-        https://docs.microsoft.com/en-us/azure/active-directory/enterprise-users/licensing-service-plan-reference
-    .NOTES
-        nExoR ::))o-
-        version 250209
-            last changes
-            - 250209 servicePlanInfo file created in temp folder
-            - 250205 overhaul - parameter names fixed and values more intiutive
-            - 220331 MS fixed CSV ... changing column name /:
-            - 220315 initialized
-
-        #TO|DO
-        - header check
-#>
-    [CmdletBinding(DefaultParameterSetName='lookupName')]
-    param (
-        #lookup the name (internal, displayname) and shows details. you can use partial name of the license
-        [Parameter(ParameterSetName='lookupName',mandatory=$true,position=0)]
-            [string]$lookupName,
-        #display all licenses (boundles) containing given Service Plan - to quickly find boundles with searched feature
-        [Parameter(ParameterSetName='findPlan',mandatory=$true,position=0)]
-            [string]$findPlan,
-        #show Service Plans for given license type. product name can be either SKU or friendly name but must be exact
-        [Parameter(ParameterSetName='productServicePlans',mandatory=$true,position=0)]
-            [string]$productServicePlans    
-    )
-
-    function lookupName {
-        param([string]$name)
-
-        $ServicePlan = $spInfo | Where-Object { $_.Product_Display_Name -match $name -or $_.Service_Plan_Name -match $name -or $_.String_Id -match $name }
-        if($ServicePlan) {
-            return $ServicePlan|Select-Object Product_Display_Name,String_Id,GUID -Unique
-        } else {
-            return $null
-        }
-    }
-
-    function findPlan {
-        param([string]$name)
-        return (
-            $spInfo | 
-            Where-Object {$_.Service_Plans_Included_Friendly_Names -match $name -or $_.Service_Plan_Name -match $name} |
-            select-object  Service_Plan_Name,Service_Plans_Included_Friendly_Names,Service_Plan_Id,Product_Display_Name,String_Id,GUID -unique | 
-            Sort-object Service_Plan_Name
-        )
-
-    }
-
-    function productServicePlans {
-        param([string]$name)
-        return (
-            $spInfo | 
-            Where-Object {$_.Product_Display_Name -eq $name -or $_.String_Id -eq $name} | 
-            Select-Object @{L='SKU';E={$_.Service_Plan_Name}},@{L='Firendly Name';E={$_.Service_Plans_Included_Friendly_Names}},Service_Plan_Id
-        )
-    }
-    $VerbosePreference = 'Continue'
-    $TempFolder = [System.IO.Path]::GetTempPath()
-    $spFile = "$TempFolder\servicePlans.csv"
-
-    if(!(test-path $spFile)) {
-        Write-Verbose "file containing plans list not found - downloading..."
-        try {
-            [System.Uri]$url = "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
-            Invoke-WebRequest $url -OutFile $spFile
-        } catch {
-            Write-Error "cannot download definitions the file."
-            return
-        }
-    } 
-    $spInfo = import-csv $spFile -Delimiter ','
-
-    $run = "$($PSCmdlet.ParameterSetName) -name '$([string]$PSBoundParameters.Values)'"
-    Invoke-Expression $run
-
-}
 Function Get-MFAMethods {
-    <#
-    .SYNOPSIS
-        Get the details on configured MFA methods of the user
-    .NOTES
-        nExoR ::))o-
-        version 250209
-            last changes
-            - 250209 module-verified 
-    #>
+<#
+.SYNOPSIS
+    Get the details on configured MFA methods of the user
+.NOTES
+    nExoR ::))o-
+    version 250209
+        last changes
+        - 250209 module-verified 
+#>
     param(
         [Parameter(Mandatory, Position = 0)] 
             [string]$userId,
@@ -358,34 +225,34 @@ Function Get-MFAMethods {
     }
 }
 function get-MFAReport {
-    <#
-    .SYNOPSIS
-        Get the MFA status of a particular user or all users in the tenant
-    .DESCRIPTION
-        Get-MgReportAuthenticationMethodUserRegistrationDetail is providing a nice report but lacking some actual details and works only for 
-        enabled users. Get-MgUserAuthenticationMethod is not providing default 2FA configured.
-        so the only way to have everything is to combine both methods.
+<#
+.SYNOPSIS
+    Get the MFA status of a particular user or all users in the tenant
+.DESCRIPTION
+    Get-MgReportAuthenticationMethodUserRegistrationDetail is providing a nice report but lacking some actual details and works only for 
+    enabled users. Get-MgUserAuthenticationMethod is not providing default 2FA configured.
+    so the only way to have everything is to combine both methods.
 
-        This function is a wrapper for Get-MFAMethods function. It will get the MFA status of the user and return it as a string.
-    .EXAMPLE
-        get-eNMFAReport
+    This function is a wrapper for Get-MFAMethods function. It will get the MFA status of the user and return it as a string.
+.EXAMPLE
+    get-eNMFAReport
 
-        prepares a report for all users in a tenant
-    .EXAMPLE
-        get-eNMFAReport -userId 12de9a48-99d0-4ce5-be38-0cc79c876c33
+    prepares a report for all users in a tenant
+.EXAMPLE
+    get-eNMFAReport -userId 12de9a48-99d0-4ce5-be38-0cc79c876c33
 
-        prepares a report for a user with provided objectID
-    .EXAMPLE
-        get-eNMFAReport -userPrincipalName nexor@w-files.pl
+    prepares a report for a user with provided objectID
+.EXAMPLE
+    get-eNMFAReport -userPrincipalName nexor@w-files.pl
 
-        prepares a report for a user with a UPN nexor@w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 250211
-            last changes
-            - 250211 as it turned out, reportdetails is not working for accounts lacking license, not disabled.. that had conseqences.
-            - 250209 extended report from both commandlets
-    #>
+    prepares a report for a user with a UPN nexor@w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 250211
+        last changes
+        - 250211 as it turned out, reportdetails is not working for accounts lacking license, not disabled.. that had conseqences.
+        - 250209 extended report from both commandlets
+#>
     [CmdletBinding(DefaultParameterSetName='default')]
     param (
         #username provided as ID
@@ -543,28 +410,28 @@ function get-MFAReport {
     Write-Host 'done.' -ForegroundColor Green
 }
 function get-ADPrivilegedUsers {
-    <#
-    .SYNOPSIS
-        get all priviliedged users in domain
-    .DESCRIPTION
-        temporary script to be integrated with the rest of the ad report tool. the plan is to leave it separately for full reporting
-        and some basic capability included in a general report.
-    .EXAMPLE
-        .\get-eNADPriviledgedUsers.ps1
-        
-        create audit file.
-    .INPUTS
-        None.
-    .OUTPUTS
-        None.
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 240124
-            last changes
-            - 240124 init
-    #>
+<#
+.SYNOPSIS
+    get all priviliedged users in domain
+.DESCRIPTION
+    temporary script to be integrated with the rest of the ad report tool. the plan is to leave it separately for full reporting
+    and some basic capability included in a general report.
+.EXAMPLE
+    .\get-eNADPriviledgedUsers.ps1
+    
+    create audit file.
+.INPUTS
+    None.
+.OUTPUTS
+    None.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 240124
+        last changes
+        - 240124 init
+#>
     [CmdletBinding()]
     param ( )
     ##### PREPERATION #####
@@ -695,53 +562,130 @@ function get-ADPrivilegedUsers {
     write-host "admin group membership saved as $reportPrivilegedGroupMembers"
 }
 function get-EntraIDPrivilegedUsers {
-    <#
-    .SYNOPSIS
-        Simple auditing script allowing to get the list of all users assgined to any Entra ID Role. 
-    .DESCRIPTION
-        This one is already using mgGraph.
-    .EXAMPLE
-        get full report on all roles that have any memebers
+<#
+.SYNOPSIS
+    Simple auditing script allowing to get the list of all users assgined to any Entra ID Role. 
+.DESCRIPTION
+    This one is already using mgGraph.
+.EXAMPLE
+    get full report on all roles that have any memebers
 
-        .\get-eNEntraIDAdmins.ps1
-    .EXAMPLE
-        get full report sorted by a user name, script will not try to connect assuming you're already authenticated with a proper permissions
+    .\get-eNAuitorEntraIDPrivilegedUsers.ps1
+.EXAMPLE
+    get full report sorted by a user name, script will not try to connect assuming you're already authenticated with a proper permissions
 
-        .\get-eNEntraIDAdmins.ps1 -sortBy user -skipConnect
+    .\get-eNAuitorEntraIDPrivilegedUsers.ps1 -skipConnect
 
-    .INPUTS
-        None.
-    .OUTPUTS
-        csv report file.
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 241029
-            last changes
-            - 241029 initialized
+.INPUTS
+    None.
+.OUTPUTS
+    csv report file.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 250331
+        last changes
+        - 250331 PIM
+        - 241029 initialized
 
-        #TO|DO
-        - add MFA status
-        - is that hybrid account
-    #>
+    #TO|DO
+#>
     [CmdletBinding()]
     param (
-        #show (detail) information on members and their roles or just a list of role members
-        [Parameter(mandatory=$false,position=0)]
-            [string][validateSet('user','role')]$sortBy='user',
         #assume you're already connected with mgGraph to skip authentication
-        [Parameter(mandatory=$false,position=1)]
+        [Parameter(mandatory=$false,position=0)]
             [switch]$skipConnect,
         #export CSV file delimiter
-        [Parameter(mandatory=$false,position=2)]
+        [Parameter(mandatory=$false,position=1)]
             [string][validateSet(',',';','default')]$delimiter='default'
         
     )
 
-    $tenantDomain = (Get-MgOrganization).VerifiedDomains | ? IsDefault | Select-Object -ExpandProperty name
-    $outFile=$tenantDomain + "_AdminReport_"+(get-date -Format 'yyMMdd')+'.csv'
+    function get-userInfo {
+        param(
+            [parameter(Mandatory)]
+                [string]$objId,
+            [parameter(Mandatory)]
+                [string]$roleName,
+            [parameter(Mandatory)]
+                [string]$rID,
+            [parameter(Mandatory=$false)]
+                [string]$DirectoryScopeID = "/",
+            [parameter(Mandatory=$false)]
+                [string]$Type = 'Direct Member',
+            [parameter(Mandatory=$false)]
+                [string]$StartDateTime = 'N/A',
+            [parameter(Mandatory=$false)]
+                [string]$EndDateTime = 'Permanent'
+        )
 
+        if(!$tmpPIMusers.ContainsKey($objId)) {
+            try {
+                #accountEnabled is not passed via additionalProperties
+                $eidObject = Get-MgDirectoryObjectById -Ids $objId -ErrorAction SilentlyContinue
+                $idType = $eidObject['@odata.type']
+                if($eidObject['@odata.type'] -eq "#microsoft.graph.group") {
+                    $tmpPIMusers.Add($objId,@{
+                            displayName = $eidObject.AdditionalProperties.displayName
+                            userPrincipalName = ""
+                            accountEnabled = ""
+                            identityType = "Group"
+                        })
+                } else { #user
+                    $eUser = Get-MgUser -UserId $objId -Property AccountEnabled #not available via additionalProperties
+                    $tmpPIMusers.Add($objId,@{
+                        displayName = $eidObject.AdditionalProperties.displayName
+                        userPrincipalName = $eidObject.AdditionalProperties.userPrincipalName
+                        accountEnabled = $eUser.AccountEnabled
+                        identityType = "User"
+                    })
+                }
+            } catch {
+                $tmpPIMusers.Add($objId,@{
+                    displayName = $_.exception
+                    userPrincipalName = 'err'
+                    accountEnabled = 'err'
+                    identityType = 'err'
+                })
+            }
+        }
+        $scopeName = ""
+        $scopeType = ""
+        if($DirectoryScopeID -ne "/") {
+            $scopeObj = Get-MgDirectoryObjectById -Ids $DirectoryScopeID.Replace('/','') -ErrorAction SilentlyContinue
+            if($scopeObj) {
+                $scopeName = $scopeObj.AdditionalProperties.displayName
+                $scopeType = $scopeObj.AdditionalProperties['@odata.type']
+            }
+        }
+
+        return [PSCustomObject][ordered]@{ 
+            ID = $objId
+            identityType = $tmpPIMusers[$objId].identityType
+            IdentityName = $tmpPIMusers[$objId].displayName
+            userPrincipalName = $tmpPIMusers[$objId].userPrincipalName
+            enabled = $tmpPIMusers[$objId].accountEnabled
+            RoleName = $roleName
+            roleID = $rID
+            DirectoryScopeID = $DirectoryScopeID
+            scopeType = $scopeType
+            scopeName = $scopeName
+            Type = $Type
+            StartDateTime  = $StartDateTime
+            EndDateTime    = $EndDateTime
+        }
+
+    }
+
+    <#
+    try {
+        import-module Microsoft.Graph.Authentication -ErrorAction Stop
+    } catch {
+        throw "error importing mgGraph module. $($_.Exception)"
+        return
+    }
+    #>
     if(!$skipConnect) {
         try {
             Disconnect-MgGraph -ErrorAction Stop
@@ -756,81 +700,111 @@ function get-EntraIDPrivilegedUsers {
             throw "error connecting. $($_.Exception)"
             return
         }
+    } else {
+        if($null -eq (Get-MgContext)) {
+            throw "not connected. please connect to mgGraph first."
+        }
     }
-    Write-Host "getting roles and members (may take up to 5 min)..."
+    $VerbosePreference = 'Continue'
+
+    $tenantDomain = (Get-MgOrganization).VerifiedDomains | ? IsDefault | Select-Object -ExpandProperty name
+    $outFile = "EntraIDPrivileged-{0}-{1}.csv" -f $tenantDomain,(get-date -Format 'yyMMdd')
+    $PIMSKUs = @("AAD_PREMIUM_P2", "ENTERPRISEPREMIUM")
+    $tmpPIMusers = @{} #for query speed optimisation - cache for already queried users
+    $RoleMemebersList = @() #array to store results
+
+    Write-Verbose "getting roles and members (may take up to 5 min)..."
     $EntraRoles = Get-MgDirectoryRole
 
-    $RoleMemebersList = `
     foreach($role in $EntraRoles) {
-        $rDN=$role.DisplayName
         $rID=$role.Id
         $rMembers = Get-MgDirectoryRoleMember -DirectoryRoleId $rID
         foreach($member in $rMembers) {
-            $eUser = get-mgUser -UserId $member.Id -Property Id,userPrincipalName,AccountEnabled
-            $eUser | Select-Object @{L='RoleName';E={$rDN}},`
-                @{L='roleID';E={$rID}},`
-                @{L='userID';E={$eUser.id}},`
-                @{L='userName';E={$eUser.userPrincipalName}},`
-                @{L='enabled';E={$eUser.AccountEnabled}}
-                #@{L='MFA';E={'not yet implemented'}}
+            $RoleMemebersList += get-userInfo -objId $member.Id -roleName $role.DisplayName -rID $rID 
         }
     } 
 
+    #region PIM roles    
+
+    #checking available SKUs 
+    $SKUs = Get-MgSubscribedSku
+    $servicePlans = $SKUs.ServicePlans | Select-Object -ExpandProperty ServicePlanName -Unique
+    $hasPIM = $servicePlans | Where-Object { $_ -in $PIMSKUs }
+
+    if (!$hasPIM) {
+        Write-Verbose "No PIM SKUs found. skipping PIM roles."
+    } else {
+        Write-Verbose "PIM SKU found. checking PIM roles."
+
+        # Get eligible assignments
+        $eligible = Get-MgRoleManagementDirectoryRoleEligibilityScheduleInstance -All -ExpandProperty Principal,RoleDefinition
+        #get role names 
+        #$roles = Get-MgRoleManagementDirectoryRoleDefinition -All
+
+        if($eligible.Count -lt 1) {
+            Write-verbose "No eligible assignments found."
+        } else {
+            Write-verbose  "Found $($eligible.Count) eligible assignments."
+            foreach($member in $eligible) {
+                If($member.Principal.AdditionalProperties.'@odata.type' -ne "#microsoft.graph.user"){
+                    #STOP
+                    write-verbose "THIS IS NOT A USER:"
+                    $member.Principal.additionalProperties|out-host
+                }
+                $RoleMemebersList += get-userInfo -objId $member.Principal.Id -roleName $member.RoleDefinition.DisplayName -rID $member.RoleDefinition.Id -DirectoryScopeID $member.DirectoryScopeId -Type 'Eligible' -StartDateTime $member.StartDateTime -EndDateTime $member.EndDateTime
+            }
+        }
+    }
     #unsupported in PS 5.1
     #$sortedMemebersList = ($sortBy -eq 'Role') ? ($RoleMemebersList | Sort-Object RoleName) : ($RoleMemebersList | Select-Object userName,userID,enabled,RoleName,roleID | Sort-Object userName)
-    if($sortBy -eq 'Role') {
-        $sortedMemebersList = $RoleMemebersList | Sort-Object RoleName
-    } else {
-        $sortedMemebersList = $RoleMemebersList | Select-Object userName,userID,enabled,RoleName,roleID | Sort-Object userName
-    }
+    $sortedMemebersList = $RoleMemebersList | Sort-Object 'roleName'
 
     $exportParam = @{
         NoTypeInformation = $true
         Encoding = 'UTF8'
         Path = $outFile
     }
-    if($delimiter -ne 'default') { 
-        $exportParam.add('delimiter',$delimiter)
-    }
-    $sortedMemebersList|export-csv @exportParam
+    if($delimiter -ne 'default') {
+        $exportParam.Add('Delimiter',$delimiter)
+    } 
+    $sortedMemebersList | export-csv @exportParam
 
     Write-Host -ForegroundColor Green "exported to .\$outFile.`ndone."
-
 }
 function get-ReportADObjects {
-    <#
-    .SYNOPSIS
-        Prepares a report on AD objects with a focus on activity time - when the object has authenticated.
-        Allows to prepare report for User and Computer objects. 
-    .DESCRIPTION
-        Search-ADAccount commandlet is useful for quick ad-hoc queried, but it does not return all required object attributes 
-        for proper reporting. This script is gathering much more information and is a part of a wider project allowing to
-        create aggregated object reporting to support migrations, clean up or regular audits.
+<#
+.SYNOPSIS
+    Prepares a report on AD objects with a focus on activity time - when the object has authenticated.
+    Allows to prepare report for User and Computer objects. 
+.DESCRIPTION
+    Search-ADAccount commandlet is useful for quick ad-hoc queried, but it does not return all required object attributes 
+    for proper reporting. This script is gathering much more information and is a part of a wider project allowing to
+    create aggregated object reporting to support migrations, clean up or regular audits.
 
-        requires to be run As Administrator as running in less priviledged context is not returing some values - e.g. 'enabled'
-        status is sometimes returnes, sometimes not. 
-    .EXAMPLE
-        .\get-eNReportADObjects.ps1
-        
-    .INPUTS
-        None.
-    .OUTPUTS
-        None.
-    .LINK
-        https://w-files.pl
-    .LINK
-        http://www.selfadsi.org/ads-attributes/user-userAccountControl.htm
-    .NOTES
-        nExoR ::))o-
-        version 250131
-            last changes
-            - 250131 added isAdmin check - that required to also add 'memberOf' field.
-            - 240718 initiated as a wider project eNReport
-            - 240519 initialized
+    requires to be run As Administrator as running in less priviledged context is not returing some values - e.g. 'enabled'
+    status is sometimes returnes, sometimes not. 
+.EXAMPLE
+    .\get-eNReportADObjects.ps1
+    
+.INPUTS
+    None.
+.OUTPUTS
+    None.
+.LINK
+    https://w-files.pl
+.LINK
+    http://www.selfadsi.org/ads-attributes/user-userAccountControl.htm
+.NOTES
+    nExoR ::))o-
+    version 250131
+        last changes
+        - 250131 added isAdmin check - that required to also add 'memberOf' field.
+        - 240718 initiated as a wider project eNReport
+        - 240519 initialized
 
-        #TO|DO
-        - resultpagesize - not managed. for now only for environments under 2k objects
-    #>
+    #TO|DO
+    - resultpagesize - not managed. for now only for environments under 2k objects
+#>
     [CmdletBinding()]
     param (
         #Parameter description
@@ -919,46 +893,46 @@ function get-ReportADObjects {
 }
 function get-ReportEntraUsers {
 <#
-    .SYNOPSIS
-        Reporting script, allowing to prepare aggregated information on the user accounts: 
-        - general user information
-        - MFA is checking extended attributes on the account so it will work for per-user and Conditional Access
-        - AD Roles
-        - last logon times (attributes are populated only with AAD P1 or higher license)
-        As a part of a wider project, may be combined with AD and Exchange Online, giving better overview on hybrid identity.
-    .DESCRIPTION
-        proper permissioned are required:
-            - domain.read.all to get the tenant name
-            - auditlog.read.all to access signInActivity
-            - user.read.all for user details
-            - "Directory.Read.All" - general read permissions
-        Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All","Domain.Read.All"
-    .EXAMPLE
-        .\get-eNReportEntraUsers.ps1
+.SYNOPSIS
+    Reporting script, allowing to prepare aggregated information on the user accounts: 
+    - general user information
+    - MFA is checking extended attributes on the account so it will work for per-user and Conditional Access
+    - AD Roles
+    - last logon times (attributes are populated only with AAD P1 or higher license)
+    As a part of a wider project, may be combined with AD and Exchange Online, giving better overview on hybrid identity.
+.DESCRIPTION
+    proper permissioned are required:
+        - domain.read.all to get the tenant name
+        - auditlog.read.all to access signInActivity
+        - user.read.all for user details
+        - "Directory.Read.All" - general read permissions
+    Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All","Domain.Read.All"
+.EXAMPLE
+    .\get-eNReportEntraUsers.ps1
 
-    .INPUTS
-        None.
-    .OUTPUTS
-        None.
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 250209
-            last changes
-            - 250209 servicePlans created/saved in temp folder
-            - 250203 isAdmin for EID, some optmization for MFA check, additional parameters and attributes, some optimisations
-            - 240718 initiated as a more generalized project, service plans display names check up, segmentation
-            - 240627 MFA - for now only general status, AADP1 error handling
-            - 240520 initialized
+.INPUTS
+    None.
+.OUTPUTS
+    None.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 250209
+        last changes
+        - 250209 servicePlans created/saved in temp folder
+        - 250203 isAdmin for EID, some optmization for MFA check, additional parameters and attributes, some optimisations
+        - 240718 initiated as a more generalized project, service plans display names check up, segmentation
+        - 240627 MFA - for now only general status, AADP1 error handling
+        - 240520 initialized
 
-        #TO/DO
-        * pagefile for big numbers
-        * add 'extended MFA info' option
-        * is it possible to check Conditional Access policies enforcing MFA?
-        * add 'administrative roles'
-        * to validate: if MFA will be visible as not enabled when from CA and not configured - I assume yes, but requires verification
-    #>
+    #TO/DO
+    * pagefile for big numbers
+    * add 'extended MFA info' option
+    * is it possible to check Conditional Access policies enforcing MFA?
+    * add 'administrative roles'
+    * to validate: if MFA will be visible as not enabled when from CA and not configured - I assume yes, but requires verification
+#>
     [CmdletBinding()]
     param (
         #skip connecting [second run]
@@ -1140,44 +1114,44 @@ function get-ReportEntraUsers {
     }
 }
 function get-ReportMailboxes {
-    <#
-    .SYNOPSIS
-        script for Exchange stats for reciepients and mailboxes. it is a part of a wider 'eNReport' package and may be used as a part of 
-        general account audit or separately.
-        script is useful for reporting supporting migration or cleanup projects.
-    .DESCRIPTION
-        script by default is making all type of checks: finds actual user UPN, gets detailed mailbox statistics and checks for delegated permissions.
-        you can disable certain steps by using switches.
-    .EXAMPLE
-        .\get-eNReportMailboxes.ps1 
+<#
+.SYNOPSIS
+    script for Exchange stats for reciepients and mailboxes. it is a part of a wider 'eNReport' package and may be used as a part of 
+    general account audit or separately.
+    script is useful for reporting supporting migration or cleanup projects.
+.DESCRIPTION
+    script by default is making all type of checks: finds actual user UPN, gets detailed mailbox statistics and checks for delegated permissions.
+    you can disable certain steps by using switches.
+.EXAMPLE
+    .\get-eNReportMailboxes.ps1 
 
-        by default it will ask you to authenticate with a web browser and then will get all mailboxes and recipient in the tenant and provide some basic stats.
-    .EXAMPLE
-        .\get-eNReportMailboxes.ps1 -skipConnect -inputFile .\tmp_recipients.csv -skipUPNs -skipMbxStats -skipDelegations
+    by default it will ask you to authenticate with a web browser and then will get all mailboxes and recipient in the tenant and provide some basic stats.
+.EXAMPLE
+    .\get-eNReportMailboxes.ps1 -skipConnect -inputFile .\tmp_recipients.csv -skipUPNs -skipMbxStats -skipDelegations
 
-        this is a refresher for a chosen mailboxes from a previous run. it will skip connection to EXO using current session, load data from a file, skip UPN check, 
-        mailbox statistics and permissions check.
-    .INPUTS
-        None.
-    .OUTPUTS
-        None.
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 241220
-            last changes
-            - 241220 cleanup option, a bit of description
-            - 240811 added delegated permissions to understand shared mailboxes (and security check),
-                dived on steps, data refresh
-                fixed mailbox type check
-                other fixes
-            - 240718 UPNs (for merge) and account status (for independent reports)
-            - 240717 initialized
+    this is a refresher for a chosen mailboxes from a previous run. it will skip connection to EXO using current session, load data from a file, skip UPN check, 
+    mailbox statistics and permissions check.
+.INPUTS
+    None.
+.OUTPUTS
+    None.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 241220
+        last changes
+        - 241220 cleanup option, a bit of description
+        - 240811 added delegated permissions to understand shared mailboxes (and security check),
+            dived on steps, data refresh
+            fixed mailbox type check
+            other fixes
+        - 240718 UPNs (for merge) and account status (for independent reports)
+        - 240717 initialized
 
-        #TO|DO
-        * proper file description
-    #>
+    #TO|DO
+    * proper file description
+#>
     [CmdletBinding()]
     param (
         #skip connection - if you're already connected
@@ -1318,95 +1292,95 @@ function get-ReportMailboxes {
 
 }
 function join-ReportHybridUsersInfo {
-    <#
-    .SYNOPSIS
-        merge AD, Entra ID and Exchange reports into single user activity report generated by 3 other script from
-        the same package.
+<#
+.SYNOPSIS
+    merge AD, Entra ID and Exchange reports into single user activity report generated by 3 other script from
+    the same package.
 
-        this script is to cobine reports from 3 sources into a single view: AD, Entra ID and Exchange Online.
-        such a view grants ability to decide on the preparations for migration - which objects require to be 
-        amended, which are synced or how they will merge during the sync. 
+    this script is to cobine reports from 3 sources into a single view: AD, Entra ID and Exchange Online.
+    such a view grants ability to decide on the preparations for migration - which objects require to be 
+    amended, which are synced or how they will merge during the sync. 
 
-    .DESCRIPTION
-        using outputs from get-eNReportADObjects.ps1 (AD), get-eNReportEntraUsers.ps1 (EntraID) and get-eNReportMailboxes.ps1 (EXO)
-        
-        the most difficult part is to merge the outputs matching the objects. there is no 'Table' type in PowerShell
-        allowing to lookup and update records. I wrote a simple equivalent based on MetaVerse concept (aka DB Table). 
-        MetaVerse is a global table containing all data from all sources and allows to lookup and update entries.
+.DESCRIPTION
+    using outputs from get-eNReportADObjects.ps1 (AD), get-eNReportEntraUsers.ps1 (EntraID) and get-eNReportMailboxes.ps1 (EXO)
+    
+    the most difficult part is to merge the outputs matching the objects. there is no 'Table' type in PowerShell
+    allowing to lookup and update records. I wrote a simple equivalent based on MetaVerse concept (aka DB Table). 
+    MetaVerse is a global table containing all data from all sources and allows to lookup and update entries.
 
-        let's assume scenario that you are preparing for enabling Cloud Sync. If there is a AD user:
-        sn: Surname1
-        gn: Givenname1
-        displayName: Givenname1 Surname1
-        mail: givenname1.surname1@company.com
-        UPN: gsurname1@comapny.local
+    let's assume scenario that you are preparing for enabling Cloud Sync. If there is a AD user:
+    sn: Surname1
+    gn: Givenname1
+    displayName: Givenname1 Surname1
+    mail: givenname1.surname1@company.com
+    UPN: gsurname1@comapny.local
 
-        and equivalent user in EntraID:
-        sn: Changed-Surname
-        gn: Givennam1
-        displayName: Changed-Surname Givenname1
-        mail: givenname1.changed-surname@company.com
-        UPN: givenname1.surname1@company.com
+    and equivalent user in EntraID:
+    sn: Changed-Surname
+    gn: Givennam1
+    displayName: Changed-Surname Givenname1
+    mail: givenname1.changed-surname@company.com
+    UPN: givenname1.surname1@company.com
 
-        it's very difficult to findout pairs to verify how to amend/fix user object. analysing is quite time extensive. 
-        this script allows you to create a unified view matching on different attributes. you may create several reports
-        (aka views) by matching by different attributes or 'any' match allowing to find matches on different attributes 
-        - e.g. on example above AD.mail - match EntraID.UPN . 
+    it's very difficult to findout pairs to verify how to amend/fix user object. analysing is quite time extensive. 
+    this script allows you to create a unified view matching on different attributes. you may create several reports
+    (aka views) by matching by different attributes or 'any' match allowing to find matches on different attributes 
+    - e.g. on example above AD.mail - match EntraID.UPN . 
 
-        MATCHING
-        EXO objects are easy to match as every recipient has an EID object so there is no confusion.
-        actual challenge is with matching AD and EID objects - especially when there is no actual hybrid sync. Users
-        may have duplicates, different names, parcial information etc. that is why the script is trying to use different 
-        set of attributes to find a match even if they are not really on sync.
+    MATCHING
+    EXO objects are easy to match as every recipient has an EID object so there is no confusion.
+    actual challenge is with matching AD and EID objects - especially when there is no actual hybrid sync. Users
+    may have duplicates, different names, parcial information etc. that is why the script is trying to use different 
+    set of attributes to find a match even if they are not really on sync.
 
-        *****
-        although other functions from the package are independed, this one is using eNLib. no one is going to use this
-        script anyways, and it's so much easier for me to reuse these functions. actually I had to extend some lib functions
-        so only the newest eNLib version is compatible. 
+    *****
+    although other functions from the package are independed, this one is using eNLib. no one is going to use this
+    script anyways, and it's so much easier for me to reuse these functions. actually I had to extend some lib functions
+    so only the newest eNLib version is compatible. 
 
-        short instruction:
-        - generate outputs from desired systems (AD, EntraID, EXO)
-        - combine the reports with the script into a single view
+    short instruction:
+    - generate outputs from desired systems (AD, EntraID, EXO)
+    - combine the reports with the script into a single view
 
-    .EXAMPLE
-        .\join-eNReportHybridUsersInfo.ps1 -inputCSVAD .\ADUsers-company.local-241111-1026.csv -inputCSVEntraID .\EntraUsers-company.com-241111-1028.csv
+.EXAMPLE
+    .\join-eNReportHybridUsersInfo.ps1 -inputCSVAD .\ADUsers-company.local-241111-1026.csv -inputCSVEntraID .\EntraUsers-company.com-241111-1028.csv
 
-        combines a report made from a local 'company.local' domain with a EntraID information for 'company.com' tenant. 
-    .INPUTS
-        CSV report from other scripts
-    .OUTPUTS
-        merged report
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 250209
-            last changes
-            - 250209 properties in reports will now be dynamically added - if report contains more attributes, they will be added to the final output
-            - 241223 matching for guest accounts, better AD-EID matching (dupes handling)
-            - 241220 'any' fixed, lots of changes to matching and sorting, export only for chosen files... 
-            - 241210 mutliple fixes to output, daysinactive, dupe detection. dupes are still not matched entirely properly.. that will require some additional logic
-            - 241126 massive logic fixes. tested on 3 sources... still lots to be done but starting to work properly
-            - 241112 whole logic changed - MetaVerse functions added and whole process is using MV to operate on data
-            - 240718 initiated as a bigger project, extended with Exchange checking
-            - 240627 add displayname as matching attribute. forceHybrid is for now default and parameter doesn't do anything
-            - 240520 initialized
+    combines a report made from a local 'company.local' domain with a EntraID information for 'company.com' tenant. 
+.INPUTS
+    CSV report from other scripts
+.OUTPUTS
+    merged report
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 250209
+        last changes
+        - 250209 properties in reports will now be dynamically added - if report contains more attributes, they will be added to the final output
+        - 241223 matching for guest accounts, better AD-EID matching (dupes handling)
+        - 241220 'any' fixed, lots of changes to matching and sorting, export only for chosen files... 
+        - 241210 mutliple fixes to output, daysinactive, dupe detection. dupes are still not matched entirely properly.. that will require some additional logic
+        - 241126 massive logic fixes. tested on 3 sources... still lots to be done but starting to work properly
+        - 241112 whole logic changed - MetaVerse functions added and whole process is using MV to operate on data
+        - 240718 initiated as a bigger project, extended with Exchange checking
+        - 240627 add displayname as matching attribute. forceHybrid is for now default and parameter doesn't do anything
+        - 240520 initialized
 
-        #TO|DO
-        ** dups handling - this is difficult one, how to create a proper logic to match...
-        ** BUILD SCHEMA - currently it's static
-        * ability to choose between static and dynamic schema... or simply intorduce 'views' known from DBs - output 
-            should be a 'view' from entire MetaVerse while now it's the same
-        * edge scenarios - eg. the same UPN on both sides, but account is not hybrid; maybe some other i did not expect?
-        * change hybrid user detection / currently matching is ONLY in forced hybrid... which should not be the case
-        * change time values to represent the same 'never' value
-        * what is 'identity' attribute? it's not being populated
-        *Idea so it works exactly like MV - all tables are kept separately until the very export. each table should be expanded with a reference column
-        pointing to an object from other table. then implement 'view' or 'export' that is creating one single file with different options
-        such as 'only matched', 'all', etc. 
-        * auto-fix UPN suffix for soft matching (domain.local to domain.com) - to enforce pseudo-hybrid matching
-        
-    #>
+    #TO|DO
+    ** dups handling - this is difficult one, how to create a proper logic to match...
+    ** BUILD SCHEMA - currently it's static
+    * ability to choose between static and dynamic schema... or simply intorduce 'views' known from DBs - output 
+        should be a 'view' from entire MetaVerse while now it's the same
+    * edge scenarios - eg. the same UPN on both sides, but account is not hybrid; maybe some other i did not expect?
+    * change hybrid user detection / currently matching is ONLY in forced hybrid... which should not be the case
+    * change time values to represent the same 'never' value
+    * what is 'identity' attribute? it's not being populated
+    *Idea so it works exactly like MV - all tables are kept separately until the very export. each table should be expanded with a reference column
+    pointing to an object from other table. then implement 'view' or 'export' that is creating one single file with different options
+    such as 'only matched', 'all', etc. 
+    * auto-fix UPN suffix for soft matching (domain.local to domain.com) - to enforce pseudo-hybrid matching
+    
+#>
     [CmdletBinding()]
     param (
         #output file from AD

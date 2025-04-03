@@ -12,7 +12,7 @@
 RootModule = 'eNAuditor.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.901.1'
+ModuleVersion = '0.910.1'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -31,7 +31,8 @@ Copyright = '(MIT) 2o25 nExoR ::))o-'
 
 # Description of the functionality provided by this module
 Description = 'Audit and reporting functions for Native Cloud, hybrid and pseudo-hybrid environments for Identity reviews. Contains reporting for AD, EntraID and Exchange Online. 
-Additionaly otherfunctions supporting auditing, migrations andproviding general stats and provileged accounts infromation.'
+Additionaly otherfunctions supporting auditing, migrations andproviding general stats and provileged accounts infromation.
+PS requirement is set to 5 for AD commandlets compatibility but all Cloud functions requires PS7.'
 
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '5.0'
@@ -70,7 +71,7 @@ RequiredModules = @('eNLib')
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = @('get-ServicePlanInfo','get-ADPrivilegedUsers','get-MFAReport','get-EntraIDPrivilegedUsers','get-ReportADObjects','get-ReportEntraUsers','get-ReportMailboxes','join-ReportHybridUsersInfo')
+FunctionsToExport = @('get-ADPrivilegedUsers','get-MFAReport','get-EntraIDPrivilegedUsers','get-ReportADObjects','get-ReportEntraUsers','get-ReportMailboxes','join-ReportHybridUsersInfo')
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
