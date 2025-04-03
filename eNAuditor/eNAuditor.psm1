@@ -943,8 +943,9 @@ function get-ReportEntraUsers {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 250209
+        version 250218
             last changes
+            - 250218 missing isAdmin attribute on non-EIDP1 
             - 250209 servicePlans created/saved in temp folder
             - 250203 isAdmin for EID, some optmization for MFA check, additional parameters and attributes, some optimisations
             - 240718 initiated as a more generalized project, service plans display names check up, segmentation
