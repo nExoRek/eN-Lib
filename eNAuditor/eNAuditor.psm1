@@ -102,8 +102,8 @@
         - 250125 initialized
 
     #TO|DO
-    * MFA report function
-    * make functions global
+    * application permissions for EID
+    * AD permissions crawler to detect non-standard delegations
     * code optimization
     * ent-size tenant queries (currently unsupported)
     * PS version check functions to replace missing #requires
@@ -112,7 +112,7 @@
 Function Get-MFAMethods {
 <#
 .SYNOPSIS
-    Get the details on configured MFA methods of the user
+    internal function for this module - get the details on configured MFA methods of the single user
 .NOTES
     nExoR ::))o-
     version 250209
@@ -227,23 +227,24 @@ Function Get-MFAMethods {
 function get-MFAReport {
 <#
 .SYNOPSIS
-    Get the MFA status of a particular user or all users in the tenant
+    get the MFA status of a particular user or all users in the tenant
 .DESCRIPTION
-    Get-MgReportAuthenticationMethodUserRegistrationDetail is providing a nice report but lacking some actual details and works only for 
-    enabled users. Get-MgUserAuthenticationMethod is not providing default 2FA configured.
+    get-MgReportAuthenticationMethodUserRegistrationDetail is providing a nice report but lacking some actual details and works only for 
+    enabled users. 
+    get-MgUserAuthenticationMethod is not providing default 2FA configured...
     so the only way to have everything is to combine both methods.
 
-    This function is a wrapper for Get-MFAMethods function. It will get the MFA status of the user and return it as a string.
+    this function is a wrapper for aforementioned functions and using internal get-MFAMethods. 
 .EXAMPLE
-    get-eNMFAReport
+    get-eNAuditorMFAReport
 
     prepares a report for all users in a tenant
 .EXAMPLE
-    get-eNMFAReport -userId 12de9a48-99d0-4ce5-be38-0cc79c876c33
+    get-eNAuditorMFAReport -userId 12de9a48-99d0-4ce5-be38-0cc79c876c33
 
     prepares a report for a user with provided objectID
 .EXAMPLE
-    get-eNMFAReport -userPrincipalName nexor@w-files.pl
+    get-eNAuditorMFAReport -userPrincipalName nexor@w-files.pl
 
     prepares a report for a user with a UPN nexor@w-files.pl
 .NOTES
@@ -412,14 +413,14 @@ function get-MFAReport {
 function get-ADPrivilegedUsers {
 <#
 .SYNOPSIS
-    get all priviliedged users in domain
+    get all priviliedged users in AD domain.
 .DESCRIPTION
-    temporary script to be integrated with the rest of the ad report tool. the plan is to leave it separately for full reporting
-    and some basic capability included in a general report.
+    script is checking all well known SIDs for prviledged groups in AD. if there are permissions assigned via non-standard role
+    it will not be included.. there is a permission crawler script to detect non-standard permissions but not yet included in this build.
 .EXAMPLE
-    .\get-eNADPriviledgedUsers.ps1
+    .\get-eNAuditorADprivililegedUsers.ps1
     
-    create audit file.
+    creates report file.
 .INPUTS
     None.
 .OUTPUTS
@@ -431,6 +432,9 @@ function get-ADPrivilegedUsers {
     version 240124
         last changes
         - 240124 init
+
+    #TO/DO 
+    - tuning after putting to module such as output file name, parameters, etc. haven't been using this script for a while...
 #>
     [CmdletBinding()]
     param ( )
@@ -564,9 +568,11 @@ function get-ADPrivilegedUsers {
 function get-EntraIDPrivilegedUsers {
 <#
 .SYNOPSIS
-    Simple auditing script allowing to get the list of all users assgined to any Entra ID Role. 
+    auditing script allowing to get the list of all users assgined to any Entra ID Role including PIM roles.
 .DESCRIPTION
-    This one is already using mgGraph.
+    script is queyring all EID roles to look for the members and if AAD P1 license is available, checks
+    fot the PIM roles and their members. 
+    outputs the report in CSV format.
 .EXAMPLE
     get full report on all roles that have any memebers
 
@@ -781,7 +787,7 @@ function get-ReportADObjects {
     for proper reporting. This script is gathering much more information and is a part of a wider project allowing to
     create aggregated object reporting to support migrations, clean up or regular audits.
 
-    requires to be run As Administrator as running in less priviledged context is not returing some values - e.g. 'enabled'
+    requires to be run As Administrator as running in less privilileged context is not returing some values - e.g. 'enabled'
     status is sometimes returnes, sometimes not. 
 .EXAMPLE
     .\get-eNReportADObjects.ps1
@@ -1071,7 +1077,7 @@ function get-ReportEntraUsers {
     }
 
     if(!$skipIsAdminCheck) {
-        #get all priviledged user IDs
+        #get all privilileged user IDs
         $pids = Get-MgRoleManagementDirectoryRoleAssignment | select-object -ExpandProperty principalId -Unique
         foreach($eidU in $entraUsers) {
             if($pids -contains $eidU.id) {
