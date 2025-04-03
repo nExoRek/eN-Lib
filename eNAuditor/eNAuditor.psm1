@@ -108,6 +108,13 @@
     * ent-size tenant queries (currently unsupported)
     * PS version check functions to replace missing #requires
     * join must handle all attributes by default (no static list)
+    * unify parameters and behaviour:
+        - auto excel conversion and opening for all functions 
+        - same connect/skip experience
+        - output file naming convention
+        - progress bar for all functions
+        - re-think write-log and unify
+    * is it possible to check Conditional Access policies enforcing MFA?        
 #>
 Function Get-MFAMethods {
 <#
@@ -924,9 +931,10 @@ function get-ReportEntraUsers {
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250218
+    version 250403
         last changes
-            - 250218 missing isAdmin attribute on non-EIDP1 
+        - 250403 error handling improvement
+        - 250218 missing isAdmin attribute on non-EIDP1 
         - 250209 servicePlans created/saved in temp folder
         - 250203 isAdmin for EID, some optmization for MFA check, additional parameters and attributes, some optimisations
         - 240718 initiated as a more generalized project, service plans display names check up, segmentation
@@ -935,10 +943,7 @@ function get-ReportEntraUsers {
 
     #TO/DO
     * pagefile for big numbers
-    * add 'extended MFA info' option
-    * is it possible to check Conditional Access policies enforcing MFA?
-    * add 'administrative roles'
-    * to validate: if MFA will be visible as not enabled when from CA and not configured - I assume yes, but requires verification
+
 #>
     [CmdletBinding()]
     param (
@@ -1091,20 +1096,29 @@ function get-ReportEntraUsers {
         Write-Verbose "getting License info..."
         $TempFolder = [System.IO.Path]::GetTempPath()
         $spFile = "$TempFolder\servicePlans.csv"
-
+        $plansFile = $true
+    
         if(!(test-path $spFile)) {
             Write-Verbose "file containing plans list not found - downloading..."
             [System.Uri]$url = "https://download.microsoft.com/download/e/3/e/e3e9faf2-f28b-490a-9ada-c6089a1fc5b0/Product%20names%20and%20service%20plan%20identifiers%20for%20licensing.csv"
-            Invoke-WebRequest $url -OutFile $spFile
+            try {
+                Invoke-WebRequest $url -OutFile $spFile
+            } catch {
+                Write-Error "unable to download plans definition file. display names will not be accessible"
+                $_.Exception
+                $plansFile = $false
+            }
         } 
-        $spInfo = import-csv $spFile -Delimiter ','
+        if($plansFile) {
+            $spInfo = import-csv $spFile -Delimiter ','
 
-        $entraUsers | %{ 
-        $userLicenses = @()
-        foreach($sku in (Get-MgUserLicenseDetail -UserId $_.id).SkuPartNumber ) {
-            $userLicenses += convert-SKUCodeToDisplayName -SKUName $sku
-        }
-        $_.licenses = $userLicenses -join ";"
+            $entraUsers | %{ 
+                $userLicenses = @()
+                foreach($sku in (Get-MgUserLicenseDetail -UserId $_.id).SkuPartNumber ) {
+                    $userLicenses += convert-SKUCodeToDisplayName -SKUName $sku
+                }
+                $_.licenses = $userLicenses -join ";"
+            }
         }
     } else {
         Write-Verbose "skipping license check..."
