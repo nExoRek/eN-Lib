@@ -231,6 +231,67 @@ Function Get-MFAMethods {
         Return $mfaMethods
     }
 }
+function disable-perUserMFA {
+<#
+.SYNOPSIS
+    disable per-user MFA for all users in tenant - for MFA migrations from legacy to a new, policy-based MFA.
+.EXAMPLE
+    disable-eNAuditorPerUserMFA
+
+    
+.INPUTS
+    None.
+.OUTPUTS
+    None.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 250428
+        last changes
+        - 250428 initialized
+
+    #TO|DO
+    - this is very basic vesion lacking error handling and reporting.
+        - change connect to a global function
+        - proper error handling
+        - add progress bar
+    - add option to disable on a single account
+#>
+    [CmdletBinding()]
+    param ()
+
+    # Use an account/app with Authentication Policy Administrator or higher.
+    Connect-MgGraph -Scopes "Policy.ReadWrite.AuthenticationMethod" -UseDeviceCode
+
+    $users = Get-MgUser -All -Select Id,UserPrincipalName
+
+    # Pre-build the PATCH body.
+    $disableBody = @{ perUserMfaState = "disabled" } | ConvertTo-Json -Depth 3
+
+    foreach ($user in $users) {
+
+        # Read current MFA state (beta endpoint).
+        $req = Invoke-MgGraphRequest `
+            -Method GET `
+            -Uri "https://graph.microsoft.com/beta/users/$($user.Id)/authentication/requirements" `
+            -OutputType PSObject
+
+        if ($req.perUserMfaState -ne "disabled") {
+
+            Write-Host "Disabling per-user MFA for $($user.UserPrincipalName)..."
+
+            # Disable per-user MFA.
+            Invoke-MgGraphRequest `
+                -Method PATCH `
+                -Uri "https://graph.microsoft.com/beta/users/$($user.Id)/authentication/requirements" `
+                -Body $disableBody `
+                -ContentType "application/json"
+        }
+    }
+
+    Write-Host "Completed."
+}
 function get-MFAReport {
 <#
 .SYNOPSIS
