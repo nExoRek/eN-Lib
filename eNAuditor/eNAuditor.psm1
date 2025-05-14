@@ -1019,8 +1019,9 @@ function get-ReportEntraUsers {
         #"Domain.ReadWrite.All" comes from get-mgDomain - but is not required.
         #"email" comes from get-mgDomain - and was double-requesting the authentication without this option
         #Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All","Domain.Read.All","email"
+
         try {
-            Connect-MgGraph -Scopes "RoleManagement.Read.Directory","User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile","openid" -ErrorAction Stop
+            Connect-MgGraph -Scopes "RoleManagement.Read.Directory","Directory.ReadWrite.All","Group.ReadWrite.All","User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile","openid" -ErrorAction Stop
         } catch {
             throw "error connecting. $($_.Exception)"
             return
