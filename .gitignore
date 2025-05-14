@@ -3,11 +3,12 @@
 #and some directories
 !/QoD\ Migration/
 !/GroupMove/
+!/inactiveUsers/
 !/eNLib/
+!/eNAuditor/
+!/eNGBL/
 !/AzPseudoGUI/
 !/PSCmdletTest/
-!/inactiveUsers/
-!/eNAuditor/
 #...except PS
 !*.ps1
 !*.psm1
