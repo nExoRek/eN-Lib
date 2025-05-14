@@ -12,7 +12,7 @@
 RootModule = 'eNAuditor.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.920.0'
+ModuleVersion = '0.930.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -71,7 +71,8 @@ RequiredModules = @('eNLib')
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = @('get-ADPrivilegedUsers','get-MFAReport','get-EntraIDPrivilegedUsers','get-ReportADObjects','get-ReportEntraUsers','get-ReportMailboxes','join-ReportHybridUsersInfo','disable-perUserMFA')
+FunctionsToExport = @('get-ADPrivilegedUsers','get-MFAReport','get-EntraIDPrivilegedUsers','get-ReportADObjects','get-ReportEntraUsers', `
+    'get-ReportMailboxes','join-ReportHybridUsersInfo','disable-perUserMFA','get-basicSecurityInfo')
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()

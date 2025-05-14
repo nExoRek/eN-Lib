@@ -2,9 +2,9 @@
 .SYNOPSIS
     set of functions for auditing and reporting on accounts in AD, EID and EXO mailboxes. abilty to generate provileged users report,
     merge data to have a big picture on the accounts for migrations, cleanups or regular audits.
-    privileged accounts reports, service plans loookup, MFA report and other functions are included. 
+    privileged accounts reports and MFA report and other functions are included. 
 
-    eNLib is required for CSV-XLS conversions.
+    eNLib module is required for CSV-XLS conversions.
 .DESCRIPTION
     module is in early stages - there is some mess with functions and reporting, lack of unification. some parameters and behaviour may change before 
     mature version is ready.
@@ -116,6 +116,169 @@
         - re-think write-log and unify
     * is it possible to check Conditional Access policies enforcing MFA?        
 #>
+############################PRIVATE FUNCTIONS############################
+function get-EIDP1Availability {
+<#
+.SYNOPSIS
+    checks if EID P1 license is available in tenant
+    
+.INPUTS
+    None.
+.OUTPUTS
+    True/False
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 250514
+        last changes
+        - 250514 initialized
+
+    #TO|DO
+#>
+
+    [CmdletBinding()]
+    param()
+
+    $EIDSKUs = @('AAD_PREMIUM','AAD_PREMIUM_P2')
+    try {
+        $SKUs = Get-MgSubscribedSku
+    } catch {
+        Write-Error "Unable to get SKUs. Check if you have 'Directory.Read.All' scope included."
+        return -1
+    }
+    $servicePlans = $SKUs.ServicePlans | Select-Object -ExpandProperty ServicePlanName -Unique
+    $hasEID = ( $servicePlans | Where-Object { $_ -in $EIDSKUs } ) ? $true : $false
+
+    return $hasEID
+}
+
+function connect-graphWithCheck {
+    [CmdletBinding()]
+    param (
+        #scopes for connection
+        [Parameter(mandatory=$false,position=0)]
+            [string[]]$scopes = @("Directory.Read.All","openid","profile"),
+        #do not re-use current connection - reconnect even if context extists
+        [Parameter(mandatory=$false,position=1)]
+            [switch]$forceReconnect
+    )
+
+    $ctx = $null
+    if(-not $forceReconnect) { #regular - trying to reuse existing connection
+        try {
+            #get-mgcontext does not fail if there is no connection - it simply returns null. in case of error - something is wrong, so exit
+            $ctx = Get-MgContext -ErrorAction Stop
+        } catch {
+            $_.Exception
+            exit
+        }
+    } else {
+        #this is silly, but sometimes using disconnect-mggraph it still keeps the information from previous usage - thus using twice. 
+        Disconnect-MgGraph -ErrorAction SilentlyContinue | out-null
+        Disconnect-MgGraph -ErrorAction SilentlyContinue | out-null
+    }
+
+    if(-not $ctx) {
+        try { 
+            Connect-MgGraph -Scopes $scopes -NoWelcome -ErrorAction Stop
+            $ctx = Get-MgContext -ErrorAction Stop
+            if(-not $ctx) {
+                Write-Error "Still no connection. try connecting manually before running the function."
+                exit
+            }
+        } catch {
+            $_.Exception
+            exit #probably not the best choice... but I;m tyring to make it as automatic as possible, with minimal error handling outside
+        }
+    }
+    Write-Verbose "connected as $($ctx.account)."
+
+    #check scopes - might require to reconnect
+    $missingScopes = @()
+    foreach ($scope in $scopes) {
+        if($ctx.Scopes -notcontains $scope) {
+            $missingScopes += $scope
+        }
+    }
+    if($missingScopes) {
+        Write-Verbose "you are connected but scopes are missing: $($missingScopes -join ', ').`n if you notice any issues, use -forceReconnect parameter."
+    }
+}
+function get-TenantName {
+    param(
+        #displayname or domain name? by default it will retun domain name
+        [Parameter(position=0)]
+            [switch]$displayName
+    )
+    
+    try {
+        $tenant = Get-MgOrganization -ErrorAction Stop
+    } catch {
+        Write-Error "Unable to get tenant name. Check if you have 'Directory.Read.All' scope included."
+        return -1
+    }
+    if($displayName) {
+        $tenantName = $tenant.DisplayName
+    } else {
+        $tenantName = $tenant.VerifiedDomains|? isDefault | Select-Object -ExpandProperty Name
+    }
+    return $tenantName
+}
+
+############################PUBLIC FUNCTIONS#############################
+function get-BasicSecurityInfo {
+<#
+.SYNOPSIS
+    function checks for EID license and if Security defaults are enabled.
+    
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 250514
+        last changes
+        - 250514 initialized
+
+    #TO|DO
+#>
+    [CmdletBinding()]
+    param(
+        #force re-connect to Graph (do not reuse existing connection)
+        [Parameter(mandatory=$false,position=0)]
+            [switch]$forceReconnect
+    )
+    
+    connect-graphWithCheck -scopes "User.Read.All","UserAuthenticationMethod.Read.All","Directory.Read.All","Policy.Read.All","Policy.ReadWrite.ConditionalAccess","AuditLog.Read.All","Domain.Read.All","RoleManagement.Read.Directory","email","openid" -forceReconnect:$forceReconnect
+
+    write-host "Tenant name: " -NoNewline
+    write-host (get-TenantName -displayName) -ForegroundColor Yellow
+    write-host "deault domain: " -NoNewline
+    write-host (get-TenantName) -ForegroundColor Yellow
+    $EIDSKUs = @('AAD_PREMIUM','AAD_PREMIUM_P2')
+    try {
+        $SKUs = Get-MgSubscribedSku
+    } catch {
+        Write-Error "Unable to get SKUs. Check if you have 'Directory.Read.All' scope included."
+        return -1
+    }
+    $servicePlans = $SKUs.ServicePlans | Select-Object -ExpandProperty ServicePlanName -Unique
+    $EID = $servicePlans | Where-Object { $_ -in $EIDSKUs }
+    write-host "EID Plan: " -NoNewline
+    if($EID) {
+        write-host $($EID -join ', ') -ForegroundColor Magenta
+    } else {
+        write-host "FREE" -ForegroundColor Magenta
+    }
+    $securityDefaults = (Get-MgPolicyIdentitySecurityDefaultEnforcementPolicy).IsEnabled
+    write-host "Security defaults are " -NoNewline
+    if($securityDefaults) {
+        write-host -ForegroundColor Green "ENABLED"
+    } else {
+        write-host -ForegroundColor Red "DISABLED"
+    }
+    write-host 'done.' -ForegroundColor Green
+}
 Function Get-MFAMethods {
 <#
 .SYNOPSIS
@@ -126,6 +289,7 @@ Function Get-MFAMethods {
         last changes
         - 250209 module-verified 
 #>
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory, Position = 0)] 
             [string]$userId,
@@ -182,7 +346,7 @@ Function Get-MFAMethods {
                 "#microsoft.graph.microsoftAuthenticatorAuthenticationMethod" { 
                     # Microsoft Authenticator App
                     $mfaMethods.authApp = $true
-                    $mfaMethods.authDevice += "[{0}]" -f $method.AdditionalProperties["displayName"] 
+                    $mfaMethods.authDevice = "[{0}]" -f $method.AdditionalProperties["displayName"] 
                     $mfaMethods.MFAstatus = "enabled"
                 } 
                 "#microsoft.graph.phoneAuthenticationMethod" { 
@@ -247,24 +411,44 @@ function disable-perUserMFA {
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250428
+    version 250514
         last changes
+        - unioversal connection, single user check
         - 250428 initialized
 
     #TO|DO
     - this is very basic vesion lacking error handling and reporting.
-        - change connect to a global function
         - proper error handling
         - add progress bar
-    - add option to disable on a single account
+    - provide user by UPN, id or displayname?
 #>
     [CmdletBinding()]
-    param ()
+    param (
+        #username to disable (default - all users)
+        [Parameter(mandatory=$false,position=0)]
+            [string]$userId,
+        #force re-connect to Graph (do not reuse existing connection)
+        [Parameter(mandatory=$false,position=1)]
+            [switch]$forceReconnect
+    )
 
     # Use an account/app with Authentication Policy Administrator or higher.
-    Connect-MgGraph -Scopes "Policy.ReadWrite.AuthenticationMethod" -UseDeviceCode
+    #Connect-MgGraph -Scopes "Policy.ReadWrite.AuthenticationMethod" -UseDeviceCode
+    connect-graphWithCheck -scopes "Policy.ReadWrite.AuthenticationMethod" -forceReconnect:$forceReconnect
 
-    $users = Get-MgUser -All -Select Id,UserPrincipalName
+    if($userId) {
+        # Get the user by ID.
+        $user = Get-MgUser -UserId $userId -Select Id,UserPrincipalName
+        if (-not $user) {
+            Write-Host "User '$user' not found."
+            return
+        }
+        $users = @($user)
+    } else {
+        # Get all users in the tenant.
+        Write-Host "Getting all users in the tenant..."
+        $users = Get-MgUser -All -Select Id,UserPrincipalName
+    }
 
     # Pre-build the PATCH body.
     $disableBody = @{ perUserMfaState = "disabled" } | ConvertTo-Json -Depth 3
@@ -272,25 +456,35 @@ function disable-perUserMFA {
     foreach ($user in $users) {
 
         # Read current MFA state (beta endpoint).
-        $req = Invoke-MgGraphRequest `
-            -Method GET `
-            -Uri "https://graph.microsoft.com/beta/users/$($user.Id)/authentication/requirements" `
-            -OutputType PSObject
+        try {
+            $req = Invoke-MgGraphRequest `
+                -Method GET `
+                -Uri "https://graph.microsoft.com/beta/users/$($user.Id)/authentication/requirements" `
+                -OutputType PSObject
+        } catch {
+            Write-Host "Error getting MFA state for $($user.UserPrincipalName): $($_.Exception.Message)"
+            continue
+        }
 
         if ($req.perUserMfaState -ne "disabled") {
 
             Write-Host "Disabling per-user MFA for $($user.UserPrincipalName)..."
 
             # Disable per-user MFA.
-            Invoke-MgGraphRequest `
-                -Method PATCH `
-                -Uri "https://graph.microsoft.com/beta/users/$($user.Id)/authentication/requirements" `
-                -Body $disableBody `
-                -ContentType "application/json"
+            try {
+                Invoke-MgGraphRequest `
+                    -Method PATCH `
+                    -Uri "https://graph.microsoft.com/beta/users/$($user.Id)/authentication/requirements" `
+                    -Body $disableBody `
+                    -ContentType "application/json"
+            } catch {
+                Write-Error $_.Exception.Message
+                continue
+            }
         }
     }
 
-    Write-Host "Completed."
+    Write-Host "Completed." -ForegroundColor Green
 }
 function get-MFAReport {
 <#
@@ -298,8 +492,8 @@ function get-MFAReport {
     get the MFA status of a particular user or all users in the tenant
 .DESCRIPTION
     get-MgReportAuthenticationMethodUserRegistrationDetail is providing a nice report but lacking some actual details and works only for 
-    enabled users. 
-    get-MgUserAuthenticationMethod is not providing default 2FA configured...
+    enabled users with active EID license .
+    get-MgUserAuthenticationMethod is not providing default 2FA configured... but is used as 'basic' as it works for all users, even those
     so the only way to have everything is to combine both methods.
 
     this function is a wrapper for aforementioned functions and using internal get-MFAMethods. 
@@ -315,12 +509,21 @@ function get-MFAReport {
     get-eNAuditorMFAReport -userPrincipalName nexor@w-files.pl
 
     prepares a report for a user with a UPN nexor@w-files.pl
+.LINK
+    https://learn.microsoft.com/en-us/graph/api/userregistrationdetails-get?view=graph-rest-1.0&tabs=http
 .NOTES
     nExoR ::))o-
-    version 250211
+    version 250514
         last changes
+        - 250514 UPN was put instead of displayName, file name changed, logic basic-extended reversed because of the limitations of the commandlet
         - 250211 as it turned out, reportdetails is not working for accounts lacking license, not disabled.. that had conseqences.
         - 250209 extended report from both commandlets
+
+    #TO|DO
+    - it seems that Get-MgReportAuthenticationMethodUserRegistrationDetail doesn't work with EID P1 - to be investigated and proper check added. 
+       I assume the need comes from AuditLog.Read.All permission requirement.
+    - chck for single user in P1/P2 tenant for extended info
+
 #>
     [CmdletBinding(DefaultParameterSetName='default')]
     param (
@@ -340,28 +543,27 @@ function get-MFAReport {
             [switch]$extendedMFAInformation,
         #automatically convert to Excel and open
         [Parameter(mandatory=$false,position=2,ParameterSetName='default')]
-            [switch]$run
+            [switch]$run,
+        #force re-connect to Graph (do not reuse existing connection)
+        [Parameter(mandatory=$false,position=2,ParameterSetName='uID')]
+        [Parameter(mandatory=$false,position=2,ParameterSetName='upn')]
+        [Parameter(mandatory=$false,position=3,ParameterSetName='default')]
+            [switch]$forceReconnect
     )
 
     $VerbosePreference = "continue"
-    try {
-        $ctx = Get-MgContext -ErrorAction Stop
-    } catch {
-        $_.Exception
-        return
-    }
-    Write-Verbose "connected as $($ctx.account)."
-    if(-not $ctx) {
-        try { 
-            Connect-MgGraph -Scopes "User.Read.All","UserAuthenticationMethod.Read.All","openid","profile" -ErrorAction Stop
-        } catch {
-            $_.Exception
-            return
-        }
-    }
+    connect-graphWithCheck -scopes "Directory.Read.All","User.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","AuditLog.Read.All","RoleManagement.Read.Directory","openid","profile" -forceReconnect:$forceReconnect
+    $tName = get-TenantName
+    $outFile = "eNMFAReport-{0}-{1}.csv" -f $tName,(get-date -Format 'yyMMdd-HHmmss')
 
+    $EIDP1present = get-eidP1Availability
+    if(-not $EIDP1present) {
+        Write-Error "EID P1 license not available in tenant. MFA report will be limited..."
+        $extendedMFAInformation = $false
+    }
+#region SINGLEUSER
     if($PSCmdlet.ParameterSetName -eq 'uID') { #single check - by uID
-        $EIDuser += Get-MgUser -userId $userId -Property accountEnabled,userPrincipalName,Id,LicenseAssignmentStates -ErrorAction Stop
+        $EIDuser += Get-MgUser -userId $userId -Property accountEnabled,userPrincipalName,displayName,Id,LicenseAssignmentStates -ErrorAction Stop
         if(-not $EIDUser) {
             Write-Verbose "no user(s) found."
             return
@@ -369,7 +571,7 @@ function get-MFAReport {
     }
     if($PSCmdlet.ParameterSetName -eq 'upn') { #single check - by UPN
         Write-Debug "checking for $userPrincipalName"
-        $EIDuser += Get-MgUser -Filter "userPrincipalName eq '$userPrincipalName'" -Property accountEnabled,userPrincipalName,Id,LicenseAssignmentStates -ErrorAction Stop
+        $EIDuser += Get-MgUser -Filter "userPrincipalName eq '$userPrincipalName'" -Property accountEnabled,userPrincipalName,displayName,Id,LicenseAssignmentStates -ErrorAction Stop
         if(-not $EIDUser) {
             Write-Verbose "no '$userPrincipalName' found."
             return
@@ -377,48 +579,50 @@ function get-MFAReport {
     }
     if($PSCmdlet.ParameterSetName -eq 'upn' -or $PSCmdlet.ParameterSetName -eq 'uID') {
         Write-Verbose "getting basic details for '$($EIDuser.userPrincipalName)'"
-        if($EIDuser.LicenseAssignmentStates) {
-            try {
-                $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue    
-            } catch {
-                Write-Verbose $_.Exception
-                return
-            }
-        } else {
-            $mfaStatus = [PSCustomObject]@{
-                UserDisplayName = $EIDuser.userPrincipalName
-                UserPrincipalName = $EIDuser.userPrincipalName
-                Id = $EIDuser.Id
-                AccountEnabled = $EIDUser.AccountEnabled
-                IsAdmin = ''
-                IsMfaCapable = ''
-                IsMfaRegistered = ''
-                IsPasswordlessCapable = ''
-                IsSsprCapable = ''
-                IsSsprEnabled = ''
-                IsSsprRegistered = ''
-                LastUpdatedDateTime = ''
-                MethodsRegistered = ''
-                IsSystemPreferredAuthenticationMethodEnabled = ''
-                SystemPreferredAuthenticationMethods = ''
-                UserPreferredMethodForSecondaryAuthentication = ''
-                AdditionalProperties = 0
-            }
-        }
-        $mfaDetails = Get-MFAMethods -userId $EIDuser.Id
+        $mfaStatus = Get-MFAMethods -userId $EIDuser.Id
+        $mfaStatus | Add-Member -MemberType NoteProperty -Name UserDisplayName -Value $EIDuser.displayName
+        $mfaStatus | Add-Member -MemberType NoteProperty -Name UserPrincipalName -Value $EIDuser.userPrincipalName
+        $mfaStatus | Add-Member -MemberType NoteProperty -Name Id -Value $EIDuser.Id
+        $mfaStatus | Add-Member -MemberType NoteProperty -Name AccountEnabled -Value $EIDuser.AccountEnabled
+
         if($extendedMFAInformation) {
-            foreach($prop in $mfaDetails.PSObject.Properties) {
+            if($EIDuser.LicenseAssignmentStates) {
+                try {
+                    $mfaStatusExt = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue    
+                } catch {
+                    Write-Verbose $_.Exception
+                    return
+                }
+            } else {
+                $mfaStatusExt = [PSCustomObject]@{
+                    IsAdmin = ''
+                    IsMfaCapable = ''
+                    IsMfaRegistered = ''
+                    IsPasswordlessCapable = ''
+                    IsSsprCapable = ''
+                    IsSsprEnabled = ''
+                    IsSsprRegistered = ''
+                    LastUpdatedDateTime = ''
+                    MethodsRegistered = ''
+                    IsSystemPreferredAuthenticationMethodEnabled = ''
+                    SystemPreferredAuthenticationMethods = ''
+                    UserPreferredMethodForSecondaryAuthentication = ''
+                    AdditionalProperties = 0
+                }
+            }
+            foreach($prop in $mfaStatusExt.PSObject.Properties) {
                 $mfaStatus | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value
             }
+    
         }
-        return $mfaStatus | select-object @{L='AccountEnabled';E={$EIDuser.AccountEnabled}},*
+        return $mfaStatus
     }
-
+#endregion SINGLEUSER
+#region ALLUSERS
     #default : all users report 
-    $outFile = "eNMFAReport-"+(get-date -Format 'yyMMdd-HHmmss')+'.csv'
     $MFAReport = @()
     try {
-        $EIDUsers = Get-MgUser -Filter "usertype eq 'member'" -All -Property userPrincipalName,Id,AccountEnabled,LicenseAssignmentStates -ErrorAction SilentlyContinue
+        $EIDUsers = Get-MgUser -Filter "usertype eq 'member'" -All -Property userPrincipalName,Id,displayName,AccountEnabled,LicenseAssignmentStates -ErrorAction SilentlyContinue
     } catch {
         Write-Verbose $_.Exception
         return
@@ -429,46 +633,46 @@ function get-MFAReport {
     foreach($EIDuser in $EIDUsers) {
         write-progress -activity "getting MFA status" -status "processing $($EIDuser.userPrincipalName)" -percentComplete (($current/$nrOfEIDUsers)*100)
         $current++
-        $mfaStatus = $null
-        #Get-MgReportAuthenticationMethodUserRegistrationDetail doesn't work for unlicensed accounts
-        if(-not [string]::isNullOrEmpty($EIDuser.LicenseAssignmentStates)) {
-            $mfaStatus = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue | `
-                Select-Object UserDisplayName,UserPrincipalName,Id,@{L='AccountEnabled';E={ $EIDUser.AccountEnabled}},IsAdmin, `
-                    IsMfaCapable,IsMfaRegistered,IsPasswordlessCapable,IsSsprCapable,IsSsprEnabled,IsSsprRegistered,LastUpdatedDateTime, `
-                    @{L='MethodsRegistered';E={$_.MethodsRegistered -join ','}},IsSystemPreferredAuthenticationMethodEnabled, `
-                    @{L='SystemPreferredAuthenticationMethods';E={$_.SystemPreferredAuthenticationMethods -join ','}}, `
-                    UserPreferredMethodForSecondaryAuthentication, @{L='AdditionalProperties';E={$_.AdditionalProperties.Count}}
-        }
-        if([string]::isNullOrEmpty($mfaStatus)) {
-            $mfaStatus = [PSCustomObject]@{
-                UserDisplayName = $EIDuser.userPrincipalName
-                UserPrincipalName = $EIDuser.userPrincipalName
-                Id = $EIDuser.Id
-                AccountEnabled = $EIDUser.AccountEnabled
-                IsAdmin = ''
-                IsMfaCapable = ''
-                IsMfaRegistered = ''
-                IsPasswordlessCapable = ''
-                IsSsprCapable = ''
-                IsSsprEnabled = ''
-                IsSsprRegistered = ''
-                LastUpdatedDateTime = ''
-                MethodsRegistered = ''
-                IsSystemPreferredAuthenticationMethodEnabled = ''
-                SystemPreferredAuthenticationMethods = ''
-                UserPreferredMethodForSecondaryAuthentication = ''
-                AdditionalProperties = 0
-            }
-            #continue
-        }
+        $mfaStatus = Get-MFAMethods -userId $EIDuser.Id
+        $mfaStatus | Add-Member -MemberType NoteProperty -Name UserDisplayName -Value $EIDuser.displayName
+        $mfaStatus | Add-Member -MemberType NoteProperty -Name UserPrincipalName -Value $EIDuser.userPrincipalName
+        $mfaStatus | Add-Member -MemberType NoteProperty -Name Id -Value $EIDuser.Id
+        $mfaStatus | Add-Member -MemberType NoteProperty -Name AccountEnabled -Value $EIDuser.AccountEnabled
+
         if($extendedMFAInformation) {
-            $mfaDetails = Get-MFAMethods -userId $EIDuser.Id
-            foreach($prop in $mfaDetails.PSObject.Properties) {
+            #Get-MgReportAuthenticationMethodUserRegistrationDetail doesn't work for unlicensed or disabled accounts
+            if(-not [string]::isNullOrEmpty($EIDuser.LicenseAssignmentStates)) {
+                $mfaStatusExt = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue | `
+                    Select-Object IsAdmin,IsMfaCapable,IsMfaRegistered,IsPasswordlessCapable,IsSsprCapable,IsSsprEnabled,IsSsprRegistered,LastUpdatedDateTime, `
+                        @{L='MethodsRegistered';E={$_.MethodsRegistered -join ','}},IsSystemPreferredAuthenticationMethodEnabled, `
+                        @{L='SystemPreferredAuthenticationMethods';E={$_.SystemPreferredAuthenticationMethods -join ','}}, `
+                        UserPreferredMethodForSecondaryAuthentication, @{L='AdditionalProperties';E={$_.AdditionalProperties.Count}}
+            }
+            if([string]::isNullOrEmpty($mfaStatusExt)) {
+                $mfaStatusExt = [PSCustomObject]@{
+                    IsAdmin = ''
+                    IsMfaCapable = ''
+                    IsMfaRegistered = ''
+                    IsPasswordlessCapable = ''
+                    IsSsprCapable = ''
+                    IsSsprEnabled = ''
+                    IsSsprRegistered = ''
+                    LastUpdatedDateTime = ''
+                    MethodsRegistered = ''
+                    IsSystemPreferredAuthenticationMethodEnabled = ''
+                    SystemPreferredAuthenticationMethods = ''
+                    UserPreferredMethodForSecondaryAuthentication = ''
+                    AdditionalProperties = 0
+                }
+                #continue
+            }
+            foreach($prop in $mfaStatusExt.PSObject.Properties) {
                 $mfaStatus | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value
             }
         }
         $MFAReport += $mfaStatus
     }
+#endregion ALLUSERS
 
     $MFAReport | Sort-Object UserDisplayName | Export-Csv -Path $outFile -NoTypeInformation
     Write-Verbose "results saved as $outFile."
@@ -638,7 +842,7 @@ function get-EntraIDPrivilegedUsers {
 .SYNOPSIS
     auditing script allowing to get the list of all users assgined to any Entra ID Role including PIM roles.
 .DESCRIPTION
-    script is queyring all EID roles to look for the members and if AAD P1 license is available, checks
+    script is queyring all EID roles to look for the members and if EID P1 license is available, checks
     fot the PIM roles and their members. 
     outputs the report in CSV format.
 .EXAMPLE
@@ -667,9 +871,9 @@ function get-EntraIDPrivilegedUsers {
 #>
     [CmdletBinding()]
     param (
-        #assume you're already connected with mgGraph to skip authentication
+        #do not use existing connection - re-connect
         [Parameter(mandatory=$false,position=0)]
-            [switch]$skipConnect,
+            [switch]$forceReconnect,
         #export CSV file delimiter
         [Parameter(mandatory=$false,position=1)]
             [string][validateSet(',',';','default')]$delimiter='default'
@@ -752,34 +956,9 @@ function get-EntraIDPrivilegedUsers {
 
     }
 
-    <#
-    try {
-        import-module Microsoft.Graph.Authentication -ErrorAction Stop
-    } catch {
-        throw "error importing mgGraph module. $($_.Exception)"
-        return
-    }
-    #>
-    if(!$skipConnect) {
-        try {
-            Disconnect-MgGraph -ErrorAction Stop
-        } catch {
-            write-verbose $_.Exception
-            $_.ErrorDetails
-        }
-        Write-Verbose "athenticate to tenant..."
-        try {
-            Connect-MgGraph -Scopes "User.Read.All","Directory.Read.All","RoleManagement.Read.Directory"
-        } catch {
-            throw "error connecting. $($_.Exception)"
-            return
-        }
-    } else {
-        if($null -eq (Get-MgContext)) {
-            throw "not connected. please connect to mgGraph first."
-        }
-    }
     $VerbosePreference = 'Continue'
+
+    connect-graphWithCheck -scopes "User.Read.All","Directory.Read.All","RoleManagement.Read.Directory" -forceReconnect:$forceReconnect
 
     $tenantDomain = (Get-MgOrganization).VerifiedDomains | ? IsDefault | Select-Object -ExpandProperty name
     $outFile = "EntraIDPrivileged-{0}-{1}.csv" -f $tenantDomain,(get-date -Format 'yyMMdd')
@@ -972,7 +1151,7 @@ function get-ReportEntraUsers {
     - general user information
     - MFA is checking extended attributes on the account so it will work for per-user and Conditional Access
     - AD Roles
-    - last logon times (attributes are populated only with AAD P1 or higher license)
+    - last logon times (attributes are populated only with EID P1 or higher license)
     As a part of a wider project, may be combined with AD and Exchange Online, giving better overview on hybrid identity.
 .DESCRIPTION
     proper permissioned are required:
@@ -999,7 +1178,7 @@ function get-ReportEntraUsers {
         - 250209 servicePlans created/saved in temp folder
         - 250203 isAdmin for EID, some optmization for MFA check, additional parameters and attributes, some optimisations
         - 240718 initiated as a more generalized project, service plans display names check up, segmentation
-        - 240627 MFA - for now only general status, AADP1 error handling
+        - 240627 MFA - for now only general status, EIDP1 error handling
         - 240520 initialized
 
     #TO/DO
@@ -1008,20 +1187,20 @@ function get-ReportEntraUsers {
 #>
     [CmdletBinding()]
     param (
-        #skip connecting [second run]
-        [Parameter(mandatory=$false,position=0)]
-            [switch]$skipConnect,
         #skip checking MFA status
-        [Parameter(mandatory=$false,position=1)]
+        [Parameter(mandatory=$false,position=0)]
             [switch]$skipMFACheck,
         #skip getting user licenses information
-        [Parameter(mandatory=$false,position=2)]
+        [Parameter(mandatory=$false,position=1)]
             [switch]$skipLicenseCheck,
-        [Parameter(mandatory=$false,position=3)]
+        [Parameter(mandatory=$false,position=2)]
             [switch]$skipIsAdminCheck,
         #automatically generate XLSX report using eNLib 
+        [Parameter(mandatory=$false,position=3)]
+            [switch]$xlsxReport,
+        #do not reuse existing connection
         [Parameter(mandatory=$false,position=4)]
-            [switch]$xlsxReport
+            [switch]$forceReconnect
         
     )
     $VerbosePreference = 'Continue'
@@ -1053,34 +1232,8 @@ function get-ReportEntraUsers {
         }
     }
 
-    if(!$skipConnect) {
-        try {
-            Disconnect-MgGraph -ErrorAction Stop
-        } catch {
-            #write-host 'testing error'
-            write-verbose $_.Exception
-            $_.ErrorDetails
-        }
-        Write-Verbose "athenticate to tenant..."
-        #"Domain.ReadWrite.All" comes from get-mgDomain - but is not required.
-        #"email" comes from get-mgDomain - and was double-requesting the authentication without this option
-        #Connect-MgGraph -Scopes "User.Read.All","AuditLog.Read.All","Directory.Read.All","Domain.Read.All","email"
+    connect-graphWithCheck -scopes "RoleManagement.Read.Directory","Directory.ReadWrite.All","Group.ReadWrite.All","User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile","openid" -forceReconnect:$forceReconnect
 
-        try {
-            Connect-MgGraph -Scopes "RoleManagement.Read.Directory","Directory.ReadWrite.All","Group.ReadWrite.All","User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile","openid" -ErrorAction Stop
-        } catch {
-            throw "error connecting. $($_.Exception)"
-            return
-        }
-    }
-    Write-Verbose "getting connection info..."
-    $ctx = Get-MgContext
-    Write-Verbose "connected as '$($ctx.Account)'"
-    if($ctx.Scopes -notcontains 'User.Read.All' -or $ctx.Scopes -notcontains 'AuditLog.Read.All' -or $ctx.Scopes -notcontains 'Domain.Read.All' -or $ctx.Scopes -notcontains 'UserAuthenticationMethod.Read.All' `
-        -or $ctx.Scopes -notcontains 'RoleManagement.Read.Directory') {
-        throw "you need to connect using connect-mgGraph -Scopes User.Read.All,AuditLog.Read.All,Domain.Read.All,UserAuthenticationMethod.Read.All,RoleManagement.Read.Directory"
-    } else {
-    }
     try {
         $tenantDomain = (get-MgDomain -ErrorAction Stop | ? isdefault).id
     } catch {
@@ -1088,7 +1241,7 @@ function get-ReportEntraUsers {
     }
     $exportCSVFile = "EntraUsers-{0}-{1}.csv" -f $tenantDomain,(get-date -Format "yyMMdd-hhmm")
     [System.Collections.ArrayList]$userQuery = @('id','displayname','givenname','surname','accountenabled','userprincipalname','mail','signInActivity','userType','OnPremisesSyncEnabled')
-    $AADP1 = $true
+    $EIDP1 = $true
 
     Write-Verbose "getting user info..."
     try {
@@ -1096,15 +1249,15 @@ function get-ReportEntraUsers {
         Write-Verbose "found $($entraUsers.count) users."
     } catch {
         if($_.exception.hresult -eq -2146233088) {
-            write-host "sorry.. it seems that you do not have a AAD P1 license - you need to purchase trial or at least single AAD P1 to have audit logging enabled. last logon information will not be available." -ForegroundColor Red
+            write-host "sorry.. it seems that you do not have a EID P1 license - you need to purchase trial or at least single EID P1 to have audit logging enabled. last logon information will not be available." -ForegroundColor Red
             $userQuery.remove('signInActivity')
-            $AADP1 = $false
+            $EIDP1 = $false
         } else {
             write-host -ForegroundColor Red $_.exception.message
             return $_.exception.hresult
         }
     }
-    if(!$AADP1) {
+    if(!$EIDP1) {
         try {
             $entraUsers = Get-MgUser -ErrorAction Stop -Property $userQuery -all 
             Write-Verbose "found $($entraUsers.count) users."
@@ -1122,7 +1275,7 @@ function get-ReportEntraUsers {
     }
 
     Write-Verbose "some output tuning..."
-    if($AADP1) {
+    if($EIDP1) {
         $entraUsers = $entraUsers |
             select-object displayname,userType,accountenabled,isAdmin,givenname,surname,userprincipalname,mail,MFAStatus,`
             @{L='Hybrid';E={if($_.OnPremisesSyncEnabled) {$_.OnPremisesSyncEnabled} else {"FALSE"} }},`
@@ -1137,10 +1290,10 @@ function get-ReportEntraUsers {
         $entraUsers = $entraUsers |
             select-object displayname,userType,accountenabled,isAdmin,givenname,surname,userprincipalname,mail,MFAStatus,`
             @{L='Hybrid';E={if($_.OnPremisesSyncEnabled) {$_.OnPremisesSyncEnabled} else {"FALSE"} }},`
-            @{L='LastLogonDate';E={'NO AADP1'}},`
-            @{L='LastNILogonDate';E={'NO AADP1'}},`
+            @{L='LastLogonDate';E={'NO EIDP1'}},`
+            @{L='LastNILogonDate';E={'NO EIDP1'}},`
             licenses,id,`
-            @{L='daysInactive';E={'NO AADP1'}}
+            @{L='daysInactive';E={'NO EIDP1'}}
     }
 
     if(!$skipIsAdminCheck) {
