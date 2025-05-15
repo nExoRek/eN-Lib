@@ -225,60 +225,6 @@ function get-TenantName {
     }
     return $tenantName
 }
-
-############################PUBLIC FUNCTIONS#############################
-function get-BasicSecurityInfo {
-<#
-.SYNOPSIS
-    function checks for EID license and if Security defaults are enabled.
-    
-.LINK
-    https://w-files.pl
-.NOTES
-    nExoR ::))o-
-    version 250514
-        last changes
-        - 250514 initialized
-
-    #TO|DO
-#>
-    [CmdletBinding()]
-    param(
-        #force re-connect to Graph (do not reuse existing connection)
-        [Parameter(mandatory=$false,position=0)]
-            [switch]$forceReconnect
-    )
-    
-    connect-graphWithCheck -scopes "User.Read.All","UserAuthenticationMethod.Read.All","Directory.Read.All","Policy.Read.All","Policy.ReadWrite.ConditionalAccess","AuditLog.Read.All","Domain.Read.All","RoleManagement.Read.Directory","email","openid" -forceReconnect:$forceReconnect
-
-    write-host "Tenant name: " -NoNewline
-    write-host (get-TenantName -displayName) -ForegroundColor Yellow
-    write-host "deault domain: " -NoNewline
-    write-host (get-TenantName) -ForegroundColor Yellow
-    $EIDSKUs = @('AAD_PREMIUM','AAD_PREMIUM_P2')
-    try {
-        $SKUs = Get-MgSubscribedSku
-    } catch {
-        Write-Error "Unable to get SKUs. Check if you have 'Directory.Read.All' scope included."
-        return -1
-    }
-    $servicePlans = $SKUs.ServicePlans | Select-Object -ExpandProperty ServicePlanName -Unique
-    $EID = $servicePlans | Where-Object { $_ -in $EIDSKUs }
-    write-host "EID Plan: " -NoNewline
-    if($EID) {
-        write-host $($EID -join ', ') -ForegroundColor Magenta
-    } else {
-        write-host "FREE" -ForegroundColor Magenta
-    }
-    $securityDefaults = (Get-MgPolicyIdentitySecurityDefaultEnforcementPolicy).IsEnabled
-    write-host "Security defaults are " -NoNewline
-    if($securityDefaults) {
-        write-host -ForegroundColor Green "ENABLED"
-    } else {
-        write-host -ForegroundColor Red "DISABLED"
-    }
-    write-host 'done.' -ForegroundColor Green
-}
 Function Get-MFAMethods {
 <#
 .SYNOPSIS
@@ -322,6 +268,7 @@ Function Get-MFAMethods {
         try {
             [array]$mfaData = Get-MgUserAuthenticationMethod -UserId $userId -ErrorAction Stop
         } catch {
+            Write-Error $_.Exception.Message
             $mfaMethods.MFAstatus = 'error'
             return $mfaMethods
         }
@@ -394,6 +341,59 @@ Function Get-MFAMethods {
         }
         Return $mfaMethods
     }
+}
+############################PUBLIC FUNCTIONS#############################
+function get-BasicSecurityInfo {
+<#
+.SYNOPSIS
+    function checks for EID license and if Security defaults are enabled.
+    
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 250514
+        last changes
+        - 250514 initialized
+
+    #TO|DO
+#>
+    [CmdletBinding()]
+    param(
+        #force re-connect to Graph (do not reuse existing connection)
+        [Parameter(mandatory=$false,position=0)]
+            [switch]$forceReconnect
+    )
+    
+    connect-graphWithCheck -scopes "User.Read.All","UserAuthenticationMethod.Read.All","Directory.Read.All","Policy.Read.All","Policy.ReadWrite.ConditionalAccess","AuditLog.Read.All","Domain.Read.All","RoleManagement.Read.Directory","email","openid" -forceReconnect:$forceReconnect
+
+    write-host "Tenant name: " -NoNewline
+    write-host (get-TenantName -displayName) -ForegroundColor Yellow
+    write-host "deault domain: " -NoNewline
+    write-host (get-TenantName) -ForegroundColor Yellow
+    $EIDSKUs = @('AAD_PREMIUM','AAD_PREMIUM_P2')
+    try {
+        $SKUs = Get-MgSubscribedSku
+    } catch {
+        Write-Error "Unable to get SKUs. Check if you have 'Directory.Read.All' scope included."
+        return -1
+    }
+    $servicePlans = $SKUs.ServicePlans | Select-Object -ExpandProperty ServicePlanName -Unique
+    $EID = $servicePlans | Where-Object { $_ -in $EIDSKUs }
+    write-host "EID Plan: " -NoNewline
+    if($EID) {
+        write-host $($EID -join ', ') -ForegroundColor Magenta
+    } else {
+        write-host "FREE" -ForegroundColor Magenta
+    }
+    $securityDefaults = (Get-MgPolicyIdentitySecurityDefaultEnforcementPolicy).IsEnabled
+    write-host "Security defaults are " -NoNewline
+    if($securityDefaults) {
+        write-host -ForegroundColor Green "ENABLED"
+    } else {
+        write-host -ForegroundColor Red "DISABLED"
+    }
+    write-host 'done.' -ForegroundColor Green
 }
 function disable-perUserMFA {
 <#
@@ -534,28 +534,22 @@ function get-MFAReport {
 #>
     [CmdletBinding(DefaultParameterSetName='default')]
     param (
-        #username provided as ID
+        #username provided as ID or UPN
         [Parameter(mandatory=$false,position=0,ParameterSetName='uID')]
             [string]$userId,    
-        #username provided as UPN
-        [Parameter(mandatory=$false,position=0,ParameterSetName='upn')]
-            [string]$userPrincipalName,
         #no username - check for all users
         [Parameter(mandatory=$false,position=0,ParameterSetName='default')]
             [switch]$all = $true,
         #extended MFA information
         [Parameter(mandatory=$false,position=1,ParameterSetName='uID')]
-        [Parameter(mandatory=$false,position=1,ParameterSetName='upn')]
         [Parameter(mandatory=$false,position=1,ParameterSetName='default')]
             [switch]$extendedMFAInformation,
         #automatically convert to Excel and open
         [Parameter(mandatory=$false,position=2,ParameterSetName='uID')]
-        [Parameter(mandatory=$false,position=2,ParameterSetName='upn')]
         [Parameter(mandatory=$false,position=2,ParameterSetName='default')]
-            [switch]$run,
+            [switch]$xlsxReport,
         #force re-connect to Graph (do not reuse existing connection)
         [Parameter(mandatory=$false,position=3,ParameterSetName='uID')]
-        [Parameter(mandatory=$false,position=3,ParameterSetName='upn')]
         [Parameter(mandatory=$false,position=3,ParameterSetName='default')]
             [switch]$forceReconnect
     )
@@ -580,12 +574,16 @@ function get-MFAReport {
         Write-Debug "checking for all users"
         $mguserParams.Filter = "usertype eq 'member'"
         $mguserParams.All = $true
-    } elseif($PSCmdlet.ParameterSetName -eq 'upn') { #single check - by UPN
-        Write-Debug "checking for $userPrincipalName"
-        $mguserParams.Filter = "userPrincipalName eq '$userPrincipalName'"
-    } elseif($PSCmdlet.ParameterSetName -eq 'uID') { #single check - by uID
+    } elseif($PSCmdlet.ParameterSetName -eq 'uID') { #single check
         Write-Debug "checking for $userId"
-        $mguserParams.userId = $userId
+        if($userId -match '@') {
+            $mguserParams.Filter = "userPrincipalName eq '$userId'"
+        } elseif($userId -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+            $mguserParams.Filter = "id eq '$userId'"
+        } else {
+            Write-Error "Invalid user ID format. Please provide a valid UPN or GUID."
+            return
+        }
     }
 
     try {
@@ -644,13 +642,13 @@ function get-MFAReport {
         $MFAReport += $mfaStatus
     }
 
-    if($PSCmdlet.ParameterSetName -match 'upn|uID') { #single user - show on screen
+    if($PSCmdlet.ParameterSetName -match 'uID') { #single user - show on screen
         $MFAReport
     }
 
     $MFAReport | Sort-Object UserDisplayName | Export-Csv -Path $outFile -NoTypeInformation
     Write-Verbose "results saved as $outFile."
-    if($run) {
+    if($xlsxReport) {
         $xlsFile = convert-CSV2XLS -CSVfileName $outFile
         Start-Process $xlsFile
     }
