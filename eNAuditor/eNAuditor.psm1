@@ -437,10 +437,17 @@ function disable-perUserMFA {
     connect-graphWithCheck -scopes "Policy.ReadWrite.AuthenticationMethod" -forceReconnect:$forceReconnect
 
     if($userId) {
-        # Get the user by ID.
-        $user = Get-MgUser -UserId $userId -Select Id,UserPrincipalName
-        if (-not $user) {
-            Write-Host "User '$user' not found."
+        if($userId -match '@') {
+            # Get the user by UPN.
+            $user = Get-MgUser -Filter "userPrincipalName eq '$userId'" -Select Id,UserPrincipalName
+            if (-not $user) {
+                Write-Host "User '$userId' not found."
+                return
+            }
+        } elseif($userId -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+            # User ID is in GUID format.
+        } else {
+            Write-Host "Invalid user ID format. Please provide a valid UPN or GUID."
             return
         }
         $users = @($user)
@@ -515,14 +522,14 @@ function get-MFAReport {
     nExoR ::))o-
     version 250514
         last changes
-        - 250514 UPN was put instead of displayName, file name changed, logic basic-extended reversed because of the limitations of the commandlet
+        - 250514 UPN was put instead of displayName, file name changed, logic basic-extended reversed because of the limitations of the commandlet, and general refactoring
         - 250211 as it turned out, reportdetails is not working for accounts lacking license, not disabled.. that had conseqences.
         - 250209 extended report from both commandlets
 
     #TO|DO
     - it seems that Get-MgReportAuthenticationMethodUserRegistrationDetail doesn't work with EID P1 - to be investigated and proper check added. 
        I assume the need comes from AuditLog.Read.All permission requirement.
-    - chck for single user in P1/P2 tenant for extended info
+    - object properties in given order...
 
 #>
     [CmdletBinding(DefaultParameterSetName='default')]
@@ -542,11 +549,13 @@ function get-MFAReport {
         [Parameter(mandatory=$false,position=1,ParameterSetName='default')]
             [switch]$extendedMFAInformation,
         #automatically convert to Excel and open
+        [Parameter(mandatory=$false,position=2,ParameterSetName='uID')]
+        [Parameter(mandatory=$false,position=2,ParameterSetName='upn')]
         [Parameter(mandatory=$false,position=2,ParameterSetName='default')]
             [switch]$run,
         #force re-connect to Graph (do not reuse existing connection)
-        [Parameter(mandatory=$false,position=2,ParameterSetName='uID')]
-        [Parameter(mandatory=$false,position=2,ParameterSetName='upn')]
+        [Parameter(mandatory=$false,position=3,ParameterSetName='uID')]
+        [Parameter(mandatory=$false,position=3,ParameterSetName='upn')]
         [Parameter(mandatory=$false,position=3,ParameterSetName='default')]
             [switch]$forceReconnect
     )
@@ -555,76 +564,38 @@ function get-MFAReport {
     connect-graphWithCheck -scopes "Directory.Read.All","User.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","AuditLog.Read.All","RoleManagement.Read.Directory","openid","profile" -forceReconnect:$forceReconnect
     $tName = get-TenantName
     $outFile = "eNMFAReport-{0}-{1}.csv" -f $tName,(get-date -Format 'yyMMdd-HHmmss')
+    $MFAReport = @() #final report to be stored here
 
     $EIDP1present = get-eidP1Availability
     if(-not $EIDP1present) {
         Write-Error "EID P1 license not available in tenant. MFA report will be limited..."
         $extendedMFAInformation = $false
     }
-#region SINGLEUSER
-    if($PSCmdlet.ParameterSetName -eq 'uID') { #single check - by uID
-        $EIDuser += Get-MgUser -userId $userId -Property accountEnabled,userPrincipalName,displayName,Id,LicenseAssignmentStates -ErrorAction Stop
-        if(-not $EIDUser) {
-            Write-Verbose "no user(s) found."
-            return
-        }
-    }
-    if($PSCmdlet.ParameterSetName -eq 'upn') { #single check - by UPN
-        Write-Debug "checking for $userPrincipalName"
-        $EIDuser += Get-MgUser -Filter "userPrincipalName eq '$userPrincipalName'" -Property accountEnabled,userPrincipalName,displayName,Id,LicenseAssignmentStates -ErrorAction Stop
-        if(-not $EIDUser) {
-            Write-Verbose "no '$userPrincipalName' found."
-            return
-        }
-    }
-    if($PSCmdlet.ParameterSetName -eq 'upn' -or $PSCmdlet.ParameterSetName -eq 'uID') {
-        Write-Verbose "getting basic details for '$($EIDuser.userPrincipalName)'"
-        $mfaStatus = Get-MFAMethods -userId $EIDuser.Id
-        $mfaStatus | Add-Member -MemberType NoteProperty -Name UserDisplayName -Value $EIDuser.displayName
-        $mfaStatus | Add-Member -MemberType NoteProperty -Name UserPrincipalName -Value $EIDuser.userPrincipalName
-        $mfaStatus | Add-Member -MemberType NoteProperty -Name Id -Value $EIDuser.Id
-        $mfaStatus | Add-Member -MemberType NoteProperty -Name AccountEnabled -Value $EIDuser.AccountEnabled
 
-        if($extendedMFAInformation) {
-            if($EIDuser.LicenseAssignmentStates) {
-                try {
-                    $mfaStatusExt = Get-MgReportAuthenticationMethodUserRegistrationDetail -Filter "userPrincipalName eq '$($EIDuser.userPrincipalName)'" -ErrorAction SilentlyContinue    
-                } catch {
-                    Write-Verbose $_.Exception
-                    return
-                }
-            } else {
-                $mfaStatusExt = [PSCustomObject]@{
-                    IsAdmin = ''
-                    IsMfaCapable = ''
-                    IsMfaRegistered = ''
-                    IsPasswordlessCapable = ''
-                    IsSsprCapable = ''
-                    IsSsprEnabled = ''
-                    IsSsprRegistered = ''
-                    LastUpdatedDateTime = ''
-                    MethodsRegistered = ''
-                    IsSystemPreferredAuthenticationMethodEnabled = ''
-                    SystemPreferredAuthenticationMethods = ''
-                    UserPreferredMethodForSecondaryAuthentication = ''
-                    AdditionalProperties = 0
-                }
-            }
-            foreach($prop in $mfaStatusExt.PSObject.Properties) {
-                $mfaStatus | Add-Member -MemberType NoteProperty -Name $prop.Name -Value $prop.Value
-            }
-    
-        }
-        return $mfaStatus
+    $mguserParams = @{
+        Property = "accountEnabled,userPrincipalName,displayName,Id,LicenseAssignmentStates"
+        ErrorAction = 'SilentlyContinue'
     }
-#endregion SINGLEUSER
-#region ALLUSERS
-    #default : all users report 
-    $MFAReport = @()
+    if($PSCmdlet.ParameterSetName -eq 'default') { #all users
+        Write-Debug "checking for all users"
+        $mguserParams.Filter = "usertype eq 'member'"
+        $mguserParams.All = $true
+    } elseif($PSCmdlet.ParameterSetName -eq 'upn') { #single check - by UPN
+        Write-Debug "checking for $userPrincipalName"
+        $mguserParams.Filter = "userPrincipalName eq '$userPrincipalName'"
+    } elseif($PSCmdlet.ParameterSetName -eq 'uID') { #single check - by uID
+        Write-Debug "checking for $userId"
+        $mguserParams.userId = $userId
+    }
+
     try {
-        $EIDUsers = Get-MgUser -Filter "usertype eq 'member'" -All -Property userPrincipalName,Id,displayName,AccountEnabled,LicenseAssignmentStates -ErrorAction SilentlyContinue
+        $EIDUsers = Get-MgUser @mguserParams
     } catch {
         Write-Verbose $_.Exception
+        return
+    }
+    if([string]::isNullOrEmpty($EIDUsers)) {
+        Write-Error "No users found. Check your parameters."
         return
     }
     $nrOfEIDUsers = $EIDUsers.count
@@ -672,7 +643,10 @@ function get-MFAReport {
         }
         $MFAReport += $mfaStatus
     }
-#endregion ALLUSERS
+
+    if($PSCmdlet.ParameterSetName -match 'upn|uID') { #single user - show on screen
+        $MFAReport
+    }
 
     $MFAReport | Sort-Object UserDisplayName | Export-Csv -Path $outFile -NoTypeInformation
     Write-Verbose "results saved as $outFile."
@@ -871,11 +845,14 @@ function get-EntraIDPrivilegedUsers {
 #>
     [CmdletBinding()]
     param (
+        #generate Excel report
+        [Parameter(position=0)]
+            [switch]$xlsxReport,
         #do not use existing connection - re-connect
-        [Parameter(mandatory=$false,position=0)]
+        [Parameter(mandatory=$false,position=1)]
             [switch]$forceReconnect,
         #export CSV file delimiter
-        [Parameter(mandatory=$false,position=1)]
+        [Parameter(mandatory=$false,position=2)]
             [string][validateSet(',',';','default')]$delimiter='default'
         
     )
@@ -966,7 +943,7 @@ function get-EntraIDPrivilegedUsers {
     $tmpPIMusers = @{} #for query speed optimisation - cache for already queried users
     $RoleMemebersList = @() #array to store results
 
-    Write-Verbose "getting roles and members (may take up to 5 min)..."
+    Write-Verbose "getting roles and members..."
     $EntraRoles = Get-MgDirectoryRole
 
     foreach($role in $EntraRoles) {
@@ -999,9 +976,9 @@ function get-EntraIDPrivilegedUsers {
         } else {
             Write-verbose  "Found $($eligible.Count) eligible assignments."
             foreach($member in $eligible) {
-                If($member.Principal.AdditionalProperties.'@odata.type' -ne "#microsoft.graph.user"){
+                If($member.Principal.AdditionalProperties.'@odata.type' -notmatch  "^#microsoft.graph.(user|group)$"){
                     #STOP
-                    write-verbose "THIS IS NOT A USER:"
+                    write-verbose "THIS IS NOT A USER or group:"
                     $member.Principal.additionalProperties|out-host
                 }
                 $RoleMemebersList += get-userInfo -objId $member.Principal.Id -roleName $member.RoleDefinition.DisplayName -rID $member.RoleDefinition.Id -DirectoryScopeID $member.DirectoryScopeId -Type 'Eligible' -StartDateTime $member.StartDateTime -EndDateTime $member.EndDateTime
@@ -1021,6 +998,9 @@ function get-EntraIDPrivilegedUsers {
         $exportParam.Add('Delimiter',$delimiter)
     } 
     $sortedMemebersList | export-csv @exportParam
+    if($xlsxReport) {
+        convert-CSV2XLS -CSVfileName $outFile -openOnConversion
+    }
 
     Write-Host -ForegroundColor Green "exported to .\$outFile.`ndone."
 }
