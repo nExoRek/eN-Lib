@@ -171,7 +171,7 @@ function connect-graphWithCheck {
             $ctx = Get-MgContext -ErrorAction Stop
         } catch {
             $_.Exception
-            exit
+            return
         }
     } else {
         #this is silly, but sometimes using disconnect-mggraph it still keeps the information from previous usage - thus using twice. 
@@ -181,15 +181,17 @@ function connect-graphWithCheck {
 
     if(-not $ctx) {
         try { 
+            #$msalToken = Get-MsalToken -Interactive -Scopes $scopes -ErrorAction Stop #MSAL.PS
+            #Connect-MgGraph -AccessToken $msalToken -NoWelcome -ErrorAction Stop
             Connect-MgGraph -Scopes $scopes -NoWelcome -ErrorAction Stop
             $ctx = Get-MgContext -ErrorAction Stop
             if(-not $ctx) {
                 Write-Error "Still no connection. try connecting manually before running the function."
-                exit
+                return
             }
         } catch {
             $_.Exception
-            exit #probably not the best choice... but I;m tyring to make it as automatic as possible, with minimal error handling outside
+            return 
         }
     }
     Write-Verbose "connected as $($ctx.account)."
@@ -269,7 +271,7 @@ Function Get-MFAMethods {
             [array]$mfaData = Get-MgUserAuthenticationMethod -UserId $userId -ErrorAction Stop
         } catch {
             Write-Error $_.Exception.Message
-            $mfaMethods.MFAstatus = 'error'
+            foreach($p in $mfaMethods.psobject.properties) {$p.value = 'error'}
             return $mfaMethods
         }
         if($onlyStatus) {
@@ -352,8 +354,9 @@ function get-BasicSecurityInfo {
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250514
+    version 250515
         last changes
+        - 250515 scope fix
         - 250514 initialized
 
     #TO|DO
@@ -365,7 +368,8 @@ function get-BasicSecurityInfo {
             [switch]$forceReconnect
     )
     
-    connect-graphWithCheck -scopes "User.Read.All","UserAuthenticationMethod.Read.All","Directory.Read.All","Policy.Read.All","Policy.ReadWrite.ConditionalAccess","AuditLog.Read.All","Domain.Read.All","RoleManagement.Read.Directory","email","openid" -forceReconnect:$forceReconnect
+    connect-graphWithCheck -scopes "User.Read.All","UserAuthenticationMethod.Read.All","Directory.Read.All","Policy.Read.All","Policy.ReadWrite.ConditionalAccess","AuditLog.Read.All","Domain.Read.All","RoleManagement.Read.Directory" -forceReconnect:$forceReconnect
+    #connect-graphWithCheck -scopes "https://graph.microsoft.com/.default" -forceReconnect:$forceReconnect
 
     write-host "Tenant name: " -NoNewline
     write-host (get-TenantName -displayName) -ForegroundColor Yellow
@@ -505,32 +509,30 @@ function get-MFAReport {
 
     this function is a wrapper for aforementioned functions and using internal get-MFAMethods. 
 .EXAMPLE
-    get-eNAuditorMFAReport
+    get-eNAuditorMFAReport -xlsxReport
 
-    prepares a report for all users in a tenant
+    prepares a report for all users in a tenant and generated XLSX file
 .EXAMPLE
     get-eNAuditorMFAReport -userId 12de9a48-99d0-4ce5-be38-0cc79c876c33
 
     prepares a report for a user with provided objectID
 .EXAMPLE
-    get-eNAuditorMFAReport -userPrincipalName nexor@w-files.pl
+    get-eNAuditorMFAReport -userId nexor@w-files.pl
 
     prepares a report for a user with a UPN nexor@w-files.pl
 .LINK
     https://learn.microsoft.com/en-us/graph/api/userregistrationdetails-get?view=graph-rest-1.0&tabs=http
 .NOTES
     nExoR ::))o-
-    version 250514
+    version 250515
         last changes
+        - 250515 static header, onlyMissing option
         - 250514 UPN was put instead of displayName, file name changed, logic basic-extended reversed because of the limitations of the commandlet, and general refactoring
         - 250211 as it turned out, reportdetails is not working for accounts lacking license, not disabled.. that had conseqences.
         - 250209 extended report from both commandlets
 
     #TO|DO
-    - it seems that Get-MgReportAuthenticationMethodUserRegistrationDetail doesn't work with EID P1 - to be investigated and proper check added. 
-       I assume the need comes from AuditLog.Read.All permission requirement.
-    - object properties in given order...
-
+    - onlyMissingMFA - suboptimal, looking for some filter ...
 #>
     [CmdletBinding(DefaultParameterSetName='default')]
     param (
@@ -539,16 +541,21 @@ function get-MFAReport {
             [string]$userId,    
         #no username - check for all users
         [Parameter(mandatory=$false,position=0,ParameterSetName='default')]
-            [switch]$all = $true,
+            [switch]$all,
+        #show only accounts missing MFA
+        [Parameter(mandatory=$false,position=0,ParameterSetName='missing')]
+            [switch]$onlyMissingMFA,
         #extended MFA information
         [Parameter(mandatory=$false,position=1,ParameterSetName='uID')]
         [Parameter(mandatory=$false,position=1,ParameterSetName='default')]
             [switch]$extendedMFAInformation,
         #automatically convert to Excel and open
+        [Parameter(mandatory=$false,position=1,ParameterSetName='missing')]
         [Parameter(mandatory=$false,position=2,ParameterSetName='uID')]
         [Parameter(mandatory=$false,position=2,ParameterSetName='default')]
             [switch]$xlsxReport,
         #force re-connect to Graph (do not reuse existing connection)
+        [Parameter(mandatory=$false,position=2,ParameterSetName='missing')]
         [Parameter(mandatory=$false,position=3,ParameterSetName='uID')]
         [Parameter(mandatory=$false,position=3,ParameterSetName='default')]
             [switch]$forceReconnect
@@ -642,11 +649,27 @@ function get-MFAReport {
         $MFAReport += $mfaStatus
     }
 
+    if($PSCmdlet.ParameterSetName -match 'missing') { #single user - show on screen
+        $header = @('UserDisplayName','UserPrincipalName','Id','AccountEnabled','MFAstatus')
+        $MFAReport = $MFAReport | Where-Object { $_.MFAstatus -eq 'disabled' } | Select-Object $header | Sort-Object UserDisplayName
+        $MFAReport | Format-Table -AutoSize
+    }
+
     if($PSCmdlet.ParameterSetName -match 'uID') { #single user - show on screen
         $MFAReport
     }
 
-    $MFAReport | Sort-Object UserDisplayName | Export-Csv -Path $outFile -NoTypeInformation
+    #column order
+    $header = @('UserDisplayName','UserPrincipalName','Id','AccountEnabled','MFAstatus','softwareAuth','authApp','authDevice','phoneAuth','authPhoneNr','fido','fidoDetails','helloForBusiness','helloForBusinessDetails','emailAuth','SSPREmail','tempPass','tempPassDetails','passwordLess','passwordLessDetails')
+    if($extendedMFAInformation) {
+        $header += @('IsAdmin','IsMfaCapable','IsMfaRegistered','IsPasswordlessCapable','IsSsprCapable','IsSsprEnabled','IsSsprRegistered','LastUpdatedDateTime','MethodsRegistered','IsSystemPreferredAuthenticationMethodEnabled','SystemPreferredAuthenticationMethods','UserPreferredMethodForSecondaryAuthentication','AdditionalProperties')
+    }
+    IF($onlyMissingMFA) {   
+        $header = @('UserDisplayName','UserPrincipalName','Id','AccountEnabled','MFAstatus')
+        $MFAReport | Export-Csv -Path $outFile -NoTypeInformation
+    } else {
+        $MFAReport | Sort-Object UserDisplayName | Select-Object $header | Export-Csv -Path $outFile -NoTypeInformation
+    }
     Write-Verbose "results saved as $outFile."
     if($xlsxReport) {
         $xlsFile = convert-CSV2XLS -CSVfileName $outFile
@@ -1971,4 +1994,27 @@ function join-ReportHybridUsersInfo {
     }
     write-log "done." -type ok
 
+}
+function show-Scopes {
+    [CmdletBinding(DefaultParameterSetName='url')]
+    param (
+        #url to parse
+        [Parameter(ParameterSetName='url',mandatory=$false,position=0)]
+            [string]$URL,
+        #function name
+        [Parameter(ParameterSetName='func',mandatory=$false,position=0)]
+            [string]$FunctionName
+    )
+
+    if($PSCmdlet.ParameterSetName -eq 'url') {
+        if ($url -match 'scope=([^&]+)') {
+            # $matches[1] is the raw plus-separated list
+            $raw = $matches[1]
+            # Split on '+' and display each scope
+            return ($raw -split '\+')
+        }
+    } 
+    if($PSCmdlet.ParameterSetName -eq 'func') {
+        Find-MgGraphCommand -command $FunctionName | Select-Object -First 1 -ExpandProperty Permissions
+    }
 }
