@@ -9,8 +9,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 241114
+    version 250922
     changes
+        - 250922 small update to azure connection, alias csv2xls [1.4.1]
         - 241114 major changes and fixes to the load-CSV, connect-Azure - environments [1.4.0]
         - 241029 [1.3.34]
         - 241007 CSV2XLS fixes and -open switch
@@ -2800,8 +2801,9 @@ function connect-Azure {
         https://w-files.pl
     .NOTES
         nExoR ::))o-
-        version 241110
+        version 250922
             last changes
+            - 250922 update config
             - 241110 Environments
             - 210302 fix to expired token - PSMessageDetail is not populated on many OSes. why? 
             - 210301 proper detection of expired tokens
@@ -2821,7 +2823,7 @@ function connect-Azure {
         [Parameter(mandatory=$false,position=1)]
             [switch]$Confirm
     )
-    Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
+    #Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 
     try {
         $AzSourceContext = Get-AzContext
@@ -2842,6 +2844,12 @@ function connect-Azure {
             }          
         }
         $AzSourceContext = Get-AzContext
+        write-log "saving defaults with azConfig" -type info
+        try {
+            Update-AzConfig -DefaultSubscriptionForLogin $AzSourceContext.Subscription.subscriptionId -DisplaySurveyMessage $false -DisplayBreakingChangeWarning $false -ErrorAction SilentlyContinue | Out-Null
+        } catch { 
+            Write-Warning "unable to update az config: $($_.exception.message)"
+        }
     } else { 
         #1. check if context is from a proper Cloud Environment
         if($AzSourceContext.Environment.Name -ne $Environment) {
@@ -2857,7 +2865,7 @@ function connect-Azure {
         #2. token exist, check if it is still working
         try{
             #if access token has been revoked, Az commands return warning "Unable to acquire token for tenant"
-            Get-AzSubscription -WarningAction stop|Out-Null
+            Get-AzSubscription -WarningAction stop | Out-Null
         } catch {
             if($_.Exception -match 'Unable to acquire token for tenant') {
                 write-log "token expired, clearing cache" -type info

@@ -102,8 +102,9 @@
         - 250125 initialized
 
     #TO|DO
+    * 
     * application permissions for EID
-    * AD permissions crawler to detect non-standard delegations
+    * new function: AD permissions crawler to detect non-standard delegations
     * code optimization
     * ent-size tenant queries (currently unsupported)
     * PS version check functions to replace missing #requires
@@ -148,7 +149,11 @@ function get-EIDP1Availability {
         return -1
     }
     $servicePlans = $SKUs.ServicePlans | Select-Object -ExpandProperty ServicePlanName -Unique
-    $hasEID = ( $servicePlans | Where-Object { $_ -in $EIDSKUs } ) ? $true : $false
+    #changed for PS5 compatibility for module loading... 
+    $hasEID = $false
+    if($servicePlans | Where-Object { $_ -in $EIDSKUs }) {
+        $hasEID = $true 
+    } 
 
     return $hasEID
 }
@@ -1172,8 +1177,9 @@ function get-ReportEntraUsers {
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250403
+    version 250616 
         last changes
+        - 250616 init:update...
         - 250403 error handling improvement
         - 250218 missing isAdmin attribute on non-EIDP1 
         - 250209 servicePlans created/saved in temp folder
@@ -1183,35 +1189,41 @@ function get-ReportEntraUsers {
         - 240520 initialized
 
     #TO/DO
+    * update on excel file ..and test CSV update
     * pagefile for big numbers
 
 #>
     [CmdletBinding()]
     param (
+        #update existing file with new data
+        [Parameter(position=0)]
+            [string]$updateExisting,
         #skip checking MFA status
-        [Parameter(mandatory=$false,position=0)]
+        [Parameter(mandatory=$false,position=1)]
             [switch]$skipMFACheck,
         #skip getting user licenses information
-        [Parameter(mandatory=$false,position=1)]
-            [switch]$skipLicenseCheck,
         [Parameter(mandatory=$false,position=2)]
+            [switch]$skipLicenseCheck,
+        [Parameter(mandatory=$false,position=3)]
             [switch]$skipIsAdminCheck,
         #automatically generate XLSX report using eNLib 
-        [Parameter(mandatory=$false,position=3)]
+        [Parameter(mandatory=$false,position=4)]
             [switch]$xlsxReport,
         #do not reuse existing connection
-        [Parameter(mandatory=$false,position=4)]
+        [Parameter(mandatory=$false,position=5)]
             [switch]$forceReconnect
         
     )
     $VerbosePreference = 'Continue'
 
     function convert-SKUCodeToDisplayName {
-    param([string]$SKUname)
+        param([string]$SKUname)
 
-    $ServicePlan = $spInfo | Where-Object { $_.psobject.Properties.value -contains $SKUname }
-    if($ServicePlan) {
-        if($ServicePlan -is [array]) { $ServicePlan = $ServicePlan[0] }
+        $ServicePlan = $spInfo | Where-Object { $_.psobject.Properties.value -contains $SKUname }
+        if($ServicePlan) {
+            if($ServicePlan -is [array]) { 
+                $ServicePlan = $ServicePlan[0] 
+            }
             $property = ($ServicePlan.psobject.Properties| Where-Object value -eq $SKUname).name
             switch($property) {
                 'Service_Plan_Name' {
@@ -1233,7 +1245,7 @@ function get-ReportEntraUsers {
         }
     }
 
-    connect-graphWithCheck -scopes "RoleManagement.Read.Directory","Directory.ReadWrite.All","Group.ReadWrite.All","User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile","openid" -forceReconnect:$forceReconnect
+    connect-graphWithCheck -scopes "RoleManagement.Read.Directory","Directory.Read.All","Group.Read.All","User.Read.All","AuditLog.Read.All","Domain.Read.All","UserAuthenticationMethod.Read.All","email","profile","openid" -forceReconnect:$forceReconnect
 
     try {
         $tenantDomain = (get-MgDomain -ErrorAction Stop | ? isdefault).id
@@ -1242,23 +1254,53 @@ function get-ReportEntraUsers {
     }
     $exportCSVFile = "EntraUsers-{0}-{1}.csv" -f $tenantDomain,(get-date -Format "yyMMdd-hhmm")
     [System.Collections.ArrayList]$userQuery = @('id','displayname','givenname','surname','accountenabled','userprincipalname','mail','signInActivity','userType','OnPremisesSyncEnabled')
-    $EIDP1 = $true
 
-    Write-Verbose "getting user info..."
-    try {
-        $entraUsers = Get-MgUser -ErrorAction Stop -Property $userQuery -all 
-        Write-Verbose "found $($entraUsers.count) users."
-    } catch {
-        if($_.exception.hresult -eq -2146233088) {
+    $EIDP1 = get-EIDP1Availability
+    if(!$EIDP1) {
             write-host "sorry.. it seems that you do not have a EID P1 license - you need to purchase trial or at least single EID P1 to have audit logging enabled. last logon information will not be available." -ForegroundColor Red
             $userQuery.remove('signInActivity')
-            $EIDP1 = $false
-        } else {
-            write-host -ForegroundColor Red $_.exception.message
-            return $_.exception.hresult
+    } else {
+        write-verbose "EID P1 license available"
+    }  
+
+    Write-Verbose "getting user info..."
+    if($updateExisting) {
+        Write-Verbose "updating existing file $updateExisting"
+        $entraUsers = load-CSV -inputCSV $updateExisting -header $userQuery #-headerIsCritical 
+        if([string]::isNullOrEmpty($entraUsers)) {
+            Write-Error "file $updateExisting not found or empty. exiting."
+            return
         }
-    }
-    if(!$EIDP1) {
+        $exportCSVFile = $updateExisting
+        Write-Verbose "found $($entraUsers.count) users in the file."
+        foreach($entraRecord in $entraUsers) {
+            try {
+                $entraUser = Get-MgUser -UserId $entraRecord.id -Property $userQuery -ErrorAction stop
+            } catch {
+                #TODO - better error handling, create a log file
+                Write-Verbose "user with ID '$($entraRecord.id)' not found in Entra ID. removing from the report."
+                $entraRecord.accountenabled = "DELETED"
+                $entraRecord.signInActivity = "DELETED"
+                continue
+            }
+            if($entraUser) {
+                $entraRecord.displayname = $entraUser.displayname
+                $entraRecord.givenname = $entraUser.givenname
+                $entraRecord.surname = $entraUser.surname
+                $entraRecord.accountenabled = $entraUser.accountenabled
+                $entraRecord.userprincipalname = $entraUser.userprincipalname
+                $entraRecord.mail = $entraUser.mail
+                $entraRecord.OnPremisesSyncEnabled = $entraUser.OnPremisesSyncEnabled
+                if($EIDP1) {
+                    $entraRecord.signInActivity = $entraUser.signInActivity
+                }
+            } else {
+                Write-Verbose "user with ID '$($entraRecord.id)' not found in Entra ID. removing from the report."
+                $entraRecord.accountenabled = "DELETED"
+                $entraRecord.signInActivity = "DELETED"
+            }
+        }
+    } else {
         try {
             $entraUsers = Get-MgUser -ErrorAction Stop -Property $userQuery -all 
             Write-Verbose "found $($entraUsers.count) users."
