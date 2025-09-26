@@ -11,6 +11,7 @@
     nExoR ::))o-
     version 250922
     changes
+        - 240926 get-winver function added [1.4.21]
         - 250922 small update to azure connection, alias csv2xls [1.4.1]
         - 241114 major changes and fixes to the load-CSV, connect-Azure - environments [1.4.0]
         - 241029 [1.3.34]
@@ -61,81 +62,81 @@
 #################################################### GENERAL
 function start-Logging {
     <#
-    .SYNOPSIS
-        initilizes log file under $logFile variable for write-log function.
-    .DESCRIPTION
-        all scripts require logging mechinism. write-log function forking each output to the screen and to the 
-        logfile is a very convinient way keeping all logs consistent with very nice host output. for those who
-        use scripts with 'always verbose' paradigm meaning that while running a script you want to have information
-        what is going on (on screen) and have it logged in case anything goes wrong.
-        this function initilizes $logFiles variable creation, and initiates the log file itself. in order to 
-        ease the creation there are several ways of initilizing $logFile:
-        - using write-log directly
-            - from console host
-            - from script
-        - using start-logging function directly 
-            - no parameters - defaults to $ScriptRoot/Logs folder or user documents/Logs if run from console
-            - using 'useProfile' - to store logs in User Documents/Logs directory
-            - using 'logFolder' parameter to define particular folder for logs
-            - using 'logFileName' - (exclusive to logFolder) presenting full path for the log or logfile name 
-        logFile name changes automatically when script name changes. you can use 'persistent' switch to make given 
-        logFile persistent for all scripts run later - this is especially important if you use externall calls 
-        (invoke-command or &) so they are still logging to the same single file. 
+.SYNOPSIS
+    initilizes log file under $logFile variable for write-log function.
+.DESCRIPTION
+    all scripts require logging mechinism. write-log function forking each output to the screen and to the 
+    logfile is a very convinient way keeping all logs consistent with very nice host output. for those who
+    use scripts with 'always verbose' paradigm meaning that while running a script you want to have information
+    what is going on (on screen) and have it logged in case anything goes wrong.
+    this function initilizes $logFiles variable creation, and initiates the log file itself. in order to 
+    ease the creation there are several ways of initilizing $logFile:
+    - using write-log directly
+        - from console host
+        - from script
+    - using start-logging function directly 
+        - no parameters - defaults to $ScriptRoot/Logs folder or user documents/Logs if run from console
+        - using 'useProfile' - to store logs in User Documents/Logs directory
+        - using 'logFolder' parameter to define particular folder for logs
+        - using 'logFileName' - (exclusive to logFolder) presenting full path for the log or logfile name 
+    logFile name changes automatically when script name changes. you can use 'persistent' switch to make given 
+    logFile persistent for all scripts run later - this is especially important if you use externall calls 
+    (invoke-command or &) so they are still logging to the same single file. 
 
-        script initializes $logFiles array variable to keep tract on log file names run from different context.
-        write-log creates simple [string]$LogFile variable so you can easly reference the log file name in your 
-        scripts.
-    .EXAMPLE
-        write-log 
+    script initializes $logFiles array variable to keep tract on log file names run from different context.
+    write-log creates simple [string]$LogFile variable so you can easly reference the log file name in your 
+    scripts.
+.EXAMPLE
+    write-log 
 
-        using write-log will inderectly call start-logging function and initialize the log file with generic name,
-        saved in 'Logs' subfolder under script run path or 'documents' folder if run directly from console. 
-    .EXAMPLE
-        start-Logging -logFileName c:\temp\myLogs\somelog.log
-        write-log 'test message'
+    using write-log will inderectly call start-logging function and initialize the log file with generic name,
+    saved in 'Logs' subfolder under script run path or 'documents' folder if run directly from console. 
+.EXAMPLE
+    start-Logging -logFileName c:\temp\myLogs\somelog.log
+    write-log 'test message'
 
-        initializes the log file as c:\temp\myLogs\somelog.log .
-    .EXAMPLE
-        start-Logging -logFileName c:\temp\myLogs\somelog.log -persistent:$false
-        write-log 'test message'
+    initializes the log file as c:\temp\myLogs\somelog.log .
+.EXAMPLE
+    start-Logging -logFileName c:\temp\myLogs\somelog.log -persistent:$false
+    write-log 'test message'
 
-        initializes the log file as c:\temp\myLogs\somelog.log and makes it non-persistent - next script run from this 
-        script will generate new logfile name. this is usefull for 'launchers' - scripts that launch series of other 
-        scripts that supposed to run with its own logfiles
-    .EXAMPLE
-        start-Logging -logFileName somelog.log
-        write-log 'test message'
+    initializes the log file as c:\temp\myLogs\somelog.log and makes it non-persistent - next script run from this 
+    script will generate new logfile name. this is usefull for 'launchers' - scripts that launch series of other 
+    scripts that supposed to run with its own logfiles
+.EXAMPLE
+    start-Logging -logFileName somelog.log
+    write-log 'test message'
 
-        initializes the log file as .\somelog.log .
-    .EXAMPLE
-        start-Logging -logFolder c:\temp\myLogs
-        write-log 'test message'
+    initializes the log file as .\somelog.log .
+.EXAMPLE
+    start-Logging -logFolder c:\temp\myLogs
+    write-log 'test message'
 
-        initializes the log file under c:\temp\myLogs\ folder with generic name containing script name and date.
-    .EXAMPLE
-        start-Logging -userProfilePath
-        write-log 'test message'
+    initializes the log file under c:\temp\myLogs\ folder with generic name containing script name and date.
+.EXAMPLE
+    start-Logging -userProfilePath
+    write-log 'test message'
 
-        initializes the log file in Logs subfolder uder user profile path with generic name containing script name and date.
-    .INPUTS
-        None.
-    .OUTPUTS
-        log file under $logFile variable.
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 220412
-        changes:
-            - 220412 persistence set as default - multilevel calls are not expected by default
-            - 220328 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
-                persistent switch added which related to multi-level calls. 
-            - 210408 breaks
-            - 210210 removing recurrency to write-log (loop elimination)
-            - 210205 fixes to logfilename initialization
-            - 210203 added 'logFolder' and proper log initilization when called indirectly
-            - 210127 v1
-            - 201018 initialize
+    initializes the log file in Logs subfolder uder user profile path with generic name containing script name and date.
+.INPUTS
+    None.
+.OUTPUTS
+    log file under $logFile variable.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 220412
+    changes:
+        - 220412 persistence set as default - multilevel calls are not expected by default
+        - 220328 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
+            persistent switch added which related to multi-level calls. 
+        - 210408 breaks
+        - 210210 removing recurrency to write-log (loop elimination)
+        - 210205 fixes to logfilename initialization
+        - 210203 added 'logFolder' and proper log initilization when called indirectly
+        - 210127 v1
+        - 201018 initialize
     #>
     [CmdletBinding(DefaultParameterSetName='FilePath')]
     param(
@@ -242,113 +243,113 @@ function start-Logging {
 }
 function write-log {
     <#
-    .SYNOPSIS
-        replacement for tee-object and write-host, forking information to a log file and screen
-        (and possibly to third object), with flexible log initialization and colouring.
-    .DESCRIPTION
-        function has been developed with a paradigm 'always verbose' - if you need to see script
-        run, and same time have it in a log file. it automates forking of output on two different 
-        endpoints - on the host, using write-host and to the file, appening its content, similarly 
-        to tee-object, but adds more options like message tag (error, info, warning) with cloured 
-        output and timestamps.
-        ...actually there is option to fork on third source, described later...
+.SYNOPSIS
+    replacement for tee-object and write-host, forking information to a log file and screen
+    (and possibly to third object), with flexible log initialization and colouring.
+.DESCRIPTION
+    function has been developed with a paradigm 'always verbose' - if you need to see script
+    run, and same time have it in a log file. it automates forking of output on two different 
+    endpoints - on the host, using write-host and to the file, appening its content, similarly 
+    to tee-object, but adds more options like message tag (error, info, warning) with cloured 
+    output and timestamps.
+    ...actually there is option to fork on third source, described later...
 
-        write-log converts everything to a string, so you can use it for virtually any type of 
-        variable - including objects. 
+    write-log converts everything to a string, so you can use it for virtually any type of 
+    variable - including objects. 
 
-        in order to use write-log, $logFiles variable requires to be set up. you can initialize the 
-        value directly with 'start-Logging', configure $logFile manually or simply run write-log to 
-        have it initialized automatically. by default logs are stored in $PSScriptRoot/Logs directory 
-        with generic file name. if you need special location refer to start-logging help how to
-        initialize variable. 
+    in order to use write-log, $logFiles variable requires to be set up. you can initialize the 
+    value directly with 'start-Logging', configure $logFile manually or simply run write-log to 
+    have it initialized automatically. by default logs are stored in $PSScriptRoot/Logs directory 
+    with generic file name. if you need special location refer to start-logging help how to
+    initialize variable. 
 
-        function may also be used directly from command line - in this scenario log file will be created 
-        in Logs directory under User Documents folder. file with be named 'console-<date>.log'.
+    function may also be used directly from command line - in this scenario log file will be created 
+    in Logs directory under User Documents folder. file with be named 'console-<date>.log'.
 
-        THIRD OBJECT
+    THIRD OBJECT
 
-          third object was introduced to help developing GUI apps and ability to show log on Forms
-        elements, but may be used for regular strings as well and may be easily extended on other types.
-        referenced objects must be provided as '([ref]$OBJECTNAME)' - with parenthesis and [ref]. 
-        as example, lets assume you have a Forms Label to show progress:
+        third object was introduced to help developing GUI apps and ability to show log on Forms
+    elements, but may be used for regular strings as well and may be easily extended on other types.
+    referenced objects must be provided as '([ref]$OBJECTNAME)' - with parenthesis and [ref]. 
+    as example, lets assume you have a Forms Label to show progress:
 
-              $LabelStatus = New-Object System.Windows.Forms.Label
+            $LabelStatus = New-Object System.Windows.Forms.Label
 
-        you can then use write-log to fork on the screen, the file and show it on the label:
-        write-log "something happens" -type info -thirdOutput $labelStatus
+    you can then use write-log to fork on the screen, the file and show it on the label:
+    write-log "something happens" -type info -thirdOutput $labelStatus
 
-        GLOBAL VARIABLES
-        start-logging initializes $logFiles variable which is an array, allowing to store different log
-        file names for scripts run on different stack levels (when you do dot sourcing, &, invokes etc).
-        this variable persists gloabally so the next script has 'a memory' to reuse the name.
+    GLOBAL VARIABLES
+    start-logging initializes $logFiles variable which is an array, allowing to store different log
+    file names for scripts run on different stack levels (when you do dot sourcing, &, invokes etc).
+    this variable persists gloabally so the next script has 'a memory' to reuse the name.
 
-        write-log creates simple [string]$logFile globally so you can easily reference the name in your 
-        srcipts e.g.:
+    write-log creates simple [string]$logFile globally so you can easily reference the name in your 
+    srcipts e.g.:
 
-        write-log "script run finished. check $logFile for details" -type ok
+    write-log "script run finished. check $logFile for details" -type ok
 
-    .EXAMPLE
-        write-log "all is fine"
+.EXAMPLE
+    write-log "all is fine"
 
-        output '<timestamp> all is fine' on the screen and to the log file.
-    .EXAMPLE
-        write-log all is fine -skip
+    output '<timestamp> all is fine' on the screen and to the log file.
+.EXAMPLE
+    write-log all is fine -skip
 
-        outputs 
-            all is fine
-        on the screen and to the log file - all unnamed parameters are displayed
-    .EXAMPLE
-        write-log -message "trees`nare`ngreen" -type ok
+    outputs 
+        all is fine
+    on the screen and to the log file - all unnamed parameters are displayed
+.EXAMPLE
+    write-log -message "trees`nare`ngreen" -type ok
 
-        shows:
-        '<timestamp> OK: trees
-        are
-        green'
-        in Green colour, and send text to a log file.
-    .EXAMPLE
-        start-Logging -logFileName ("{0}{1}{2}{3}{4}{5}" -f $PSScriptRoot,'\Logs\_',$env:USERNAME,'myScript-',$(Get-Date -Format yyMMddHHmm),'.log')
-        write-log -message $someObject -type info 
+    shows:
+    '<timestamp> OK: trees
+    are
+    green'
+    in Green colour, and send text to a log file.
+.EXAMPLE
+    start-Logging -logFileName ("{0}{1}{2}{3}{4}{5}" -f $PSScriptRoot,'\Logs\_',$env:USERNAME,'myScript-',$(Get-Date -Format yyMMddHHmm),'.log')
+    write-log -message $someObject -type info 
 
-        if you need to create a logfile with some custom name or location - just use 'start-Logging' function which initializes 
-        logfile with required values. 
-    .EXAMPLE
-        $someObject=get-process
-        write-log -message $someObject -type info -skipTimeStamp -silent
+    if you need to create a logfile with some custom name or location - just use 'start-Logging' function which initializes 
+    logfile with required values. 
+.EXAMPLE
+    $someObject=get-process
+    write-log -message $someObject -type info -skipTimeStamp -silent
 
-        outputs processes object to the log file as -silent disables screen output. it will lack
-        timestamp in a message header but will contain 'INFO:' block.
-    .INPUTS
-        None.
-    .OUTPUTS
-        text log file under $logFile
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 220407
-        changes:
-            - 220407 tiny fix to persistant logging
-            - 220328 v3 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
-                     skipTimeStamp changed to noTimeStamp.
-            - 220301 error handling for add-content - issue found when trying to write to network drives and timeout occurs. 
-            - 210526 ...saga with catching $null continues
-            - 210507 rare issue with message type check
-            - 210421 interpreting $message elements fix
-            - 210402 3rd output init
-            - 210329 write-log init fix
-            - 210302 do not convert to 'out-string' when it's already a string
-            - 210212 imporper name when calling from console thru module
-            - 210210 v2. init finally works!
-            - 210209 when initialized on console, wl was not creating script log and using console file. 
-            - 210209 init from console fix
-            - 210206 valueFromRemainingArguments 
-            - 210205 fix when run directly from console, init fixes
-            - 210203 properly initiating log with new start-logging, when called indirectly
-            - 210127 v1
-            - 201018 initialize
+    outputs processes object to the log file as -silent disables screen output. it will lack
+    timestamp in a message header but will contain 'INFO:' block.
+.INPUTS
+    None.
+.OUTPUTS
+    text log file under $logFile
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 220407
+    changes:
+        - 220407 tiny fix to persistant logging
+        - 220328 v3 rewritten with many fixes, and mostly - supports multi-level calls. when calling script-from-script.
+                    skipTimeStamp changed to noTimeStamp.
+        - 220301 error handling for add-content - issue found when trying to write to network drives and timeout occurs. 
+        - 210526 ...saga with catching $null continues
+        - 210507 rare issue with message type check
+        - 210421 interpreting $message elements fix
+        - 210402 3rd output init
+        - 210329 write-log init fix
+        - 210302 do not convert to 'out-string' when it's already a string
+        - 210212 imporper name when calling from console thru module
+        - 210210 v2. init finally works!
+        - 210209 when initialized on console, wl was not creating script log and using console file. 
+        - 210209 init from console fix
+        - 210206 valueFromRemainingArguments 
+        - 210205 fix when run directly from console, init fixes
+        - 210203 properly initiating log with new start-logging, when called indirectly
+        - 210127 v1
+        - 201018 initialize
 
-        #TO|DO
-        - colouring codes for text - change screen text colour on ** <y></y> <r></r> <g></g> 
+    #TO|DO
+    - colouring codes for text - change screen text colour on ** <y></y> <r></r> <g></g> 
     #>
     #DO NOT ADD 'parameter' data as it will break ValueFromRemainingArgs taking over numbered parameters    
     param(
@@ -552,74 +553,74 @@ function get-CSVDelimiter {
 }
 function import-structuredCSV {
     <#
-    .SYNOPSIS
-        loads CSV file with header check and auto delimiter detection. 
-    .DESCRIPTION
-        support function to gather data from CSV file with ability to ensure it is correct CSV file by
-        enumerating header. 
-        if you operate on data you need to ensure that it is CORRECT file, and not some random CSV. 
-        extremally usuful in the projects when you use xls/csv as data providers and need to ensure
-        that you stick to the standard column names. You have an ability to force adding columns when only 
-        several are obligatory and others are not (default) or define string checking making entire header 
-        structure critical.
+.SYNOPSIS
+    loads CSV file with header check and auto delimiter detection. 
+.DESCRIPTION
+    support function to gather data from CSV file with ability to ensure it is correct CSV file by
+    enumerating header. 
+    if you operate on data you need to ensure that it is CORRECT file, and not some random CSV. 
+    extremally usuful in the projects when you use xls/csv as data providers and need to ensure
+    that you stick to the standard column names. You have an ability to force adding columns when only 
+    several are obligatory and others are not (default) or define string checking making entire header 
+    structure critical.
 
-        additionally you can manipulate parameter names during the import by adding prefix and suffix to 
-        parameter names - e.g. you import CSV with columns 'username' and 'activity' but want to have
-        'AD_username' and 'AD_actitivity' for easier recognition. 
+    additionally you can manipulate parameter names during the import by adding prefix and suffix to 
+    parameter names - e.g. you import CSV with columns 'username' and 'activity' but want to have
+    'AD_username' and 'AD_actitivity' for easier recognition. 
 
-    .EXAMPLE
-        $data = load-csv c:\temp\ADUserActivity.csv
+.EXAMPLE
+    $data = load-csv c:\temp\ADUserActivity.csv
 
-        imports CSV, automatically detecting delimiter 
+    imports CSV, automatically detecting delimiter 
 
-    .EXAMPLE
-        $inputCSV = "c:\temp\ADUserActivity.csv"
-        $header=@('username','activity')
-        $data = load-CSV -header $header -headerIsCritical -delimiter ';' -inputCSV $inputCSV
+.EXAMPLE
+    $inputCSV = "c:\temp\ADUserActivity.csv"
+    $header=@('username','activity')
+    $data = load-CSV -header $header -headerIsCritical -delimiter ';' -inputCSV $inputCSV
 
-        above code will load CSV expecting minimum of 'username' and 'activity' columns to be present 
-        (there might be more). 
-        since 'headerIsCritical' flag is added, script will terminate if any of 
-        these columns is missing.
-        delimiter enforces semicolon as CSV delimiter.
-        
-    .EXAMPLE
-        $inputCSV = "c:\temp\ADUserActivity.csv"
-        $header=@('username','activity')
-        $data = load-CSV -header $header -inputCSV $inputCSV -prefix 'AD_'
-
-        above code will import CSV while ensuring that columns 'username' and 'activity' exist. If any 
-        of the column is not found in the CSV, script will ask what to do - add them, terminate or 
-        simply continue.
-        imported data columns/attribute names will be prefixed with 'AD_' - here 'AD_username' and 
-        'AD_activity'.
-        delimiter is detected automatically.
-        
-    .EXAMPLE
-        $inputCSV = "c:\temp\ADUserActivity.csv"
-        $header=@('AD_username','AD_activity')
-        $data = load-CSV -header $header -inputCSV $inputCSV -transformation @{'username' = 'AD_UserName';'password' = 'AD_Password'}
-
-        above code will import CSV while ensuring that columns 'AD_username' and 'AD_activity' are present
-        but not in CSV but AFTER TRANSFORMATION. transformation is processed PRELOADING - beafore header is checked
-        
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 221114
-            last changes
-            - 221114 transformation table for column names
-            - 221113 fixes to PS7 - isPresent doesn't work on non-switch parametrs, encoding 
-            - 221112 attribute prefix/suffix while loading
-            - 210523 silent mode
-            - 210421 exit/return/break tuning
-            - 210317 delimiter detection as function
-            - 210315 finbished auto, non-terminating from console, header not mandatory
-            - 210311 auto delimiter detection, min 2lines
-            - 210219 initialized
+    above code will load CSV expecting minimum of 'username' and 'activity' columns to be present 
+    (there might be more). 
+    since 'headerIsCritical' flag is added, script will terminate if any of 
+    these columns is missing.
+    delimiter enforces semicolon as CSV delimiter.
     
-        #TO|DO
+.EXAMPLE
+    $inputCSV = "c:\temp\ADUserActivity.csv"
+    $header=@('username','activity')
+    $data = load-CSV -header $header -inputCSV $inputCSV -prefix 'AD_'
+
+    above code will import CSV while ensuring that columns 'username' and 'activity' exist. If any 
+    of the column is not found in the CSV, script will ask what to do - add them, terminate or 
+    simply continue.
+    imported data columns/attribute names will be prefixed with 'AD_' - here 'AD_username' and 
+    'AD_activity'.
+    delimiter is detected automatically.
+    
+.EXAMPLE
+    $inputCSV = "c:\temp\ADUserActivity.csv"
+    $header=@('AD_username','AD_activity')
+    $data = load-CSV -header $header -inputCSV $inputCSV -transformation @{'username' = 'AD_UserName';'password' = 'AD_Password'}
+
+    above code will import CSV while ensuring that columns 'AD_username' and 'AD_activity' are present
+    but not in CSV but AFTER TRANSFORMATION. transformation is processed PRELOADING - beafore header is checked
+    
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 221114
+        last changes
+        - 221114 transformation table for column names
+        - 221113 fixes to PS7 - isPresent doesn't work on non-switch parametrs, encoding 
+        - 221112 attribute prefix/suffix while loading
+        - 210523 silent mode
+        - 210421 exit/return/break tuning
+        - 210317 delimiter detection as function
+        - 210315 finbished auto, non-terminating from console, header not mandatory
+        - 210311 auto delimiter detection, min 2lines
+        - 210219 initialized
+
+    #TO|DO
     #>
     param(
         #path to CSV file containing data
@@ -752,50 +753,50 @@ set-alias -Name load-CSV -Value import-structuredCSV
 
 function convert-XLStoCSV {
     <#
-    .SYNOPSIS
-        export all tables in XLSX files to CSV files. enumerates all sheets, and each table goes to another file.
-        if sheet does not contain table - whole sheet is saved as csv
-    .DESCRIPTION
-        if file contains information outside of table objects - they will not be exported.
-        files will be named after the sheet name + table/worksheet name and placed in seperate directory.
+.SYNOPSIS
+    export all tables in XLSX files to CSV files. enumerates all sheets, and each table goes to another file.
+    if sheet does not contain table - whole sheet is saved as csv
+.DESCRIPTION
+    if file contains information outside of table objects - they will not be exported.
+    files will be named after the sheet name + table/worksheet name and placed in seperate directory.
 
-        separate script with ability to drag'n'drop may be downloaded from
-        https://github.com/nExoRek/eN-Lib/blob/master/convert-XLSX2CSV.ps1
-    .EXAMPLE
-        convert-XLS2CSV -fileName .\myFile.xlsx
+    separate script with ability to drag'n'drop may be downloaded from
+    https://github.com/nExoRek/eN-Lib/blob/master/convert-XLSX2CSV.ps1
+.EXAMPLE
+    convert-XLS2CSV -fileName .\myFile.xlsx
 
-        extracts tables/worksheets to CSV files under folder named after file
-    .EXAMPLE
-        ls *.xlsx | convertTo-CSVFromXLS
+    extracts tables/worksheets to CSV files under folder named after file
+.EXAMPLE
+    ls *.xlsx | convertTo-CSVFromXLS
 
-        converts all xlsx file in current directory to series of CSVs. 
-    .INPUTS
-        XLSX file.
-    .OUTPUTS
-        Series of CSV files representing tables and/or worksheets (if lack of tables).
-    .LINK
-        https://w-files.pl
-    .LINK
-        https://github.com/nExoRek/eN-Lib/blob/master/convert-XLSX2CSV.ps1
-        drag'n'drop version - separate file.
-    .NOTES
-        nExoR ::))o-
-        version 231016
-            last changes
-            - 231016 return/exit, cleanup
-            - 220523 silent mode - for import-xls
-            - 220403 autosave error when not on OD
-            - 220401 stupid autosave behaviour, file open error handling
-            - 210422 ...again fixes to exit/break/return
-            - 210408 proper 'run from console' detection and exit
-            - 210317 firstWorksheet, suppress directory creation info
-            - 210315 error detection during creation
-            - 210309 proper pipeline
-            - 210308 module function
-            - 201121 output folder changed, descirption, do not export hidden by default, saveAs CSVUTF8
-            - 201101 initialized
-        TO|DO 
-        - explore silent mode
+    converts all xlsx file in current directory to series of CSVs. 
+.INPUTS
+    XLSX file.
+.OUTPUTS
+    Series of CSV files representing tables and/or worksheets (if lack of tables).
+.LINK
+    https://w-files.pl
+.LINK
+    https://github.com/nExoRek/eN-Lib/blob/master/convert-XLSX2CSV.ps1
+    drag'n'drop version - separate file.
+.NOTES
+    nExoR ::))o-
+    version 231016
+        last changes
+        - 231016 return/exit, cleanup
+        - 220523 silent mode - for import-xls
+        - 220403 autosave error when not on OD
+        - 220401 stupid autosave behaviour, file open error handling
+        - 210422 ...again fixes to exit/break/return
+        - 210408 proper 'run from console' detection and exit
+        - 210317 firstWorksheet, suppress directory creation info
+        - 210315 error detection during creation
+        - 210309 proper pipeline
+        - 210308 module function
+        - 201121 output folder changed, descirption, do not export hidden by default, saveAs CSVUTF8
+        - 201101 initialized
+    TO|DO 
+    - explore silent mode
     #>
     [cmdletbinding()]
     param(
@@ -915,48 +916,48 @@ function convert-XLStoCSV {
 Set-Alias -Name convert-XLS2CSV -Value convert-XLStoCSV
 function convert-CSVtoXLS {
     <#
-    .SYNOPSIS
-        Converts CSV file into XLS with table.
-    .DESCRIPTION
-        creates XLXS out of CSV file and formats data as a table of preferable style.
-    .EXAMPLE
-        convert-CSV2XLSX c:\temp\test.csv -delimiter ','
-        
-        Converts test.csv to test.xlsx enforcing comma as delimiter in CSV interpretation
-    .EXAMPLE
-        ls *.csv | convert-CSV2XLS -outputFileName myfile.xlsx
+.SYNOPSIS
+    Converts CSV file into XLS with table.
+.DESCRIPTION
+    creates XLXS out of CSV file and formats data as a table of preferable style.
+.EXAMPLE
+    convert-CSV2XLSX c:\temp\test.csv -delimiter ','
+    
+    Converts test.csv to test.xlsx enforcing comma as delimiter in CSV interpretation
+.EXAMPLE
+    ls *.csv | convert-CSV2XLS -outputFileName myfile.xlsx
 
-        converts all csv files in current directory into sinlge xls file with multiple worksheets.
-    .EXAMPLE
-        start (convert-CSVtoXLS myfile.csv)
+    converts all csv files in current directory into sinlge xls file with multiple worksheets.
+.EXAMPLE
+    start (convert-CSVtoXLS myfile.csv)
 
-        convrts file and opens it in Excel
-    .INPUTS
-        CSV file or file name
-    .OUTPUTS
-        XLSX file.
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 241007
-            last changes
-            - 241007 CSV2XLS fixes and -open switch
-            - 220523 silent mode
-            - 220418 further fixes for PS7
-            - 220411 destination folder changed to CSV location - to mach convert-XLS2CSV behaviour
-            - 210430 #typedef skip
-            - 210422 ...again fixes to exit/break/return
-            - 210408 breaks
-            - 210402 proper 'run from console' detection and exit
-            - 210317 processing multiple CSV will create single XLS, delimiter autodetection, output file name
-            - 210309 proper pipelining
-            - 210308 module function
-            - 201123 initialized
-        
-        TO|DO
-        * support for multiline entries in CSV
-        * when 'less then 2 lines' error occurs - it does't exit. fix.
+    convrts file and opens it in Excel
+.INPUTS
+    CSV file or file name
+.OUTPUTS
+    XLSX file.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 241007
+        last changes
+        - 241007 CSV2XLS fixes and -open switch
+        - 220523 silent mode
+        - 220418 further fixes for PS7
+        - 220411 destination folder changed to CSV location - to mach convert-XLS2CSV behaviour
+        - 210430 #typedef skip
+        - 210422 ...again fixes to exit/break/return
+        - 210408 breaks
+        - 210402 proper 'run from console' detection and exit
+        - 210317 processing multiple CSV will create single XLS, delimiter autodetection, output file name
+        - 210309 proper pipelining
+        - 210308 module function
+        - 201123 initialized
+    
+    TO|DO
+    * support for multiline entries in CSV
+    * when 'less then 2 lines' error occurs - it does't exit. fix.
     #>
     [CmdletBinding()]
     param (
@@ -1142,29 +1143,30 @@ function convert-CSVtoXLS {
 
     }
 }
-Set-Alias -Name convert-CSV2XLS -Value convert-CSVtoXLS
 Set-Alias -Name csv2xls -Value convert-CSVtoXLS
+Set-Alias -Name convert-CSV2XLS -Value convert-CSVtoXLS
+
 function import-XLS {
     <#
-    .SYNOPSIS
-        EXPERIMENTAL - importing XLS as table object, using convert+load
-    .DESCRIPTION
-    .INPUTS
-        XLS file.
-    .OUTPUTS
-        table
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 220523
-            last changes
-            - 220523 silent import
-            - 210317 use of firstWorksheet
-            - 210315 initialized
-    
-        #TO|DO
-         - add cleanup of files after xls output
+.SYNOPSIS
+    EXPERIMENTAL - importing XLS as table object, using convert+load
+.DESCRIPTION
+.INPUTS
+    XLS file.
+.OUTPUTS
+    table
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 220523
+        last changes
+        - 220523 silent import
+        - 210317 use of firstWorksheet
+        - 210315 initialized
+
+    #TO|DO
+        - add cleanup of files after xls output
     #>
     
     param(
@@ -1178,131 +1180,301 @@ function import-XLS {
         return (import-structuredCSV -inputCSV $tempCSV[0].FullName)
     }
 }
-function new-RandomPassword {
-    <#
-    .SYNOPSIS
-        generate random password with given char ranges (complexity) and lenght
-    .DESCRIPTION
-        by default it genrates 8-long string with 
-    .EXAMPLE
-        $pass = new-RandomPassword
+function new-randomPassword {
+<#
+.SYNOPSIS
+    Generate random passwords (classic charset mode) or passphrases (word-driven).
 
-        generated 8-char long semi-complex password
-    .EXAMPLE
-        $pass = new-RandomPassword -specialCharacterRange 3
+.DESCRIPTION
+    Backward-compatible with original params:
+      -length, -specialCharacterRange, -uniqueSets
+    character sets:
+      1 - lowercase, uppercase, digits, special chars from set 1 (!#$%&+-._)
+      2 - as above but special chars from set 1 and 2 (!#$%&+-._:;<=>?@)
+      3 - as above but special chars from set 1,2 and 3 (!#$%&+-._:;<=>?@"'()*,/[\]^`{|})
+    new version adds:
+      -SkipSimilar (omits 0,O,o,I,l,1,| from sets)
+      -Passphrase (with -NoNumbers, -Connector, -WordCount, -MinWordLength, -MaxWordLength, -WordListPath, -WordListUrl)
 
-        generated 8-char long password with full complexity
-    .INPUTS
-        None.
-    .OUTPUTS
-        string of random characters
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 210127
-            last changes
-            - 210127 initialized
-    #TO|DO
-    - character sets: 
-      - upper case letters
-      - lower case letters 
-      - digits
-      - spec0 = '.-_ '
-      - spec1
-      - spec2
-      - spec3
-    - at least one char per set - redo
-    - avoid similarities (Il, 0O)
-    #>
-    
-    param( 
-        #password length
-        [Parameter(mandatory=$false,position=0)]
-            [int]$length=8,
-        #password complexity based on a range of special characters.
-        [Parameter(mandatory=$false,position=1)]
-            [int][validateSet(1,2,3)]$specialCharacterRange=1,
-        #uniquness - related to complexity, recommended to leave. this guarantee that password will have characters from given number of char sets.
-        [Parameter(mandatory=$false,position=2)]
-            [int][validateSet(1,2,3,4)]$uniqueSets=4
-            
+.EXAMPLE
+    $pass = new-RandomPassword
+
+    generated 8-char long semi-complex password
+.EXAMPLE
+    $pass = new-RandomPassword -specialCharacterRange 3
+
+    generated 8-char long password with full complexity
+.EXAMPLE
+    $pass = new-randomPassword -passphrase -wordCount 6 -NoNumbers -delimiter '#'
+
+    generates 6-word long passphrase with no numbers, words separated with '#'
+.NOTES
+    nExoR ::))o-
+    version 250925
+    - 250925 new version with passphrase mode, parameters and defaults left for compatibility
+    - 210127 initialized
+#>
+
+    [CmdletBinding(DefaultParameterSetName='Chars')]
+    param(
+        # ===== Legacy / Charset mode =====
+        [Parameter(ParameterSetName='Chars', Position=0)]
+        [int]$length = 8,
+
+        [Parameter(ParameterSetName='Chars', Position=1)]
+        [ValidateSet(1,2,3)]
+        [int]$specialCharacterRange = 1,
+
+        [Parameter(ParameterSetName='Chars', Position=2)]
+        [ValidateSet(1,2,3,4)]
+        [int]$uniqueSets = 4,
+
+        [Parameter(ParameterSetName='Chars')]
+        [switch]$SkipSimilar,
+
+        # ===== Passphrase mode =====
+        [Parameter(ParameterSetName='Passphrase', Mandatory=$true)]
+        [switch]$Passphrase,
+
+        [Parameter(ParameterSetName='Passphrase')]
+        [int]$WordCount,
+
+        [Parameter(ParameterSetName='Passphrase')]
+        [switch]$NoNumbers,
+
+        [Parameter(ParameterSetName='Passphrase')]
+        [string]$delimiter = '-',
+
+        [Parameter(ParameterSetName='Passphrase')]
+        [int]$MinWordLength = 5,
+
+        [Parameter(ParameterSetName='Passphrase')]
+        [int]$MaxWordLength = 12,
+
+        [Parameter(ParameterSetName='Passphrase')]
+        [string]$WordListPath,
+
+        [Parameter(ParameterSetName='Passphrase')]
+        [string]$WordListUrl
     )
-    function new-CharSet {
-        param(
-            # set up password length
-            [int]$length,
-            # number of 'sets of sets' defining complexity range
-            [int]$setSize
-        )
-        $safe=0
-        while ($safe++ -lt 100) {
-            $array=@()
-            1..$length|ForEach-Object{
-                $array+=(Get-Random -Maximum ($setSize) -Minimum 0)
-            }
-            if(($array|Sort-Object -Unique|Measure-Object).count -ge $setSize) {
-                return $array
-            } else {
-                Write-Verbose "[new-CharSet]bad array: $($array -join ',')"
+
+    # --- Helpers: crypto RNG & shuffle (no [ref], no .ToArray pitfalls) ---
+    function Get-SecureInt {
+        param([int]$MinInclusive, [int]$MaxExclusive)
+        $range = $MaxExclusive - $MinInclusive
+        if ($range -le 0) { throw "Invalid range for Get-SecureInt." }
+        $rng = New-Object System.Security.Cryptography.RNGCryptoServiceProvider
+        try {
+            $bytes = New-Object byte[] 4
+            do {
+                $rng.GetBytes($bytes)
+                $val = [System.BitConverter]::ToUInt32($bytes,0)
+            } while ($val -ge [uint32]::MaxValue - ([uint32]::MaxValue % [uint32]$range))
+            return $MinInclusive + [int]($val % $range)
+        } finally { $rng.Dispose() }
+    }
+
+    function Invoke-SecureShuffle {
+        param([object[]]$Array)
+        # returns a NEW shuffled array; safe for single-element arrays too
+        $arr = @($Array)
+        for ($i = $arr.Count - 1; $i -gt 0; $i--) {
+            $j = Get-SecureInt -MinInclusive 0 -MaxExclusive ($i + 1)
+            if ($j -ne $i) {
+                $tmp = $arr[$i]
+                $arr[$i] = $arr[$j]
+                $arr[$j] = $tmp
             }
         }
-        return $null
+        return ,$arr
     }
-    #prepare char-sets 
-    $smallLetters=$null
-    97..122|ForEach-Object{$smallLetters+=,[char][byte]$_}
-    $capitalLetters=$null
-    65..90|ForEach-Object{$capitalLetters+=,[char][byte]$_}
-    $numbers=$null
-    48..57|ForEach-Object{$numbers+=,[char][byte]$_}
-    $specialCharacterL1=$null
-    @(33;35..38;43;45..46;95)|ForEach-Object{$specialCharacterL1+=,[char][byte]$_} # !"#$%&
-    $specialCharacterL2=$null
-    58..64|ForEach-Object{$specialCharacterL2+=,[char][byte]$_} # :;<=>?@
-    $specialCharacterL3=$null
-    @(34;39..42;44;47;91..94;96;123..125)|ForEach-Object{$specialCharacterL3+=,[char][byte]$_} # [\]^`  
-      
-    $ascii=@()
-    $ascii+=,$smallLetters
-    $ascii+=,$capitalLetters
-    $ascii+=,$numbers
-    if($specialCharacterRange -ge 2) { $specialCharacterL1+=,$specialCharacterL2 }
-    if($specialCharacterRange -ge 3) { $specialCharacterL1+=,$specialCharacterL3 }
-    $ascii+=,$specialCharacterL1
-    #prepare set of character-sets ensuring that there will be at least one character from at least $uniqueSets different sets
-    $passwordSet = new-CharSet -length $length -setSize $uniqueSets 
 
-    $password=$NULL
-    0..($length-1)|ForEach-Object {
-        $password+=($ascii[$passwordSet[$_]] | Get-Random)
+    # --- Charset mode implementation ---
+    function New-CharPassword {
+        param(
+            [int]$Len,
+            [int]$SpecRange,
+            [int]$RequireSets,
+            [switch]$NoSimilar
+        )
+
+        # Character sets via char codes (robust across PS versions)
+        $Small  = [char[]](97..122)      # a-z
+        $Caps   = [char[]](65..90)       # A-Z
+        $Digits = [char[]](48..57)       # 0-9
+
+        $Spec1  = @(
+            33, 35,36,37,38, 43, 45,46, 95
+        ) | ForEach-Object { [char]$_ }  # ! # $ % & + - . _
+        $Spec2  = (58..64) | ForEach-Object { [char]$_ }  # : ; < = > ? @
+        $Spec3  = @(
+            34, 39,40,41,42, 44, 47, 91,92,93,94, 96, 123,124,125
+        ) | ForEach-Object { [char]$_ }  # " ' ( ) * , / [ \ ] ^ ` { | }
+
+        if ($NoSimilar) {
+            $similar = @('0','O','o','I','l','1','|')
+            $Small  = $Small  | Where-Object { $similar -notcontains $_ }
+            $Caps   = $Caps   | Where-Object { $similar -notcontains $_ }
+            $Digits = $Digits | Where-Object { $similar -notcontains $_ }
+            $Spec1  = $Spec1  | Where-Object { $similar -notcontains $_ }
+            $Spec2  = $Spec2  | Where-Object { $similar -notcontains $_ }
+            $Spec3  = $Spec3  | Where-Object { $similar -notcontains $_ }
+        }
+
+        # Build specials by requested range
+        $SpecAll = @()
+        $SpecAll += $Spec1
+        if ($SpecRange -ge 2) { $SpecAll += $Spec2 }
+        if ($SpecRange -ge 3) { $SpecAll += $Spec3 }
+        $SpecAll = @([char[]]$SpecAll)
+
+        # Build pool list from NON-EMPTY sets only
+        $poolList = @()
+        if ($Small.Length  -gt 0) { $poolList += ,([char[]]$Small)  }
+        if ($Caps.Length   -gt 0) { $poolList += ,([char[]]$Caps)   }
+        if ($Digits.Length -gt 0) { $poolList += ,([char[]]$Digits) }
+        if ($SpecAll.Length-gt 0) { $poolList += ,([char[]]$SpecAll)}
+
+        if ($poolList.Count -eq 0) { throw "No characters available after filtering." }
+
+        # sanitize required sets and length
+        if ($RequireSets -gt $poolList.Count) {
+            throw "uniqueSets ($RequireSets) exceeds available non-empty character sets ($($poolList.Count))."
+        }
+        if ($Len -lt $RequireSets) {
+            throw "length ($Len) must be >= uniqueSets ($RequireSets)."
+        }
+
+        # pick unique pool indices without using [ref] or .ToArray()
+        $indices = 0..($poolList.Count-1)
+        $shuffledIdx = Invoke-SecureShuffle -Array $indices
+        $requiredIndices = @()
+        for ($i=0; $i -lt $RequireSets; $i++) { $requiredIndices += ,$shuffledIdx[$i] }
+
+        # Compose password
+        $out = New-Object System.Collections.Generic.List[char]
+
+        # ensure one from each required set
+        foreach ($pi in $requiredIndices) {
+            $pool = [char[]]$poolList[$pi]
+            if ($pool.Length -le 0) { throw "Selected an empty pool unexpectedly." }
+            $c = $pool[ (Get-SecureInt -MinInclusive 0 -MaxExclusive $pool.Length) ]
+            $out.Add([char]$c)
+        }
+
+        # fill remaining slots
+        while ($out.Count -lt $Len) {
+            $pool = [char[]]$poolList[ (Get-SecureInt -MinInclusive 0 -MaxExclusive $poolList.Count) ]
+            $c = $pool[ (Get-SecureInt -MinInclusive 0 -MaxExclusive $pool.Length) ]
+            $out.Add([char]$c)
+        }
+
+        $arr = $out.ToArray()
+        $arr = Invoke-SecureShuffle -Array $arr
+        -join $arr
     }
-    return $password
+
+    # --- Passphrase mode implementation ---
+    function New-Passphrase {
+        param(
+            [int]$MinLen,
+            [int]$MaxLen,
+            [int]$Count,
+            [string]$Joiner,
+            [switch]$LettersOnly,
+            [string]$ListPath,
+            [string]$ListUrl
+        )
+
+        if (-not $Count -or $Count -lt 1) { $Count = Get-SecureInt -MinInclusive 4 -MaxExclusive 7 } # 4..6
+        if ($MinLen -lt 1 -or $MaxLen -lt $MinLen) { throw "Invalid word length bounds." }
+        if (-not $Joiner) { $Joiner = '-' }
+
+        # Load word list
+        $words = @()
+        function Read-WordsFromPath([string]$p) {
+            if (-not (Test-Path -LiteralPath $p)) { return @() }
+            try { Get-Content -LiteralPath $p -ErrorAction Stop } catch { @() }
+        }
+        if ($ListPath) { $words = Read-WordsFromPath $ListPath }
+
+        if (-not $words -or $words.Count -lt 500) {
+            if (-not $ListUrl) { $ListUrl = 'https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt' }
+            try {
+                $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('wordlist_' + [System.Guid]::NewGuid().ToString('N') + '.txt')
+                try {
+                    Invoke-WebRequest -Uri $ListUrl -OutFile $tmp -UseBasicParsing -ErrorAction Stop | Out-Null
+                } catch {
+                    $wc = New-Object System.Net.WebClient
+                    $wc.DownloadFile($ListUrl, $tmp)
+                    $wc.Dispose()
+                }
+                $words = Get-Content -LiteralPath $tmp -ErrorAction Stop
+            } catch {
+                throw "Failed to obtain word list. Provide -WordListPath or -WordListUrl. $_"
+            }
+        }
+
+        # Normalize list
+        $clean = foreach ($w in $words) {
+            if ($w -match '^\s*\d+\s+([A-Za-z]+)\s*$') { $w = $Matches[1] }
+            $w = $w -replace '[^A-Za-z]', ''
+            if ($w.Length -ge $MinLen -and $w.Length -le $MaxLen) { $w.ToLowerInvariant() }
+        }
+        $clean = $clean | Sort-Object -Unique
+        if ($clean.Count -lt 200) { throw "Word list too small after filtering ($($clean.Count))." }
+
+        # Choose words
+        $ci = (Get-Culture).TextInfo
+        $chosen = New-Object System.Collections.Generic.List[string]
+        for ($i=0; $i -lt $Count; $i++) {
+            $idx = Get-SecureInt -MinInclusive 0 -MaxExclusive $clean.Count
+            $chosen.Add($ci.ToTitleCase($clean[$idx]))
+        }
+
+        $suffix = ''
+        if (-not $LettersOnly) {
+            $n = Get-SecureInt -MinInclusive 0 -MaxExclusive 100
+            $suffix = '{0:D2}' -f $n
+        }
+
+        ($chosen -join $Joiner) + $suffix
+    }
+
+    if ($PSCmdlet.ParameterSetName -eq 'Passphrase') {
+        return New-Passphrase -MinLen $MinWordLength -MaxLen $MaxWordLength `
+                              -Count $WordCount -Joiner $delimiter `
+                              -LettersOnly:$NoNumbers `
+                              -ListPath $WordListPath -ListUrl $WordListUrl
+    } else {
+        return New-CharPassword -Len $length -SpecRange $specialCharacterRange `
+                                -RequireSets $uniqueSets -NoSimilar:$SkipSimilar
+    }
 }
 
 function Set-QuickEditMode {
     <#
-    .SYNOPSIS
-        function allowing to disable/enable Quick Edit Mode for current PS host session.
-    .DESCRIPTION
-        accidental mouse-press on PS screen will lead to script pause. this is real problem - especially if
-        you're providing scripts to unaware users. this simple function taken from CodeOverflow allows
-        to control Quick Edit Mode setting for current PS host. this will allow to disable this 
-        feature before running the script.
-    .EXAMPLE
-        PS C:\> set-QuickEditMode -DisableQuickEdit
-        disables Quick Edit mode for current PS Session
-    .EXAMPLE
-        PS C:\> set-QuickEditMode 
-        enables Quick Edit mode for current PS Session
-    .LINK
-        source code taken from:
-        https://stackoverflow.com/questions/30872345/script-commands-to-disable-quick-edit-mode/42792718
-    .NOTES
-        nExoR ::))o-
-        version 210609
-            last changes
-            - 210609 initialized
+.SYNOPSIS
+    function allowing to disable/enable Quick Edit Mode for current PS host session.
+.DESCRIPTION
+    accidental mouse-press on PS screen will lead to script pause. this is real problem - especially if
+    you're providing scripts to unaware users. this simple function taken from CodeOverflow allows
+    to control Quick Edit Mode setting for current PS host. this will allow to disable this 
+    feature before running the script.
+.EXAMPLE
+    PS C:\> set-QuickEditMode -DisableQuickEdit
+    disables Quick Edit mode for current PS Session
+.EXAMPLE
+    PS C:\> set-QuickEditMode 
+    enables Quick Edit mode for current PS Session
+.LINK
+    source code taken from:
+    https://stackoverflow.com/questions/30872345/script-commands-to-disable-quick-edit-mode/42792718
+.NOTES
+    nExoR ::))o-
+    version 210609
+        last changes
+        - 210609 initialized
     #>
     param(
         [Parameter(Mandatory=$false)]
@@ -1359,35 +1531,168 @@ public static class DisableConsoleQuickEdit {
     }
 }
 
+function get-WinVer {
+    <#
+.SYNOPSIS
+    get full Windows version including UBR (update build revision)
+.NOTES
+    nExoR ::))o-
+    version 250925
+        last changes
+        - 250925 initialized
+    #>
+    [CmdletBinding()]
+    param(
+        #Also query CIM for friendly OS name, arch, and install date
+        [switch]$IncludeCim
+    )
+
+    # Registry pull (fast, reliable)
+    $cvPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+    $cv     = Get-ItemProperty -Path $cvPath
+
+    # Some systems expose both strings and ints for build; normalize to int
+    $currentBuildBase = 0
+    if ($cv.CurrentBuild) {
+        [void][int]::TryParse($cv.CurrentBuild, [ref]$currentBuildBase)
+    }
+    if (-not $currentBuildBase -and $cv.CurrentBuildNumber) {
+        [void][int]::TryParse($cv.CurrentBuildNumber, [ref]$currentBuildBase)
+    }
+
+    $ubr = 0
+    try { $ubr = (Get-ItemPropertyValue -Path $cvPath -Name UBR) } catch { $ubr = 0 }
+
+    # OSVersion.Version is still "10.0" for Win11, but useful for major/minor
+    $v = [System.Environment]::OSVersion.Version
+    $majorMinor = '{0}.{1}' -f $v.Major, $v.Minor
+
+    # Map base build -> marketing version name (fallback to DisplayVersion/ReleaseId)
+    $buildMap = @{
+        26100 = '24H2'   # Windows 11
+        22631 = '23H2'   # Windows 11
+        22621 = '22H2'   # Windows 11
+        22000 = '21H2'   # Windows 11
+        19045 = '22H2'   # Windows 10
+        19044 = '21H2'   # Windows 10
+        19043 = '21H1'
+        19042 = '20H2'
+        19041 = '2004'
+        18363 = '1909'
+        18362 = '1903'
+        17763 = '1809'
+        17134 = '1803'
+        16299 = '1709'
+        15063 = '1703'
+        14393 = '1607'
+        10586 = '1511'
+        10240 = '1507'
+    }
+
+    $displayVersion = $cv.DisplayVersion
+    $releaseId      = $cv.ReleaseId
+    $versionName    = if ($buildMap.ContainsKey($currentBuildBase)) {
+        $buildMap[$currentBuildBase]
+    } elseif ($displayVersion) {
+        # e.g., "24H2" on newer builds, or "22H2" on Win10/11
+        $displayVersion
+    } elseif ($releaseId) {
+        # classic Windows 10 style "1903", "2004", etc.
+        $releaseId
+    } else {
+        $null
+    }
+
+    # Build strings
+    $fullBuild = if ($currentBuildBase -gt 0) { '{0}.{1}' -f $currentBuildBase, $ubr } else { $null }
+    $winVer    = '{0}.{1}.{2}.{3}' -f $v.Major, $v.Minor, $currentBuildBase, $ubr
+
+    # Optional CIM pull for friendly fields
+    $caption = $null
+    $arch    = $null
+    $install = $null
+    $isServer = $false
+    if ($IncludeCim) {
+        try {
+            $os = Get-CimInstance -ClassName Win32_OperatingSystem
+            $caption = $os.Caption
+            $arch    = $os.OSArchitecture
+            $install = $os.InstallDate
+            # quick heuristic: server SKUs typically say "Server"
+            $isServer = ($caption -like '*Server*')
+        } catch {
+            # keep it optional/silent
+        }
+    } else {
+        # cheap heuristic using ProductName if no CIM
+        $isServer = ($cv.ProductName -like '*Server*')
+    }
+
+    # More useful flags
+    $is64Bit = [Environment]::Is64BitOperatingSystem
+    $isWin11 = ($currentBuildBase -ge 22000)
+
+    # Construct a tidy, predictable object
+    [PSCustomObject]([ordered]@{
+        # Core fields you asked for
+        WinVer         = $winVer                     # e.g., 10.0.26100.6584
+        VersionName    = $versionName               # e.g., 24H2 / 23H2 / 22H2 / 2004 ...
+        Build          = $fullBuild                 # e.g., 26100.6584
+        BuildBase      = $currentBuildBase          # e.g., 26100
+        UBR            = $ubr
+        MajorMinor     = $majorMinor                # e.g., 10.0
+        Major          = $v.Major
+        Minor          = $v.Minor
+
+        # Nice-to-haves from CurrentVersion
+        DisplayVersion = $displayVersion
+        ReleaseId      = $releaseId
+        Branch         = $cv.BuildBranch
+        ProductName    = $cv.ProductName
+        EditionID      = $cv.EditionID
+        InstallationType = $cv.InstallationType     # e.g., 'Client', 'Server', 'Server Core'
+
+        # Friendly details (CIM if requested)
+        OSName         = $caption
+        Architecture   = $arch
+        InstallDate    = $install
+
+        # Useful booleans
+        IsWindows11    = $isWin11
+        IsServerSKU    = $isServer
+        Is64Bit        = $is64Bit
+    })
+}
+
 #################################################### PowerShell GUI
 function get-answerBox {
     <#
-    .SYNOPSIS
-        win32 forms message box to get YES/NO input from user
-    .DESCRIPTION
-        replacement for simple messageBox giving option to customize buttons, giving option
-        to add some additional information
-    .EXAMPLE
-        $response =  get-answerBox -OKButtonText 'YES' -CancelButtonText 'NO' -info 'choose your answer' -message 'do you find this function useful?'
-        if($response) {
-            write-host 'thank you!'
-        }
-    .INPUTS
-        None.
-    .OUTPUTS
-        true/false
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 210209
-            last changes
-            - 210209 detailedInfo -> message (alias left for compatibility), autosize, anchors
-            - 210208 icon, tune, info -> title
-            - 210127 module
-            - 210110 initialized
-        
-        #TO|DO
+.SYNOPSIS
+    win32 forms message box to get YES/NO input from user
+.DESCRIPTION
+    replacement for simple messageBox giving option to customize buttons, giving option
+    to add some additional information
+.EXAMPLE
+    $response =  get-answerBox -OKButtonText 'YES' -CancelButtonText 'NO' -info 'choose your answer' -message 'do you find this function useful?'
+    if($response) {
+        write-host 'thank you!'
+    }
+.INPUTS
+    None.
+.OUTPUTS
+    true/false
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 210209
+        last changes
+        - 210209 detailedInfo -> message (alias left for compatibility), autosize, anchors
+        - 210208 icon, tune, info -> title
+        - 210127 module
+        - 210110 initialized
+    
+    #TO|DO
     #>
     
     param(
@@ -1458,43 +1763,43 @@ function get-answerBox {
 
 function get-valueFromInputBox {
     <#
-    .SYNOPSIS
-        simple input message box function for PS GUI scripts
-    .EXAMPLE
-        $response = get-valueFromInputBox -title 'WARNING!' -text "type 'YES' to continue" -type Warning
-        if($null -eq $response) {
-            'cancelled'
-            exit 0
-        }
-        if($response -ne 'YES') {
-            'not correct. quitting'
-            exit
-        } else {
-            "you agreed, let's continue"
-        }
-        write-host 'code to execute here'
-    .EXAMPLE
-        $computerName = get-valueFromInbox -title 'Provide computer name' -maxChars 15 -allowedCharacters '[a-zA-Z0-9_-]'
+.SYNOPSIS
+    simple input message box function for PS GUI scripts
+.EXAMPLE
+    $response = get-valueFromInputBox -title 'WARNING!' -text "type 'YES' to continue" -type Warning
+    if($null -eq $response) {
+        'cancelled'
+        exit 0
+    }
+    if($response -ne 'YES') {
+        'not correct. quitting'
+        exit
+    } else {
+        "you agreed, let's continue"
+    }
+    write-host 'code to execute here'
+.EXAMPLE
+    $computerName = get-valueFromInbox -title 'Provide computer name' -maxChars 15 -allowedCharacters '[a-zA-Z0-9_-]'
 
-        limit input to 15 characters and allow only letters,digits, underscore and minus.
-    .INPUTS
-        None.
-    .OUTPUTS
-        User Input or $null for cancel
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 210523
-        last changes
-            - 210523 default message to be displayed while loading
-            - 210507 maxChars fix
-            - 210402 allowcharacter check worked for last character only.
-            - 210317 allowCharacter 
-            - 210209 anchored layout
-            - 210113 initialized
-        
-        #TO|DO
+    limit input to 15 characters and allow only letters,digits, underscore and minus.
+.INPUTS
+    None.
+.OUTPUTS
+    User Input or $null for cancel
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 210523
+    last changes
+        - 210523 default message to be displayed while loading
+        - 210507 maxChars fix
+        - 210402 allowcharacter check worked for last character only.
+        - 210317 allowCharacter 
+        - 210209 anchored layout
+        - 210113 initialized
+    
+    #TO|DO
     #>
     
     param(
@@ -1644,36 +1949,36 @@ namespace System
 }
 function select-Directory {
     <#
-    .SYNOPSIS
-        accelerator function allowing to select system directory with GUI.
-    .DESCRIPTION
-        function is using winforms treeView to display directory structure. returns folder path on select
-        or folder object if 'object' parameter used.
-        WARNING! text search looks up only for loaded branches. use 'loadAll' to be able to seach entire branch.
-        best is to combine with 'startingDirectory' for performance reasons - loading whole disk structure may take
-        a long, long time.         
-    .EXAMPLE
-        cd (select-Directory)
-        
-        displays forms treeview enabling to choose directory using GUI and changes location
-    .INPUTS
-        None.
-    .OUTPUTS
-        directory name/object
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 220423
-            last changes
-            - 220423 added disk dorpdown and filter, fixes to search, 'hidden' changed to 'force'
-            - 210524 fix to shortcut folders
-            - 210521 optimization, tuning
-            - 210519 initialized
+.SYNOPSIS
+    accelerator function allowing to select system directory with GUI.
+.DESCRIPTION
+    function is using winforms treeView to display directory structure. returns folder path on select
+    or folder object if 'object' parameter used.
+    WARNING! text search looks up only for loaded branches. use 'loadAll' to be able to seach entire branch.
+    best is to combine with 'startingDirectory' for performance reasons - loading whole disk structure may take
+    a long, long time.         
+.EXAMPLE
+    cd (select-Directory)
     
-        #TO|DO
-        - multichoice
-        - default folder should select it but let app open
+    displays forms treeview enabling to choose directory using GUI and changes location
+.INPUTS
+    None.
+.OUTPUTS
+    directory name/object
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 220423
+        last changes
+        - 220423 added disk dorpdown and filter, fixes to search, 'hidden' changed to 'force'
+        - 210524 fix to shortcut folders
+        - 210521 optimization, tuning
+        - 210519 initialized
+
+    #TO|DO
+    - multichoice
+    - default folder should select it but let app open
     #>
     [cmdletbinding()]
     param(
@@ -2149,16 +2454,16 @@ function select-Directory {
 }
 function select-File {
     <#
-    .SYNOPSIS
-        wrapper function for select-directory with 'files' flag
-    .NOTES
-        nExoR ::))o-
-        version 220423
-            last changes
-            - 220423 filter
-            - 210520 initialized
-    
-        #TO|DO
+.SYNOPSIS
+    wrapper function for select-directory with 'files' flag
+.NOTES
+    nExoR ::))o-
+    version 220423
+        last changes
+        - 220423 filter
+        - 210520 initialized
+
+    #TO|DO
     #>
     
     param(
@@ -2184,50 +2489,50 @@ function select-File {
 }
 function select-ADObject {
     <#
-    .SYNOPSIS
-        accelerator function allowing to select OU with GUI.
-    .DESCRIPTION
-        function is using winforms treeView to display OU structure. returns DistinguishedName on select
-        or OU object if 'object' parameter used.
-        WARNING! text search looks up only for loaded branches. use 'loadAll' to be able to seach entire branch.
-        best is to combine with 'startingOU' for performance reasons - loading whole AD structure may take a long
-        time. 
-    .EXAMPLE
-        $ou = select-OU
-        
-        displays forms treeview enabling to choose OU from the tree.
-    .EXAMPLE
-        new-ADUser -name 'some user' -path (select-OrganizationalUnit -start OU=LU,DC=w-files,DC=pl -loadAll)
-
-        allows to select OU starting from OU=LU and preloading entire tree
-    .EXAMPLE 
-        $ou = select-OU -object
-        $ou.ObjectGUID
-
-        returns full OU object instead of distinguishedName only. 
-    .INPUTS
-        None.
-    .OUTPUTS
-        DistinguishedName
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 220203
-            last changes
-            - 220203 fixed how multichoice is returned
-            - 220202 improvements
-            - 220201 multichoice initial, load fixes
-            - 210520 icons, load improvements, behaviour fixes
-            - 210511 return object
-            - 210321 loadAll
-            - 210317 rootNode, disableRoot
-            - 210308 initialized
+.SYNOPSIS
+    accelerator function allowing to select OU with GUI.
+.DESCRIPTION
+    function is using winforms treeView to display OU structure. returns DistinguishedName on select
+    or OU object if 'object' parameter used.
+    WARNING! text search looks up only for loaded branches. use 'loadAll' to be able to seach entire branch.
+    best is to combine with 'startingOU' for performance reasons - loading whole AD structure may take a long
+    time. 
+.EXAMPLE
+    $ou = select-OU
     
-        #TO|DO
-        - [optimization] loading and viewing is very slow, using a lot of recursion and re-reading. especialy painful on slow DC connections.
-          should use some caching mechanism... 
-        - [optimization] multichoice should use additional table to store chosen values - to quickly return values
+    displays forms treeview enabling to choose OU from the tree.
+.EXAMPLE
+    new-ADUser -name 'some user' -path (select-OrganizationalUnit -start OU=LU,DC=w-files,DC=pl -loadAll)
+
+    allows to select OU starting from OU=LU and preloading entire tree
+.EXAMPLE 
+    $ou = select-OU -object
+    $ou.ObjectGUID
+
+    returns full OU object instead of distinguishedName only. 
+.INPUTS
+    None.
+.OUTPUTS
+    DistinguishedName
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 220203
+        last changes
+        - 220203 fixed how multichoice is returned
+        - 220202 improvements
+        - 220201 multichoice initial, load fixes
+        - 210520 icons, load improvements, behaviour fixes
+        - 210511 return object
+        - 210321 loadAll
+        - 210317 rootNode, disableRoot
+        - 210308 initialized
+
+    #TO|DO
+    - [optimization] loading and viewing is very slow, using a lot of recursion and re-reading. especialy painful on slow DC connections.
+        should use some caching mechanism... 
+    - [optimization] multichoice should use additional table to store chosen values - to quickly return values
     #>
     
     param(
@@ -2635,17 +2940,17 @@ function select-ADObject {
 
 function select-OrganizationalUnit {
     <#
-    .SYNOPSIS
-        proxy function for backward compatibility - replaced by select-ADObject
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 210810
-            last changes
-            - 210810 initialized
-    
-        #TO|DO
+.SYNOPSIS
+    proxy function for backward compatibility - replaced by select-ADObject
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 210810
+        last changes
+        - 210810 initialized
+
+    #TO|DO
     #>
     param(
         #starting OU (tree root)
@@ -2679,36 +2984,36 @@ set-alias -Name select-OU -Value select-OrganizationalUnit
 #################################################### connection checkers
 function get-ExchangeConnectionStatus {
     <#
-    .SYNOPSIS
-        check Ex/EXO connection status.
-    .DESCRIPTION
-        Exchange is using Remoting commands. this function verifies if session connection exists.
-    .EXAMPLE
-        get-ExchangeConnectionStatus -isCritical
+.SYNOPSIS
+    check Ex/EXO connection status.
+.DESCRIPTION
+    Exchange is using Remoting commands. this function verifies if session connection exists.
+.EXAMPLE
+    get-ExchangeConnectionStatus -isCritical
 
-        checks connection and exits if not present.
-    .EXAMPLE
-        if(-not get-ExchangeConnectionStatus) {
-            write-log "you should connect to Exchange first, scrpt will run with limited options"
-        }
+    checks connection and exits if not present.
+.EXAMPLE
+    if(-not get-ExchangeConnectionStatus) {
+        write-log "you should connect to Exchange first, scrpt will run with limited options"
+    }
 
-        checks connection and warns about lack of Exchange connectivity.
-    .INPUTS
-        None.
-    .OUTPUTS
-        None.
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 210302
-            last changes
-            - 210302 validation domain added
-            - 210208 initialized
-    
-        #TO|DO
-        - isCritical flag
-        - verify domain name
+    checks connection and warns about lack of Exchange connectivity.
+.INPUTS
+    None.
+.OUTPUTS
+    None.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 210302
+        last changes
+        - 210302 validation domain added
+        - 210208 initialized
+
+    #TO|DO
+    - isCritical flag
+    - verify domain name
 
     #>
     
@@ -2776,42 +3081,43 @@ function get-AzureADConnectionStatus {
 }
 function connect-Azure {
     <#
-    .SYNOPSIS
-        quick Azure connection check by verifying AzContext.
-    .DESCRIPTION
-        there is no life session to Azure. Az commandlets are using saved AzContext and token. when 
-        token expires, context is returned, but connection attemt will return error. to clean it up
-        - best is to clear context and exforce re-authentication.
+.SYNOPSIS
+    quick Azure connection check by verifying AzContext.
+.DESCRIPTION
+    there is no life session to Azure. Az commandlets are using saved AzContext and token. when 
+    token expires, context is returned, but connection attemt will return error. to clean it up
+    - best is to clear context and exforce re-authentication.
 
-        function is checking azcontext and test connection by calling get-AzTenant. clears context if 
-        connection is broken.
-    .EXAMPLE
-        connect-Azure
+    function is checking azcontext and test connection by calling get-AzTenant. clears context if 
+    connection is broken.
+.EXAMPLE
+    connect-Azure
 
-        checks AzContext and connection health
-    .EXAMPLE
-        connect-Azure
+    checks AzContext and connection health
+.EXAMPLE
+    connect-Azure
 
-        checks AzContext and connection health
-    .INPUTS
-        None.
-    .OUTPUTS
-        None.
-    .LINK
-        https://w-files.pl
-    .NOTES
-        nExoR ::))o-
-        version 250922
-            last changes
-            - 250922 update config
-            - 241110 Environments
-            - 210302 fix to expired token - PSMessageDetail is not populated on many OSes. why? 
-            - 210301 proper detection of expired tokens
-            - 210220 proper handiling of consonle call - return instead of exit
-            - 210219 extended handling of context expiration
-            - 210208 initialized
-    
-        #TO|DO
+    checks AzContext and connection health
+.INPUTS
+    None.
+.OUTPUTS
+    None.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 250926
+        last changes
+        - 250926 cleanup
+        - 250922 update config
+        - 241110 Environments
+        - 210302 fix to expired token - PSMessageDetail is not populated on many OSes. why? 
+        - 210301 proper detection of expired tokens
+        - 210220 proper handiling of consonle call - return instead of exit
+        - 210219 extended handling of context expiration
+        - 210208 initialized
+
+    #TO|DO
     #>
     [CmdletBinding()]
     param (
@@ -2820,11 +3126,12 @@ function connect-Azure {
         [validateSet('AzureCloud','AzureChinaCloud','AzureUSGovernment')]
             [string]$Environment = 'AzureCloud',
         #confirm the connection
-        [Parameter(mandatory=$false,position=1)]
+        [Parameter(mandatory=$false,position=2)]
             [switch]$Confirm
     )
     #Set-Item Env:\SuppressAzurePowerShellBreakingChangeWarnings "true"
 
+    #check if context is valid - if not, clear it and force re-login
     try {
         $AzSourceContext = Get-AzContext
     } catch {
@@ -2832,6 +3139,7 @@ function connect-Azure {
         write-log "trying to fix" -type info
         Clear-AzContext -Force
     }
+    #now dependently on existing context - first, no context, simply logon
     if([string]::IsNullOrEmpty( $AzSourceContext ) ) {
         write-log "you need to be connected before running this script. use connect-AzAccount first." -type warning
         $AzSourceContext = Connect-AzAccount -Environment $Environment -ErrorAction SilentlyContinue
@@ -2850,7 +3158,7 @@ function connect-Azure {
         } catch { 
             Write-Warning "unable to update az config: $($_.exception.message)"
         }
-    } else { 
+    } else { #context exist
         #1. check if context is from a proper Cloud Environment
         if($AzSourceContext.Environment.Name -ne $Environment) {
             write-Log -message "different Cloud environment connected: $($AzSourceContext.Environment.Name); requested: $Environment." -type error
@@ -2862,7 +3170,7 @@ function connect-Azure {
                 return $null
             }
         }
-        #2. token exist, check if it is still working
+        #2. token exist, check if it is still working (not expired)
         try{
             #if access token has been revoked, Az commands return warning "Unable to acquire token for tenant"
             Get-AzSubscription -WarningAction stop | Out-Null
@@ -2877,11 +3185,12 @@ function connect-Azure {
                     return $null
                 }
             } else {
-               write-log $_.exception
-               return -3
-            }
+                write-log $_.exception
+                return -3
+                }
         }
     }
+
     write-log "connected to $($AzSourceContext.Subscription.name) as $($AzSourceContext.account.id)" -silent -type info
     write-host "Your Azure connection:"
     write-host "  subscription: " -noNewLine
@@ -2898,5 +3207,5 @@ function connect-Azure {
     }
 }
 
-Export-ModuleMember -Function * -Alias 'load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS'
+Export-ModuleMember -Function * -Alias 'load-CSV','select-OU','convert-XLS2CSV','convert-CSV2XLS','csv2xls'
 
