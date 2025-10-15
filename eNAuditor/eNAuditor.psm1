@@ -92,8 +92,9 @@
     https://w-files.pl
 .NOTES
     nExoR ::))o-
-    version 250329
+    version 251014
         last changes
+        - 251014 although still not fully ready - time to add apps permissions report function
         - 250329 service plan info removed -> new library eNGBL created
         - 250209 fixed join-report, MFAreport extended to get full info from two commandlets, other fixes
         - 250206 included get-eNServicePlanInfo, module definition amendmend, MFA report function added
@@ -118,7 +119,7 @@
     * is it possible to check Conditional Access policies enforcing MFA?        
 #>
 ############################PRIVATE FUNCTIONS############################
-function get-EIDP1Availability {
+function test-EIDP1Availability {
 <#
 .SYNOPSIS
     checks if EID P1 license is available in tenant
@@ -212,6 +213,33 @@ function connect-graphWithCheck {
         Write-Verbose "you are connected but scopes are missing: $($missingScopes -join ', ').`n if you notice any issues, use -forceReconnect parameter."
     }
 }
+function Test-GraphBetaPresent {
+    [CmdletBinding()]
+    param (
+        # if set, the function will auto-import Microsoft.Graph.Beta if installed
+        [switch]$Import
+    )
+
+    # check whether Microsoft.Graph.Beta is installed
+    $betaInstalled = @(Get-Module -ListAvailable Microsoft.Graph.Beta -ErrorAction SilentlyContinue).Count -gt 0
+    if (-not $betaInstalled) { 
+        Write-Warning "Graph.Beta not detected. Some output may be limited."
+        return $false 
+    }
+
+    # if requested, import (safe if already loaded)
+    if ($Import -and -not (Get-Module Microsoft.Graph.Beta -ErrorAction SilentlyContinue)) {
+        try { 
+            Import-Module Microsoft.Graph.Beta -ErrorAction Stop 
+        } catch { 
+            throw $_
+        }
+    }
+
+    # confirm that at least one MgBeta cmdlet is now visible
+    return $true
+}
+
 function get-TenantName {
     param(
         #displayname or domain name? by default it will retun domain name
@@ -572,7 +600,7 @@ function get-MFAReport {
     $outFile = "eNMFAReport-{0}-{1}.csv" -f $tName,(get-date -Format 'yyMMdd-HHmmss')
     $MFAReport = @() #final report to be stored here
 
-    $EIDP1present = get-eidP1Availability
+    $EIDP1present = test-EIDP1Availability
     if(-not $EIDP1present) {
         Write-Error "EID P1 license not available in tenant. MFA report will be limited..."
         $extendedMFAInformation = $false
@@ -1255,7 +1283,7 @@ function get-ReportEntraUsers {
     $exportCSVFile = "EntraUsers-{0}-{1}.csv" -f $tenantDomain,(get-date -Format "yyMMdd-hhmm")
     [System.Collections.ArrayList]$userQuery = @('id','displayname','givenname','surname','accountenabled','userprincipalname','mail','signInActivity','userType','OnPremisesSyncEnabled')
 
-    $EIDP1 = get-EIDP1Availability
+    $EIDP1 = test-EIDP1Availability
     if(!$EIDP1) {
             write-host "sorry.. it seems that you do not have a EID P1 license - you need to purchase trial or at least single EID P1 to have audit logging enabled. last logon information will not be available." -ForegroundColor Red
             $userQuery.remove('signInActivity')
@@ -2058,5 +2086,836 @@ function show-Scopes {
     } 
     if($PSCmdlet.ParameterSetName -eq 'func') {
         Find-MgGraphCommand -command $FunctionName | Select-Object -First 1 -ExpandProperty Permissions
+    }
+}
+function get-enterpriseAppsInfo {
+<#
+.SYNOPSIS
+    retrieve EntraID Enterprise Application list with the information od delegations and permissions.
+.DESCRIPTION
+    here be dragons
+.EXAMPLE
+    .\get-eNAuditorEnterpriseAppsInfo.ps1
+
+    
+.INPUTS
+    None.
+.OUTPUTS
+    csv/xlmx file with the list of enterprise apps and their permissions.
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 251014
+        last changes
+        - 251014 added -convertToExcel switch, users and groups
+        - 250114 initialized
+
+    #TO|DO
+    - detection of beta and non-beta for graph
+    - more description
+#>
+
+[CmdletBinding()]
+Param(
+    #skip built-in EID apps - greatly reduce the output
+    [Parameter(mandatory=$false,position=0)]
+        [switch]$skipBuiltin,
+    #skip connecting - already authenticated
+    [Parameter(mandatory=$false,position=1)]
+    [switch]$skipConnect,
+    #automatically convert to Excel
+    [Parameter(mandatory=$false,position=2)]
+        [alias("run")]
+        [switch]$convertToExcel
+)
+
+    function Parse-AppPermissions {
+        Param(
+        #App role assignment object
+        [Parameter(Mandatory=$true)]$appRoleAssignments)
+
+        $appCount = 0
+        $calendarAppCount = 0 
+        $contactsAppCount = 0 
+        $mailsAppCount = 0 
+        $riskyAppCount = 0 
+        $directoryAppCount = 0 
+        $filesAppCount = 0 
+        $sitesAppCount = 0 
+
+        foreach ($appRoleAssignment in $appRoleAssignments) {
+            $resID = $appRoleAssignment.ResourceDisplayName
+            $roleID = (Get-ServicePrincipalRoleById $appRoleAssignment.resourceId).appRoles | Where-Object {$_.id -eq $appRoleAssignment.appRoleId} | Select-Object -ExpandProperty Value
+            if (!$roleID) { $roleID = "Orphaned ($($appRoleAssignment.appRoleId))" }
+            $OAuthAppPerm["[" + $resID + "]"] += $("," + $roleID)
+            
+            if ($roleID) {
+                $scopes = $roleID.Split(" ")
+                $calendarScopes = $scopes | Where-Object { $_ -like "*Calendars*" }
+                if ($calendarScopes) {
+                    $calendarAppCount += $calendarScopes.Count
+                }
+                $contactsScopes = $scopes | Where-Object { $_ -like "*Contacts*" }
+                if ($contactsScopes) {
+                    $contactsAppCount += $contactsScopes.Count
+                }
+                $mailsScopes = $scopes | Where-Object { $_ -like "*Mail.*" }
+                if ($mailsScopes) {
+                    $mailsAppCount += $mailsScopes.Count
+                }
+                $riskyScopes = $scopes | Where-Object { $_ -like "AppRoleAssignment.ReadWrite.All" }
+                if ($riskyScopes) {
+                    $riskyAppCount += $riskyScopes.Count
+                }
+                $directoryScopes = $scopes | Where-Object { $_ -like "Directory.ReadWrite*" }
+                if ($directoryScopes) {
+                    $directoryAppCount += $directoryScopes.Count
+                }
+                $filesScopes = $scopes | Where-Object { $_ -like "Files*" }
+                if ($filesScopes) {
+                    $filesAppCount += $filesScopes.Count
+                }
+                $sitesScopes = $scopes | Where-Object { $_ -like "Sites*" }
+                if ($sitesScopes) {
+                    $sitesAppCount += $sitesScopes.Count
+                }    
+                $appCount++ # Count every delegation
+            }
+        }
+        # Return counts after processing all items
+        return $appCount, $calendarAppCount, $contactsAppCount, $mailsAppCount, $riskyAppCount, $directoryAppCount, $filesAppCount, $sitesAppCount
+    }
+
+    function Parse-DelegatePermissions {
+
+        Param(
+        #oauth2PermissionGrants object
+        [Parameter(Mandatory=$true)]$oauth2PermissionGrants)
+
+        $delegationCount = 0
+        $calendarDelegationCount = 0 # Initialize the calendar delegation count
+        $contactsDelegationCount = 0 # Initialize the contacts delegation count
+        $mailsDelegationCount = 0 # Initialize the mail delegation count
+        $riskyDelegationCount = 0 # Initialize the risky delegation count
+        $directoryDelegationCount = 0 # Initialize the directory delegation count
+        $filesDelegationCount = 0 # Initialize the files delegation count
+        $sitesDelegationCount = 0 # Initialize the sites delegation count
+
+        foreach ($oauth2PermissionGrant in $oauth2PermissionGrants) {
+            $resID = (Get-ServicePrincipalRoleById $oauth2PermissionGrant.ResourceId).appDisplayName
+            if ($null -ne $oauth2PermissionGrant.PrincipalId) {
+                $userId = "(" + (Get-UserUPNById -objectID $oauth2PermissionGrant.principalId) + ")"
+            }
+            else { $userId = $null }
+
+            if ($oauth2PermissionGrant.Scope) {
+                $scopes = $oauth2PermissionGrant.Scope.Split(" ")
+                $calendarScopes = $scopes | Where-Object { $_ -like "*Calendars*" }
+                if ($calendarScopes) {
+                    $calendarDelegationCount += $calendarScopes.Count
+                }
+                $contactsScopes = $scopes | Where-Object { $_ -like "*Contacts*" }
+                if ($contactsScopes) {
+                    $contactsDelegationCount += $contactsScopes.Count
+                }
+                $mailsScopes = $scopes | Where-Object { $_ -like "*Mail.*" }
+                if ($mailsScopes) {
+                    $mailsDelegationCount += $mailsScopes.Count
+                }
+                $riskyScopes = $scopes | Where-Object { $_ -like "AppRoleAssignment.ReadWrite.All" }
+                if ($riskyScopes) {
+                    $riskyDelegationCount += $riskyScopes.Count
+                }
+                $directoryScopes = $scopes | Where-Object { $_ -like "Directory.ReadWrite*" }
+                if ($directoryScopes) {
+                    $directoryDelegationCount += $directoryScopes.Count
+                }
+                $filesScopes = $scopes | Where-Object { $_ -like "Files*" }
+                if ($filesScopes) {
+                    $filesDelegationCount += $filesScopes.Count
+                }
+                $sitesScopes = $scopes | Where-Object { $_ -like "Sitesd*" }
+                if ($sitesScopes) {
+                    $sitesDelegationCount += $sitesScopes.Count
+                }    
+                $OAuthDelegatedPerm["[" + $resID + $userId + "]"] += ($scopes -join ",")
+                $delegationCount++ # Count every delegation
+            }
+            else { $OAuthDelegatedPerm["[" + $resID + $userId + "]"] += "Orphaned scope" }
+        }
+
+        return $delegationCount, $calendarDelegationCount, $contactsDelegationCount, $mailsDelegationCount, $riskyDelegationCount, $directoryDelegationCount, $filesDelegationCount, $sitesDelegationCount
+    }
+
+    function Get-ServicePrincipalRoleById {
+
+        Param(
+        #Service principal object
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()]$spID)
+
+        if (!$SPPerm[$spID]) {
+            if($isBeta) {
+                $SPPerm[$spID] = Get-MgBetaServicePrincipal -ServicePrincipalId $spID -Verbose:$false -ErrorAction Stop
+            } else {
+                $SPPerm[$spID] = Get-MgServicePrincipal -ServicePrincipalId $spID -Verbose:$false -ErrorAction Stop
+            }
+        }
+        return $SPPerm[$spID]
+    }
+
+    function Get-UserUPNById {
+
+        Param(
+        #User objectID
+        [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()]$objectID)
+        if (!$SPusers[$objectID]) {
+            $SPusers[$objectID] = (Get-MgUser -UserId $objectID -Property UserPrincipalName).UserPrincipalName
+        }
+        return $SPusers[$objectID]
+    }
+
+    function Get-UsersAndGroups {
+        Param(
+            # Service principal object ID
+            [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()]$spID
+        )
+
+        $usersAndGroups = @()
+
+        try {
+            # Retrieve users assigned to the application
+            if($isBeta) {
+                $users = Get-MgBetaServicePrincipalAppRoleAssignedTo -ServicePrincipalId $spID -All -ErrorAction Stop -Verbose:$false
+            } else {
+                $users = Get-MgServicePrincipalAppRoleAssignedTo -ServicePrincipalId $spID -All -ErrorAction Stop -Verbose:$false
+            }
+            foreach ($user in $users) {
+                $usersAndGroups += [PSCustomObject]@{
+                    Type = "User"
+                    DisplayName = $user.PrincipalDisplayName
+                    Id = $user.PrincipalId
+                }
+            }
+
+            # Retrieve groups assigned to the application
+            if($isBeta) {
+                $groups = Get-MgBetaServicePrincipalAppRoleAssignment -ServicePrincipalId $spID -All -ErrorAction Stop -Verbose:$false
+            } else {
+                $groups = Get-MgServicePrincipalAppRoleAssignment -ServicePrincipalId $spID -All -ErrorAction Stop -Verbose:$false
+            }
+            foreach ($group in $groups) {
+                $usersAndGroups += [PSCustomObject]@{
+                    Type = "Group"
+                    DisplayName = $group.PrincipalDisplayName
+                    Id = $group.PrincipalId
+                }
+            }
+        } catch {
+            Write-Verbose "Failed to retrieve users and groups for SP $spID : $_"
+        }
+
+        return $usersAndGroups
+    }
+
+    Write-Verbose "Connecting to Graph API..."
+    if(-not $skipConnect) {
+        try {
+            Connect-MgGraph -Scopes "Directory.Read.All","Application.Read.All" -ErrorAction Stop -NoWelcome
+        } catch { 
+            throw $_ 
+        }
+    }
+    $isBeta = Test-GraphBetaPresent -Import
+    if($isBeta) {
+        Import-Module Microsoft.Graph.Beta.Applications -Verbose:$false -ErrorAction Stop
+    }
+
+    $tName = get-TenantName
+    $outFile = "eNEnterpriseAppsReport-{0}-{1}.csv" -f $tName,(get-date -Format 'yyMMdd-HHmmss')
+
+    #Make sure we include Custom security attributes in the report, if requested
+    $properties = "appDisplayName,appId,appOwnerOrganizationId,displayName,id,createdDateTime,AccountEnabled,passwordCredentials,keyCredentials,tokenEncryptionKeyId,verifiedPublisher,Homepage,PublisherName,tags"
+
+    #Get the list of Service principal objects within the tenant.
+    #Only /beta returns publisherName currently
+    $SPs = @()
+
+    Write-Verbose "Retrieving list of service principals..."
+    try {
+        if ($skipBuiltin) { 
+                if($isBeta) {
+                    $SPs = Get-MgBetaServicePrincipal -All -Filter "tags/any(t:t eq 'WindowsAzureActiveDirectoryIntegratedApp')" -Property $properties -ErrorAction Stop -Verbose:$false 
+                } else {
+                    $SPs = Get-MgServicePrincipal -All -Filter "tags/any(t:t eq 'WindowsAzureActiveDirectoryIntegratedApp')" -Property $properties -ErrorAction Stop -Verbose:$false 
+                }
+        } else { 
+            if($isBeta) {
+                $SPs = Get-MgBetaServicePrincipal -All -Property $properties -ErrorAction Stop -Verbose:$false 
+            } else {
+                $SPs = Get-MgServicePrincipal -All -Property $properties -ErrorAction Stop -Verbose:$false 
+            }
+        }
+    } catch {
+        throw $_
+    }
+
+    #Set up some variables
+    $SPperm = @{} #hash-table to store data for app roles and stuff
+    $SPusers = @{} #hash-table to store data for users assigned delegate permissions and stuff
+    $output = [System.Collections.Generic.List[Object]]::new() #output variable
+    $i=0; $count = 1; $PercentComplete = 0;
+    $appsWithDelegatedAccess = 0;
+    $appsWithDelegatedCalendarAccess = 0;
+    $appsWithDelegatedContactsAccess = 0;
+    $appsWithDelegatedRiskyAccess = 0;
+    $appsWithDelegatedMailAccess = 0;
+    $appsWithDelegatedDirectoryReadWriteAccess = 0;
+    $appsWithAccess = 0;
+    $appsWithCalendarAccess = 0;
+    $appsWithContactsAccess = 0;
+    $appsWithMailAccess = 0;
+    $appsWithRiskyAccess = 0;
+    $appsAddedLast30Days = 0;
+    $appsWithReadWriteConsentCount = 0;
+    $appsWithDelegatedReadWriteConsentCount = 0;
+    $appsWithSitesAccess = 0;
+    $appsWithFilesAccess = 0;
+    $appsWithDelegatedFilesAccess = 0;
+    $appsWithDelegatedSitesAccess = 0;
+
+    # Calculate the current date minus 30 days
+    $thirtyDaysAgo = (Get-Date).AddDays(-30)
+
+    #Process the list of service principals
+    foreach ($SP in $SPs) {
+        #Progress message
+        $ActivityMessage = "Retrieving data for service principal $($SP.DisplayName). Please wait..."
+        $StatusMessage = ("Processing service principal {0} of {1}: {2}" -f $count, @($SPs).count, $SP.id)
+        $PercentComplete = ($count / @($SPs).count * 100)
+        Write-Progress -Activity $ActivityMessage -Status $StatusMessage -PercentComplete $PercentComplete
+        $count++
+
+        #simple anti-throttling control
+        Write-Verbose "Processing service principal $($SP.id)..."
+
+        #Get owners info. We do not use $expand, as it returns the full set of object properties
+        Write-Verbose "Retrieving owners info..."
+        $owners = @()
+        if($isBeta) {
+            $owners = Get-MgBetaServicePrincipalOwner -ServicePrincipalId $SP.id -Property id,userPrincipalName -All -ErrorAction Stop -Verbose:$false
+        } else {
+            $owners = Get-MgServicePrincipalOwner -ServicePrincipalId $SP.id -Property id,userPrincipalName -All -ErrorAction Stop -Verbose:$false
+        }
+        if ($owners) { $owners = $owners.userPrincipalName }
+
+        #Include information about group/directory role memberships. Cannot use /memberOf/microsoft.graph.directoryRole :(
+        Write-Verbose "Retrieving group/directory role memberships..."
+        if($isBeta) {
+            $res = Get-MgBetaServicePrincipalMemberOf -All -ServicePrincipalId $SP.id -ErrorAction Stop -Verbose:$false
+        } else {
+            $res = Get-MgServicePrincipalMemberOf -All -ServicePrincipalId $SP.id -ErrorAction Stop -Verbose:$false
+        }
+        $memberOfGroups = ($res.AdditionalProperties | Where-Object {$_.'@odata.type' -eq "#microsoft.graph.group"}).displayName -join "|" #d is Case-sensitive!
+        $memberOfRoles = ($res.AdditionalProperties | Where-Object {$_.'@odata.type' -eq "#microsoft.graph.directoryRole"}).displayName -join "|" #d is Case-sensitive!
+
+        #prepare the output object
+        $i++;$objPermissions = [PSCustomObject][ordered]@{
+            "Application Name" = $SP.displayName
+            "Application Additional Name" = (&{if ($SP.appDisplayName) { $SP.appDisplayName } else { $null }}) #Apparently appDisplayName can be null
+            "Publisher" = (&{if ($SP.PublisherName) { $SP.PublisherName } else { $null }})
+            "Verified" = (&{if ($SP.verifiedPublisher.verifiedPublisherId) { $SP.verifiedPublisher.displayName } else { "Not verified" }})
+            "Homepage" = (&{if ($SP.Homepage) { $SP.Homepage } else { $null }})
+            "Created on" = (&{if ($SP.AdditionalProperties.createdDateTime) {(Get-Date($SP.AdditionalProperties.createdDateTime) -format d)} else { "N/A" }})
+            "Enabled" = $SP.AccountEnabled
+            "Total delegations" =  $null
+            "Calendar delegations" =  $null
+            "Contacts delegations" =  $null
+            "Mails delegations" =  $null
+            "Risky delegations" = $null
+            "Sites delegations" = $null
+            "Files delegations" = $null
+            "Directory delegations" = $null
+            "Permissions (delegate)" = $null
+            "Authorized By (delegate)" = $null
+            "Total apps" = $null
+            "Calendar apps" = $null
+            "Contacts apps" = $null
+            "Mails apps" = $null
+            "Directory apps" = $null
+            "Risky apps" = $null
+            "Files apps" = $null
+            "Sites apps" = $null
+            "Last modified (application)" = $null
+            "Permissions (application)" = $null
+            "Owners" = (&{if ($owners) { $owners -join "," } else { $null }})
+            "Member of (groups)" = $memberOfGroups
+            "Member of (roles)" = $memberOfRoles
+            'Users and Groups' = $null
+            "ObjectId" = $SP.id
+            "IsBuiltIn" = $SP.tags -notcontains "WindowsAzureActiveDirectoryIntegratedApp"
+        }
+
+        #Check for appRoleAssignments (application permissions)
+        Write-Verbose "Retrieving application permissions..."
+        try {
+            $appRoleAssignments = @()
+            if($isBeta) {
+                $appRoleAssignments = Get-MgBetaServicePrincipalAppRoleAssignment -All -ServicePrincipalId $SP.id -ErrorAction Stop -Verbose:$false
+            } else {
+                $appRoleAssignments = Get-MgServicePrincipalAppRoleAssignment -All -ServicePrincipalId $SP.id -ErrorAction Stop -Verbose:$false
+            }
+
+            $OAuthAppPerm = @{};
+            $assignedto = @();$resID = $null; $userId = $null;
+
+            #process application permissions entries
+            if (!$appRoleAssignments) {
+                Write-Verbose "No application permissions to report on for SP $($SP.id), skipping..."
+                $objPermissions.'Total apps' = 0
+                $objPermissions.'Calendar apps' = 0
+                $objPermissions.'Contacts apps' = 0
+                $objPermissions.'Mails apps' = 0
+                $objPermissions.'Risky apps' = 0
+                $objPermissions.'Directory apps' = 0
+                $objPermissions.'Files apps' = 0
+                $objPermissions.'Sites apps' = 0
+            }
+            else {
+                $objPermissions.'Last modified (application)' = (Get-Date($appRoleAssignments.CreationTimestamp | Select-Object -Unique | Sort-Object -Descending | Select-Object -First 1) -format d)
+                $appsPermissionsCounts = Parse-AppPermissions $appRoleAssignments
+                $objPermissions.'Permissions (application)' = (($OAuthAppPerm.GetEnumerator()  | ForEach-Object { "$($_.Name):$($_.Value.ToString().TrimStart(','))"}) -join "|")
+                $objPermissions.'Total apps' = $appsPermissionsCounts[0]
+                $objPermissions.'Calendar apps' = $appsPermissionsCounts[1]
+                $objPermissions.'Contacts apps' = $appsPermissionsCounts[2]
+                $objPermissions.'Mails apps' = $appsPermissionsCounts[3]
+                $objPermissions.'Risky apps' = $appsPermissionsCounts[4]
+                $objPermissions.'Directory apps' = $appsPermissionsCounts[5]
+                $objPermissions.'Files apps' = $appsPermissionsCounts[6] 
+                $objPermissions.'Sites apps' = $appsPermissionsCounts[7] 
+                if ($appsPermissionsCounts[0] -gt 0) {$appsWithAccess++;}
+                if ($appsPermissionsCounts[1] -gt 0) {$appsWithCalendarAccess++;}
+                if ($appsPermissionsCounts[2] -gt 0) {$appsWithContactsAccess++;}
+                if ($appsPermissionsCounts[3] -gt 0) {$appsWithMailAccess++;}
+                if ($appsPermissionsCounts[4] -gt 0) {$appsWithRiskyAccess++;}
+                if ($appsPermissionsCounts[5] -gt 0) {$appsWithDirectoryReadWriteAccess++;}
+                if ($appsPermissionsCounts[6] -gt 0) {$appsWithFilesAccess++;}
+                if ($appsPermissionsCounts[7] -gt 0) {$appsWithSitesAccess++;}
+            }
+        }
+        catch { Write-Verbose "Failed to retrieve application permissions for SP $($SP.id) ..." }
+
+        #Check for oauth2PermissionGrants (delegate permissions)
+        #Use / here, as /v1.0 does not return expiryTime
+        Write-Verbose "Retrieving delegate permissions..."
+        try {
+            $oauth2PermissionGrants = @()
+            if($isBeta) {
+                $oauth2PermissionGrants = Get-MgBetaServicePrincipalOAuth2PermissionGrant -All -ServicePrincipalId $SP.id -ErrorAction Stop -Verbose:$false
+            } else {
+                $oauth2PermissionGrants = Get-MgServicePrincipalOAuth2PermissionGrant -All -ServicePrincipalId $SP.id -ErrorAction Stop -Verbose:$false
+            }
+
+            $OAuthDelegatedPerm = @{};
+            $assignedto = @();$resID = $null; $userId = $null;
+
+            #process delegate permissions entries
+            if (!$oauth2PermissionGrants) {
+                Write-Verbose "No delegate permissions to report on for SP $($SP.id), skipping..."
+                $objPermissions.'Total delegations' = 0
+                $objPermissions.'Calendar delegations' = 0
+                $objPermissions.'Contacts delegations' = 0
+                $objPermissions.'Mails delegations' = 0
+                $objPermissions.'Risky delegations' = 0
+                $objPermissions.'Directory delegations' = 0
+                $objPermissions.'Files delegations' = 0
+                $objPermissions.'Sites delegations' = 0
+            }
+            else {
+                $delegationCounts = Parse-DelegatePermissions $oauth2PermissionGrants
+                $objPermissions.'Permissions (delegate)' = (($OAuthDelegatedPerm.GetEnumerator() | ForEach-Object { "$($_.Name):$($_.Value.ToString().TrimStart(','))"}) -join "|")
+                $objPermissions.'Total delegations' = $delegationCounts[0]
+                $objPermissions.'Calendar delegations' = $delegationCounts[1]
+                $objPermissions.'Contacts delegations' = $delegationCounts[2]
+                $objPermissions.'Mails delegations' = $delegationCounts[3]
+                $objPermissions.'Risky delegations' = $delegationCounts[4]
+                $objPermissions.'Directory delegations' = $delegationCounts[5]
+                $objPermissions.'Files delegations' = $delegationCounts[6]
+                $objPermissions.'Sites delegations' = $delegationCounts[7]
+                if ($delegationCounts[0] -gt 0) {$appsWithDelegatedAccess++;}
+                if ($delegationCounts[1] -gt 0) {$appsWithDelegatedCalendarAccess++;}
+                if ($delegationCounts[2] -gt 0) {$appsWithDelegatedContactsAccess++;}
+                if ($delegationCounts[3] -gt 0) {$appsWithDelegatedMailAccess++;}
+                if ($delegationCounts[4] -gt 0) {$appsWithDelegatedRiskyAccess++;}
+                if ($delegationCounts[5] -gt 0) {$appsWithDelegatedDirectoryReadWriteAccess++;}
+                if ($delegationCounts[6] -gt 0) {$appsWithDelegatedFilesAccess++;}
+                if ($delegationCounts[7] -gt 0) {$appsWithDelegatedSitesAccess++;}
+
+
+                if (($oauth2PermissionGrants.ConsentType | Select-Object -Unique) -eq "AllPrincipals") { $assignedto += "All users (admin consent)" }
+                $assignedto +=  @($OAuthDelegatedPerm.Keys) | ForEach-Object {if ($_ -match "\((.*@.*)\)") {$Matches[1]}}
+                $objPermissions.'Authorized By (delegate)' = (($assignedto | Select-Object -Unique) -join ",")
+            }
+        }
+        catch { Write-Verbose "Failed to retrieve delegate permissions for SP $($SP.id) ..." }
+        # Check if the app was added in the last 30 days and increment the counter if so
+        if ($SP.AdditionalProperties.createdDateTime -and ((Get-Date($SP.AdditionalProperties.createdDateTime)) -gt $thirtyDaysAgo)) {
+            $appsAddedLast30Days++
+        }
+        # Check for ReadWrite consents in both application and delegate permissions and increment the counter if found
+        if ($objPermissions.'Permissions (application)' -match ".*ReadWrite.*") {
+            $appsWithReadWriteConsentCount++
+        }
+        # Check for ReadWrite consents in both application and delegate permissions and increment the counter if found
+        if ($objPermissions.'Permissions (delegate)' -match ".*ReadWrite.*") {
+            $appsWithDelegatedReadWriteConsentCount++
+        }
+        # Retrieve users and groups assigned to the application
+        Write-Verbose "Retrieving users and groups for service principal $($SP.id)..."
+        $usersAndGroups = Get-UsersAndGroups -spID $SP.id
+        $objPermissions.'Users and Groups' = ($usersAndGroups | ForEach-Object { "$($_.Type): $($_.DisplayName) ($($_.Id))" }) -join "|"
+
+        $output.Add($objPermissions)
+    }
+
+    $output = $output | Sort-Object {$_."Application Name"}
+
+    #Export
+    $output | Select-Object * -ExcludeProperty Number | Export-CSV -nti -Path $outFile -Encoding UTF8
+    Write-Host "Output exported to $outFile"
+    if($convertToExcel) {
+        convert-CSV2XLS $outFile -openOnConversion
+    }
+    write-host -ForegroundColor Green 'done.'
+}
+function get-eidDeviceReport {
+<#
+.SYNOPSIS
+    Generates a unified report of Entra ID (Azure AD) and Intune managed devices.
+
+.DESCRIPTION
+    The get-eidDeviceReport function queries Microsoft Graph for device objects
+    from Entra ID (Azure Active Directory) and, optionally, Intune managed devices.
+    It produces a flattened, joined dataset that can be exported to CSV.
+
+    By default, the function:
+    - Connects to Microsoft Graph with Directory.Read.All and DeviceManagementManagedDevices.Read.All scopes.
+    - Retrieves both Entra ID and Intune devices.
+    - Correlates them by Azure AD Device ID (EID.deviceId ↔ Intune.azureAdDeviceId).
+    - Outputs "Deep" detail level including most common device, ownership, and compliance properties.
+
+    You can limit the report to Entra ID or Intune devices only using -onlyEid or -onlyIntune.
+
+    Requires: Microsoft.Graph PowerShell SDK (v2.x or later)
+    Module commands used:
+    - Get-MgDevice
+    - Get-MgDeviceManagementManagedDevice
+    - Connect-MgGraph
+
+    Permissions:
+    - Directory.Read.All (for Entra ID)
+    - DeviceManagementManagedDevices.Read.All (for Intune)
+
+.PARAMETER eidOnly
+    Collects and returns only Entra ID (Azure AD) device objects.
+    Skips Intune queries and matching.
+
+.PARAMETER intuneOnly
+    Collects and returns only Intune managed devices.
+    Skips Entra ID queries and matching.
+
+.INPUTS
+    None. The function does not accept pipeline input.
+
+.OUTPUTS
+    csv or excel file with the unified device report.
+
+.EXAMPLE
+    .\get-eidDeviceReport
+
+    Generates a full (Deep) report correlating Entra ID and Intune devices and exports it to a CSV file.
+
+.EXAMPLE
+    .\get-eidDeviceReport -onlyEid -convertToExcel
+
+    Exports a report containing only Entra ID devices (no Intune data) and automatically converts it to Excel.
+
+.EXAMPLE
+    .\get-eidDeviceReport -onlyIntune 
+    
+    Exports a report containing only Intune managed devices (no Entra ID data) and saves it as CSV.
+
+.LINK
+    https://learn.microsoft.com/en-us/powershell/microsoftgraph/
+    https://learn.microsoft.com/en-us/graph/api/resources/device
+    https://learn.microsoft.com/en-us/graph/api/resources/intune-devices-manageddevice
+
+.LINK
+    https://w-files.pl
+.NOTES
+    nExoR ::))o-
+    version 251014
+        last changes
+        - 251014 initialized
+
+    #TO|DO
+#>
+    [CmdletBinding()]
+    param(
+        #report only EID devices
+        [parameter(Mandatory=$false,position=0)]
+            [switch]$eidOnly,
+        #report only Intune devices
+        [parameter(Mandatory=$false,position=1)]
+            [switch]$intuneOnly,
+        #export to excel
+        [Parameter(mandatory=$false,position=2)]
+            [switch]$convertToExcel
+    )
+
+    begin {
+        if ($PSVersionTable.PSVersion.Major -lt 7) {
+            throw "get-eidDeviceReport requires PowerShell 7+ to execute (Microsoft.Graph SDK). The module can be imported on PS5, but run this function in pwsh 7+."
+        }
+
+        function get-eidDevices {
+            write-host "Collecting Entra ID devices..." -ForegroundColor Yellow
+            # Ask explicitly for properties we need
+            $raw = Get-MgDevice -All -Property `
+                "id,displayName,deviceId,trustType,accountEnabled,registrationDateTime,operatingSystem,operatingSystemVersion,devicePhysicalIds,model"
+
+            foreach ($d in $raw) {
+                $phys = @($d.DevicePhysicalIds)
+                $physJoined = $null
+                if ($phys -and $phys.Count -gt 0) {
+                    $physJoined = ($phys -join ';')
+                }
+
+                # Parse first Autopilot ZTDId if present
+                $ztd = $null
+                if ($phys -and $phys.Count -gt 0) {
+                    foreach ($p in $phys) {
+                        if ($p -match '^\[ZTDId\]:') {
+                            $ztd = ($p -replace '^\[ZTDId\]:','')
+                            break
+                        }
+                    }
+                }
+
+                [pscustomobject]@{
+                    Eid_DeviceId                 = [string]$d.DeviceId
+                    Eid_DisplayName              = $d.DisplayName
+                    Eid_TrustType                = $d.TrustType
+                    Eid_AccountEnabled           = $d.AccountEnabled
+                    Eid_RegistrationDateTime     = $d.RegistrationDateTime
+                    Eid_OperatingSystem          = $d.OperatingSystem
+                    Eid_OperatingSystemVersion   = $d.OperatingSystemVersion
+                    Eid_model                    = $d.Model
+                    Eid_DevicePhysicalIds        = $physJoined
+                    Eid_AutopilotZtdId           = $ztd
+                }
+            }
+        }
+
+        function get-intuneDevices {
+            write-host "Collecting Intune devices..." -ForegroundColor Yellow
+            # v1.0 names: managedDeviceOwnerType, deviceEnrollmentType
+            $raw = Get-MgDeviceManagementManagedDevice -All -Property `
+                "id,azureADDeviceId,deviceName,operatingSystem,osVersion,managedDeviceOwnerType,userPrincipalName,complianceState,enrolledDateTime,lastSyncDateTime,managementAgent,serialNumber,deviceCategoryDisplayName,deviceEnrollmentType,partnerReportedThreatState"
+
+            foreach ($m in $raw) {
+                [pscustomobject]@{
+                    Intune_ManagedDeviceId               = [string]$m.Id
+                    Intune_AzureAdDeviceId               = [string]$m.AzureAdDeviceId
+                    Intune_DeviceName                    = $m.DeviceName
+                    Intune_OperatingSystem               = $m.OperatingSystem
+                    Intune_OsVersion                     = $m.OsVersion
+                    Intune_ManagedDeviceOwnerType        = $m.ManagedDeviceOwnerType     # company/personal/unknown
+                    Intune_UserPrincipalName             = $m.UserPrincipalName
+                    Intune_ComplianceState               = $m.ComplianceState
+                    Intune_EnrolledDateTime              = $m.EnrolledDateTime
+                    Intune_LastSyncDateTime              = $m.LastSyncDateTime
+                    Intune_ManagementAgent               = $m.ManagementAgent
+                    Intune_SerialNumber                  = $m.SerialNumber
+                    Intune_DeviceCategoryDisplayName     = $m.DeviceCategoryDisplayName
+                    Intune_DeviceEnrollmentType          = $m.DeviceEnrollmentType
+                    Intune_PartnerReportedThreatState    = $m.PartnerReportedThreatState
+                }
+            }
+        }
+        
+        if ($eidOnly -and $intuneOnly) {
+            throw "Use either -onlyEid or -onlyIntune, not both."
+        }
+
+        $eidScope    = "Directory.Read.All"                    # (Device.Read.All also works but is narrower)
+        $intuneScope = "DeviceManagementManagedDevices.Read.All"
+
+        switch ($true) {
+            { $eidOnly }    { connect-graphWithCheck -scopes @($eidScope) }
+            { $intuneOnly } { connect-graphWithCheck -scopes @($intuneScope) }
+            default         { connect-graphWithCheck -scopes @($eidScope,$intuneScope) }
+        }
+
+        $tName = get-TenantName
+        $outFile = "eNDevicesReport-{0}-{1}.csv" -f $tName,(get-date -Format 'yyMMdd-HHmmss')
+
+
+        $wantEid    = -not $intuneOnly
+        $wantIntune = -not $eidOnly
+
+        $eid    = @()
+        $intune = @()
+
+        if ($wantEid)    { $eid = get-eidDevices }
+        if ($wantIntune) { $intune = get-intuneDevices }
+
+        # Build Intune index by Azure AD DeviceId (GUID string)
+        $intuneByAadId = @{}
+        if ($wantIntune) {
+            write-host "Indexing Intune devices by Azure AD Device ID..." -ForegroundColor Yellow
+            foreach ($row in $intune | Where-Object { $_.Intune_AzureAdDeviceId }) {
+                $key = $row.Intune_AzureAdDeviceId.ToLowerInvariant()
+                if ($intuneByAadId.ContainsKey($key)) {
+                    # keep the most recent by LastSyncDateTime
+                    $current = $intuneByAadId[$key]
+                    $pickNew = $null
+                    $t1 = $current.Intune_LastSyncDateTime
+                    $t2 = $row.Intune_LastSyncDateTime
+                    if ($t2 -as [datetime]) {
+                        if (-not ($t1 -as [datetime]) -or ([datetime]$t2 -gt [datetime]$t1)) { $pickNew = $true }
+                    }
+                    if ($pickNew) { $intuneByAadId[$key] = $row }
+                } else {
+                    $intuneByAadId[$key] = $row
+                }
+            }
+        }
+        #initiate results collection
+        $results = New-Object System.Collections.Generic.List[object]
+
+    }
+
+    process {
+        # 1) EID rows (or EID+match when possible)
+        if ($eid) {
+            foreach ($e in $eid) {
+                $int = $null
+                $matchKey = 'none'; $conf = 'low'; $status = 'EidOnly'
+
+                if ($wantIntune -and $e.Eid_DeviceId) {
+                    $lookup = $e.Eid_DeviceId.ToLowerInvariant()
+                    if ($intuneByAadId.ContainsKey($lookup)) {
+                        $int = $intuneByAadId[$lookup]
+                        $status = 'Matched'; $matchKey = 'azureAdDeviceId'; $conf = 'high'
+                        # remove matched item so remaining become IntuneOnly
+                        $null = $intuneByAadId.Remove($lookup)
+                    }
+                }
+
+                # Build output, EID first
+                $out = [pscustomobject]@{
+                    Match_Status                  = $status
+                    Match_Key                     = $matchKey
+                    Match_Confidence              = $conf
+
+                    Eid_DeviceId                 = $e.Eid_DeviceId
+                    Eid_DisplayName              = $e.Eid_DisplayName
+                    Eid_TrustType                = $e.Eid_TrustType
+                    Eid_AccountEnabled           = $e.Eid_AccountEnabled
+                    Eid_RegistrationDateTime     = $e.Eid_RegistrationDateTime
+                    Eid_OperatingSystem          = $e.Eid_OperatingSystem
+                    Eid_OperatingSystemVersion   = $e.Eid_OperatingSystemVersion
+                    Eid_Model                    = $e.Eid_Model
+                    Eid_DevicePhysicalIds        = $e.Eid_DevicePhysicalIds
+                    Eid_AutopilotZtdId           = $e.Eid_AutopilotZtdId
+
+
+                    Intune_ManagedDeviceId          = $null
+                    Intune_AzureAdDeviceId          = $null
+                    Intune_DeviceName               = $null
+                    Intune_OperatingSystem          = $null
+                    Intune_OsVersion                = $null
+                    Intune_ManagedDeviceOwnerType   = $null
+                    Intune_UserPrincipalName        = $null
+                    Intune_ComplianceState          = $null
+                    Intune_EnrolledDateTime         = $null
+                    Intune_LastSyncDateTime         = $null
+                    Intune_ManagementAgent          = $null
+                    Intune_SerialNumber             = $null
+                    Intune_DeviceCategoryDisplayName= $null
+                    Intune_DeviceEnrollmentType     = $null
+                    Intune_PartnerReportedThreatState = $null
+                }
+
+                if ($int) {
+                    # Fill Intune block explicitly (no null-conditional)
+                    $out.Intune_ManagedDeviceId            = $int.Intune_ManagedDeviceId
+                    $out.Intune_AzureAdDeviceId            = $int.Intune_AzureAdDeviceId
+                    $out.Intune_DeviceName                 = $int.Intune_DeviceName
+                    $out.Intune_OperatingSystem            = $int.Intune_OperatingSystem
+                    $out.Intune_OsVersion                  = $int.Intune_OsVersion
+                    $out.Intune_ManagedDeviceOwnerType     = $int.Intune_ManagedDeviceOwnerType
+                    $out.Intune_UserPrincipalName          = $int.Intune_UserPrincipalName
+                    $out.Intune_ComplianceState            = $int.Intune_ComplianceState
+                    $out.Intune_EnrolledDateTime           = $int.Intune_EnrolledDateTime
+                    $out.Intune_LastSyncDateTime           = $int.Intune_LastSyncDateTime
+                    $out.Intune_ManagementAgent            = $int.Intune_ManagementAgent
+                    $out.Intune_SerialNumber               = $int.Intune_SerialNumber
+                    $out.Intune_DeviceCategoryDisplayName  = $int.Intune_DeviceCategoryDisplayName
+                    $out.Intune_DeviceEnrollmentType       = $int.Intune_DeviceEnrollmentType
+                    $out.Intune_PartnerReportedThreatState = $int.Intune_PartnerReportedThreatState
+                }
+
+                $results.Add( $out ) | Out-Null
+            }
+        }
+
+        # 2) Remaining Intune-only rows (if both sources or onlyIntune)
+        if ($wantIntune) {
+            foreach ($kv in $intuneByAadId.GetEnumerator()) {
+                $i = $kv.Value
+                $out = [pscustomobject]@{
+                    Match_Status                  = 'IntuneOnly'
+                    Match_Key                     = 'none'
+                    Match_Confidence              = 'low'
+
+                    Eid_DeviceId                 = $null
+                    Eid_DisplayName              = $null
+                    Eid_TrustType                = $null
+                    Eid_AccountEnabled           = $null
+                    Eid_RegistrationDateTime     = $null
+                    Eid_OperatingSystem          = $null
+                    Eid_OperatingSystemVersion   = $null
+                    Eid_DevicePhysicalIds        = $null
+                    Eid_AutopilotZtdId           = $null
+
+                    Intune_ManagedDeviceId            = $i.Intune_ManagedDeviceId
+                    Intune_AzureAdDeviceId            = $i.Intune_AzureAdDeviceId
+                    Intune_DeviceName                 = $i.Intune_DeviceName
+                    Intune_OperatingSystem            = $i.Intune_OperatingSystem
+                    Intune_OsVersion                  = $i.Intune_OsVersion
+                    Intune_ManagedDeviceOwnerType     = $i.Intune_ManagedDeviceOwnerType
+                    Intune_UserPrincipalName          = $i.Intune_UserPrincipalName
+                    Intune_ComplianceState            = $i.Intune_ComplianceState
+                    Intune_EnrolledDateTime           = $i.Intune_EnrolledDateTime
+                    Intune_LastSyncDateTime           = $i.Intune_LastSyncDateTime
+                    Intune_ManagementAgent            = $i.Intune_ManagementAgent
+                    Intune_SerialNumber               = $i.Intune_SerialNumber
+                    Intune_DeviceCategoryDisplayName  = $i.Intune_DeviceCategoryDisplayName
+                    Intune_DeviceEnrollmentType       = $i.Intune_DeviceEnrollmentType
+                    Intune_PartnerReportedThreatState = $i.Intune_PartnerReportedThreatState
+                }
+                $results.Add( $out ) | Out-Null
+            }
+        }
+    }
+    end {
+        $results | export-csv -nti -Path $outFile -Encoding UTF8
+        write-host "report exported to $outFile" -ForegroundColor Green
+        if($convertToExcel) {
+            convert-CSV2XLS $outFile -openOnConversion
+            write-host 'done.' -ForegroundColor Green
+        }
     }
 }
