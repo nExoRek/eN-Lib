@@ -90,11 +90,13 @@
 
 .LINK
     https://w-files.pl
+.LINK
+    https://github.com/nExoRek/eN-Lib/tree/master/eNAuditor
 .NOTES
     nExoR ::))o-
     version 251014
         last changes
-        - 251014 although still not fully ready - time to add apps permissions report function
+        - 251014 although still not fully ready - time to add apps permissions report function and device reporting
         - 250329 service plan info removed -> new library eNGBL created
         - 250209 fixed join-report, MFAreport extended to get full info from two commandlets, other fixes
         - 250206 included get-eNServicePlanInfo, module definition amendmend, MFA report function added
